@@ -12,7 +12,10 @@
     { type:'goblin', label:'g', hp:2, maxHp:2, atk:2, def:1, move:3 },
     { type:'esqueleto', label:'e', hp:3, maxHp:3, atk:2, def:2, move:1 },
     { type:'orco', label:'o', hp:4, maxHp:4, atk:3, def:2, move:2 },
-    { type:'caos', label:'c', hp:5, maxHp:5, atk:3, def:2, move:2 }
+    { type:'caos', label:'c', hp:5, maxHp:5, atk:3, def:2, move:2 },
+    { type:'troll', label:'t', hp:7, maxHp:7, atk:3, def:3, move:1 },
+    { type:'arana', label:'s', hp:2, maxHp:2, atk:2, def:1, move:4 },
+    { type:'licantropo', label:'l', hp:5, maxHp:5, atk:4, def:2, move:3 }
   ];
 
   var board = document.getElementById('board');
@@ -337,6 +340,9 @@
     else if (name === 'orco') svg = '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#921818"/><path d="M12 28 Q12 8 32 8 Q52 8 52 28 L50 34 L14 34 Z" fill="#3a4838"/><path d="M14 26 Q18 10 32 9 Q46 10 50 26" fill="none" stroke="#5a6850" stroke-width="1.5" opacity=".65"/><path d="M12 28 L4 20 Q6 12 12 14 L16 26 Z" fill="#484838"/><path d="M52 28 L60 20 Q58 12 52 14 L48 26 Z" fill="#484838"/><path d="M5 14 Q8 16 13 24" stroke="#6a7860" stroke-width="1.2" stroke-linecap="round" opacity=".6"/><path d="M59 14 Q56 16 51 24" stroke="#6a7860" stroke-width="1.2" stroke-linecap="round" opacity=".6"/><path d="M16 30 Q16 52 32 54 Q48 52 48 30 Z" fill="#7a9a50"/><path d="M22 33 Q25 30 28 33" fill="none" stroke="#2a1808" stroke-width="2.5" stroke-linecap="round"/><path d="M36 33 Q39 30 42 33" fill="none" stroke="#2a1808" stroke-width="2.5" stroke-linecap="round"/><circle cx="25.5" cy="35.5" r="3" fill="#1a0800"/><circle cx="38.5" cy="35.5" r="3" fill="#1a0800"/><circle cx="26.3" cy="34.8" r="1" fill="#ff4040" opacity=".9"/><circle cx="39.3" cy="34.8" r="1" fill="#ff4040" opacity=".9"/><path d="M28 44 L27 50" stroke="#e0d8b0" stroke-width="2.5" stroke-linecap="round"/><path d="M36 44 L37 50" stroke="#e0d8b0" stroke-width="2.5" stroke-linecap="round"/><path d="M26 42 Q30 47 32 47 Q34 47 38 42" fill="#5a1010" stroke="#3a0808" stroke-width="1"/><path d="M14 58 L14 46 Q18 38 24 36 L32 52 L40 36 Q46 38 50 46 L50 58 Z" fill="#2a1808"/><path d="M16 58 L16 47 Q20 40 26 38 L32 53 L38 38 Q44 40 48 47 L48 58 Z" fill="#3a3828"/><path d="M7 52 L16 40" stroke="#5a3828" stroke-width="3.5" stroke-linecap="round"/><path d="M3 38 Q2 45 7 47 L14 40 L8 34 Q3 33 3 38 Z" fill="#787870"/><path d="M3.5 38 Q3 43 7 46" stroke="#b0b0a8" stroke-width="1.2" stroke-linecap="round" opacity=".65"/></svg>';
     else if (name === 'caos') svg = '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#921818"/><path d="M12 28 Q12 8 32 8 Q52 8 52 28 L50 34 L14 34 Z" fill="#181424"/><path d="M14 26 Q18 10 32 9 Q46 10 50 26" fill="none" stroke="#4a3868" stroke-width="1.5" opacity=".65"/><path d="M12 28 L4 18 Q7 10 14 12 L16 28 Z" fill="#201828"/><path d="M52 28 L60 18 Q57 10 50 12 L48 28 Z" fill="#201828"/><path d="M16 30 Q16 52 32 54 Q48 52 48 30 Z" fill="#383040"/><path d="M22 32 Q26 28 30 32" fill="#383040" stroke="#0a0818" stroke-width="2.5" stroke-linecap="round"/><path d="M34 32 Q38 28 42 32" fill="#383040" stroke="#0a0818" stroke-width="2.5" stroke-linecap="round"/><circle cx="26" cy="34" r="3" fill="#060410"/><circle cx="38" cy="34" r="3" fill="#060410"/><circle cx="26" cy="34" r="2" fill="#c050ff" opacity=".9"/><circle cx="38" cy="34" r="2" fill="#c050ff" opacity=".9"/><circle cx="26.8" cy="33.2" r=".8" fill="#f0b0ff" opacity=".9"/><circle cx="38.8" cy="33.2" r=".8" fill="#f0b0ff" opacity=".9"/><path d="M24 42 Q28 47 32 47 Q36 47 40 42" fill="#1a1020" stroke="#120a18" stroke-width="1"/><path d="M26 44 Q30 48 32 48 Q34 48 38 44" fill="none" stroke="#c050ff" stroke-width="1" stroke-linecap="round" opacity=".7"/><path d="M14 58 L14 46 Q18 36 26 34 L32 52 L38 34 Q46 36 50 46 L50 58 Z" fill="#0e0c18"/><path d="M16 58 L16 47 Q20 38 28 36 L32 53 L36 36 Q44 38 48 47 L48 58 Z" fill="#181428"/><path d="M21 38 L23 30 M29 38 L29 30 M37 38 L35 30 M43 38 L41 30" stroke="#8040c0" stroke-width="1" stroke-linecap="round" opacity=".7"/><path d="M20 38 Q24 42 28 38 Q32 34 36 38 Q40 42 44 38" fill="none" stroke="#6030a0" stroke-width="1.2" stroke-linecap="round" opacity=".6"/><path d="M7 52 L16 40" stroke="#281838" stroke-width="3.5" stroke-linecap="round"/><path d="M3 38 Q2 46 8 48 L15 40 L8 33 Q3 32 3 38 Z" fill="#404048"/><path d="M4 38 L24 34 M4 44 L24 40" stroke="#8040c0" stroke-width=".8" stroke-linecap="round" opacity=".5"/></svg>';
     else if (name === 'jefe') svg = '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#8a1010"/><circle cx="32" cy="32" r="27" fill="none" stroke="#e0a810" stroke-width="2.2"/><path d="M20 10 L24 20 L32 8 L40 20 L44 10 L42 22 L38 18 L32 24 L26 18 L22 22 Z" fill="#e0a810"/><path d="M21 11 Q26 14 24 21" stroke="#f8d040" stroke-width="1" stroke-linecap="round" opacity=".6"/><path d="M43 11 Q38 14 40 21" stroke="#f8d040" stroke-width="1" stroke-linecap="round" opacity=".6"/><path d="M12 28 Q12 8 32 8 Q52 8 52 28 L50 34 L14 34 Z" fill="#303038"/><path d="M14 26 Q18 10 32 9 Q46 10 50 26" fill="none" stroke="#606068" stroke-width="1.5" opacity=".55"/><path d="M12 28 L3 18 Q6 8 14 10 L16 28 Z" fill="#2a2830"/><path d="M52 28 L61 18 Q58 8 50 10 L48 28 Z" fill="#2a2830"/><path d="M4 10 Q8 12 13 24" stroke="#585060" stroke-width="1.2" stroke-linecap="round" opacity=".6"/><path d="M60 10 Q56 12 51 24" stroke="#585060" stroke-width="1.2" stroke-linecap="round" opacity=".6"/><path d="M16 30 Q16 52 32 54 Q48 52 48 30 Z" fill="#b05030"/><path d="M20 32 Q24 28 28 32" fill="#b05030" stroke="#200808" stroke-width="2.5" stroke-linecap="round"/><path d="M36 32 Q40 28 44 32" fill="#b05030" stroke="#200808" stroke-width="2.5" stroke-linecap="round"/><circle cx="24.5" cy="34.5" r="3.5" fill="#040000"/><circle cx="39.5" cy="34.5" r="3.5" fill="#040000"/><circle cx="24.5" cy="34.5" r="2.2" fill="#ff6000" opacity=".95"/><circle cx="39.5" cy="34.5" r="2.2" fill="#ff6000" opacity=".95"/><circle cx="25.3" cy="33.7" r=".9" fill="#ffcc40" opacity=".9"/><circle cx="40.3" cy="33.7" r=".9" fill="#ffcc40" opacity=".9"/><path d="M22 44 Q27 50 32 50 Q37 50 42 44" fill="#3a0808" stroke="#280808" stroke-width="1.2"/><path d="M24 46 L26 50 L28 46 L30 51 L32 47 L34 51 L36 46 L38 50 L40 46" fill="none" stroke="#e0d0b0" stroke-width="1.2" stroke-linecap="round" opacity=".8"/><path d="M12 58 L12 46 Q16 36 24 34 L32 52 L40 34 Q48 36 52 46 L52 58 Z" fill="#280808"/><path d="M14 58 L14 47 Q18 38 26 36 L32 53 L38 36 Q46 38 50 47 L50 58 Z" fill="#3a1010"/><path d="M6 52 L16 40" stroke="#3a2010" stroke-width="3.5" stroke-linecap="round"/><path d="M2 37 Q1 46 7 48 L15 40 L8 32 Q2 31 2 37 Z" fill="#686060"/><path d="M2.5 37 Q2 44 7 47" stroke="#b0a8a0" stroke-width="1.2" stroke-linecap="round" opacity=".65"/><path d="M58 52 L48 40" stroke="#3a2010" stroke-width="3.5" stroke-linecap="round"/><path d="M62 37 Q63 46 57 48 L49 40 L56 32 Q62 31 62 37 Z" fill="#686060"/><path d="M61.5 37 Q62 44 57 47" stroke="#b0a8a0" stroke-width="1.2" stroke-linecap="round" opacity=".65"/></svg>';
+    else if (name === 'troll') svg = '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#921818"/><path d="M10 28 Q10 8 32 8 Q54 8 54 28 L52 34 L12 34 Z" fill="#708040"/><path d="M9 22 L14 10 L19 26 Z" fill="#607030"/><path d="M55 22 L50 10 L45 26 Z" fill="#607030"/><path d="M10 7 Q13 12 17 24" stroke="#a0b050" stroke-width="1.2" stroke-linecap="round" opacity=".5"/><path d="M54 7 Q51 12 47 24" stroke="#a0b050" stroke-width="1.2" stroke-linecap="round" opacity=".5"/><path d="M12 30 Q12 52 32 54 Q52 52 52 30 Z" fill="#8a9a50"/><circle cx="24" cy="27" r="5" fill="#1a1a00"/><circle cx="40" cy="27" r="5" fill="#1a1a00"/><circle cx="24" cy="27" r="3.2" fill="#e8c000"/><circle cx="40" cy="27" r="3.2" fill="#e8c000"/><circle cx="23.5" cy="26.5" r="1" fill="#fff" opacity=".8"/><circle cx="39.5" cy="26.5" r="1" fill="#fff" opacity=".8"/><ellipse cx="32" cy="36" rx="5.5" ry="3.5" fill="#607030"/><circle cx="30" cy="36" r="1.5" fill="#1a1a00"/><circle cx="34" cy="36" r="1.5" fill="#1a1a00"/><path d="M24 44 L20 56" stroke="#e8d8a0" stroke-width="3.5" stroke-linecap="round"/><path d="M40 44 L44 56" stroke="#e8d8a0" stroke-width="3.5" stroke-linecap="round"/><path d="M14 60 L14 46 Q18 38 24 36 L32 52 L40 36 Q46 38 50 46 L50 60 Z" fill="#4a5820"/><path d="M16 60 L16 47 Q20 40 26 38 L32 53 L38 38 Q44 40 48 47 L48 60 Z" fill="#5a6e28"/></svg>';
+    else if (name === 'arana') svg = '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#921818"/><path d="M22 28 Q14 22 7 26" stroke="#1a0808" stroke-width="3" stroke-linecap="round"/><path d="M22 31 Q12 30 7 36" stroke="#1a0808" stroke-width="2.5" stroke-linecap="round"/><path d="M22 34 Q14 38 10 44" stroke="#1a0808" stroke-width="2" stroke-linecap="round"/><path d="M22 37 Q17 43 15 50" stroke="#1a0808" stroke-width="2" stroke-linecap="round"/><path d="M42 28 Q50 22 57 26" stroke="#1a0808" stroke-width="3" stroke-linecap="round"/><path d="M42 31 Q52 30 57 36" stroke="#1a0808" stroke-width="2.5" stroke-linecap="round"/><path d="M42 34 Q50 38 54 44" stroke="#1a0808" stroke-width="2" stroke-linecap="round"/><path d="M42 37 Q47 43 49 50" stroke="#1a0808" stroke-width="2" stroke-linecap="round"/><ellipse cx="32" cy="30" rx="11" ry="9" fill="#280808"/><ellipse cx="32" cy="44" rx="13" ry="11" fill="#1a0404"/><circle cx="25" cy="25" r="3" fill="#ff2000"/><circle cx="31" cy="23" r="3" fill="#ff2000"/><circle cx="37" cy="23" r="3" fill="#ff2000"/><circle cx="39" cy="25" r="2.5" fill="#ff3000"/><circle cx="26.5" cy="29" r="1.8" fill="#ff5000" opacity=".8"/><circle cx="37.5" cy="29" r="1.8" fill="#ff5000" opacity=".8"/><circle cx="25.5" cy="24.5" r="1" fill="#ffb080" opacity=".9"/><circle cx="37.5" cy="23.5" r="1" fill="#ffb080" opacity=".9"/><path d="M27 35 L25 43" stroke="#d0d0c0" stroke-width="2.5" stroke-linecap="round"/><path d="M37 35 L39 43" stroke="#d0d0c0" stroke-width="2.5" stroke-linecap="round"/><path d="M32 8 L32 21" stroke="#808060" stroke-width="1.2" stroke-linecap="round" opacity=".4"/><path d="M20 12 Q26 16 32 21" stroke="#808060" stroke-width=".9" stroke-linecap="round" opacity=".3"/><path d="M44 12 Q38 16 32 21" stroke="#808060" stroke-width=".9" stroke-linecap="round" opacity=".3"/></svg>';
+    else if (name === 'licantropo') svg = '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#921818"/><path d="M14 28 Q14 8 32 8 Q50 8 50 28 L48 34 L16 34 Z" fill="#4a3820"/><path d="M14 20 L9 7 L20 18 Z" fill="#6a5030"/><path d="M50 20 L55 7 L44 18 Z" fill="#6a5030"/><path d="M14.5 19 L10.5 8 L19.5 18 Z" fill="#a07858" opacity=".5"/><path d="M49.5 19 L53.5 8 L44.5 18 Z" fill="#a07858" opacity=".5"/><path d="M16 30 Q16 52 32 54 Q48 52 48 30 Z" fill="#5a4228"/><ellipse cx="32" cy="38" rx="8" ry="5.5" fill="#3a2818"/><circle cx="30" cy="37" r="2" fill="#1a0808"/><circle cx="34" cy="37" r="2" fill="#1a0808"/><circle cx="24" cy="27" r="4.5" fill="#0a0800"/><circle cx="40" cy="27" r="4.5" fill="#0a0800"/><circle cx="24" cy="27" r="3" fill="#e8a800"/><circle cx="40" cy="27" r="3" fill="#e8a800"/><circle cx="24.8" cy="26.2" r="1" fill="#fff" opacity=".9"/><circle cx="40.8" cy="26.2" r="1" fill="#fff" opacity=".9"/><path d="M25 42 L23 52" stroke="#f0ead8" stroke-width="3" stroke-linecap="round"/><path d="M39 42 L41 52" stroke="#f0ead8" stroke-width="3" stroke-linecap="round"/><path d="M27 44 Q32 49 37 44" fill="none" stroke="#2a1408" stroke-width="1.5" stroke-linecap="round"/><path d="M14 60 L14 46 Q20 38 26 36 L32 52 L38 36 Q44 38 50 46 L50 60 Z" fill="#3a2818"/><path d="M16 60 L16 47 Q22 40 28 38 L32 53 L36 38 Q42 40 48 47 L48 60 Z" fill="#4a3824"/><path d="M7 52 L16 40" stroke="#4a3018" stroke-width="3.5" stroke-linecap="round"/><path d="M3 38 Q2 46 7 48 L15 40 L8 33 Q3 32 3 38 Z" fill="#6a5030"/><path d="M4 36 L7 40 M4 41 L8 44 M5 46 L9 49" stroke="#e0d0b0" stroke-width="1.2" stroke-linecap="round" opacity=".8"/></svg>';
     else svg = '<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="22" fill="currentColor"/></svg>';
     return (_iconSvgCache[cacheKey] = '<span class="svg-icon svg-' + name + cls + '">' + svg + '</span>');
   }
@@ -355,6 +361,9 @@
     if (type === 'esqueleto') return iconSvg('esqueleto', 'entity-icon');
     if (type === 'orco') return iconSvg('orco', 'entity-icon');
     if (type === 'caos') return iconSvg('caos', 'entity-icon');
+    if (type === 'troll') return iconSvg('troll', 'entity-icon');
+    if (type === 'arana') return iconSvg('arana', 'entity-icon');
+    if (type === 'licantropo') return iconSvg('licantropo', 'entity-icon');
     return iconSvg('enemy', 'entity-icon');
   }
 
@@ -373,6 +382,9 @@
     if (type === 'esqueleto') return 'Esqueleto';
     if (type === 'orco') return 'Orco';
     if (type === 'caos') return 'Guerrero del caos';
+    if (type === 'troll') return 'Troll';
+    if (type === 'arana') return 'Araña venenosa';
+    if (type === 'licantropo') return 'Licántropo';
     return 'Enemigo';
   }
 
@@ -446,7 +458,7 @@
         '</div>';
     }).join('');
 
-    var counts = { goblin: 0, esqueleto: 0, orco: 0, caos: 0, boss: 0 };
+    var counts = { goblin: 0, esqueleto: 0, orco: 0, caos: 0, troll: 0, arana: 0, licantropo: 0, boss: 0 };
     (current.enemies || []).forEach(function (enemy) {
       if (enemy.boss) counts.boss++;
       else if (counts[enemy.type] !== undefined) counts[enemy.type]++;
@@ -457,6 +469,9 @@
       { key: 'esqueleto', type: 'esqueleto', boss: false },
       { key: 'orco', type: 'orco', boss: false },
       { key: 'caos', type: 'caos', boss: false },
+      { key: 'troll', type: 'troll', boss: false },
+      { key: 'arana', type: 'arana', boss: false },
+      { key: 'licantropo', type: 'licantropo', boss: false },
       { key: 'boss', type: 'caos', boss: true }
     ];
 
@@ -466,7 +481,7 @@
           '<div class="mini-unit-icon enemy-icon-' + item.key + '">' + enemyIconForType(item.type, item.boss) + '</div>' +
           '<div class="mini-unit-body">' +
             '<div class="mini-unit-top"><span class="mini-unit-name">' + enemyDisplayName(item.type, item.boss) + '</span><span class="mini-unit-tag">x' + counts[item.key] + '</span></div>' +
-            '<div class="mini-unit-sub">' + (item.boss ? 'Amenaza principal de la sala final' : 'Hostil activo en la mazmorra') + '</div>' +
+            '<div class="mini-unit-sub">' + (item.boss ? 'Amenaza principal de la sala final' : (item.key === 'troll' ? 'Regenera PV · defensa brutal' : (item.key === 'arana' ? 'Veloz · veneno al impactar' : (item.key === 'licantropo' ? 'Furia bestial al debilitarse' : 'Hostil activo en la mazmorra')))) + '</div>' +
           '</div>' +
         '</div>';
     }).join('');
@@ -956,6 +971,15 @@
 
   function tickHeroEffects(hero) {
     if (!hero || !hero.effects || !hero.effects.length) return;
+    // Apply damage from poison before decrementing duration
+    hero.effects.forEach(function (effect) {
+      if (effect.effect === 'poison' && effect.duration > 0 && hero.hp > 0) {
+        var poisonDmg = effect.value || 1;
+        hero.hp = Math.max(0, hero.hp - poisonDmg);
+        addCombatFx(hero.x, hero.y, '-' + poisonDmg, 'damage');
+        pushCombatLog(heroDisplayName(hero) + ' sufre ' + poisonDmg + ' PV de veneno. Vida: ' + hero.hp + '/' + hero.maxHp + '.');
+      }
+    });
     hero.effects = hero.effects
       .map(function (effect) {
         return Object.assign({}, effect, { duration: (effect.duration || 1) - 1 });
@@ -3298,6 +3322,38 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
   }
 
 
+  function nextStepAwayFromEnemy(enemy, threat) {
+    if (!current || !enemy || !threat) return null;
+    var dist = buildDistanceFrom(threat.x, threat.y, function (x, y) {
+      var key = tileKey(x, y);
+      var tile = current.map[y][x];
+      var door = current.doors[key] || null;
+      if (!isWalkableTile(tile, door)) return false;
+      var otherEnemy = getEnemyAt(x, y);
+      if (otherEnemy && otherEnemy !== enemy) return false;
+      return true;
+    });
+    var best = null;
+    var bestDist = -1;
+    var ns = neighbors4(enemy.x, enemy.y);
+    for (var i = 0; i < ns.length; i++) {
+      var nx = ns[i][0], ny = ns[i][1];
+      if (ny < 0 || ny >= current.height || nx < 0 || nx >= current.width) continue;
+      var key = tileKey(nx, ny);
+      var tile = current.map[ny][nx];
+      var door = current.doors[key] || null;
+      if (!isWalkableTile(tile, door)) continue;
+      if (getEnemyAt(nx, ny)) continue;
+      if (getHeroAt(nx, ny)) continue;
+      if (dist[key] === undefined) continue;
+      if (dist[key] > bestDist) {
+        bestDist = dist[key];
+        best = { x: nx, y: ny };
+      }
+    }
+    return best;
+  }
+
   function visibleHeroesForEnemy(enemy) {
     var list = [];
     if (!current || !current.heroes || !current.heroes.length) return list;
@@ -3358,6 +3414,32 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
       });
       return candidates[0].hero;
     }
+    if (enemy.type === 'troll') {
+      // Troll targets the hero with the most HP (wants a worthy fight)
+      candidates.sort(function (a, b) {
+        if (b.hero.hp !== a.hero.hp) return b.hero.hp - a.hero.hp;
+        return a.dist - b.dist;
+      });
+      return candidates[0].hero;
+    }
+    if (enemy.type === 'arana') {
+      // Araña targets hero with lowest DEF (finds gaps in armor)
+      candidates.sort(function (a, b) {
+        var defA = getHeroDefense(a.hero);
+        var defB = getHeroDefense(b.hero);
+        if (defA !== defB) return defA - defB;
+        return a.dist - b.dist;
+      });
+      return candidates[0].hero;
+    }
+    if (enemy.type === 'licantropo') {
+      // Licántropo targets the weakest hero, then nearest
+      candidates.sort(function (a, b) {
+        if (a.hero.hp !== b.hero.hp) return a.hero.hp - b.hero.hp;
+        return a.dist - b.dist;
+      });
+      return candidates[0].hero;
+    }
     candidates.sort(function (a, b) {
       if (a.dist !== b.dist) return a.dist - b.dist;
       return a.hero.hp - b.hero.hp;
@@ -3378,6 +3460,17 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
       return enemy.move || 2;
     }
     if (enemy.type === 'caos') return enemy.move || 2;
+    if (enemy.type === 'troll') {
+      // Troll rages when wounded, gains +1 move
+      var trollEnraged = enemy.hp <= Math.ceil(enemy.maxHp / 2);
+      return trollEnraged ? (enemy.move || 1) + 1 : (enemy.move || 1);
+    }
+    if (enemy.type === 'arana') return enemy.move || 4;
+    if (enemy.type === 'licantropo') {
+      // Licántropo frenzy when wounded, gains +1 move
+      var licEnraged = enemy.hp <= Math.ceil(enemy.maxHp / 2);
+      return licEnraged ? (enemy.move || 3) + 1 : (enemy.move || 3);
+    }
     return enemy.move || 2;
   }
 
@@ -3406,6 +3499,22 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
     } else if (enemy.type === 'caos' && target && target.hp <= 3) {
       dice += 1;
       tag = 'Caza al débil';
+    } else if (enemy.type === 'licantropo') {
+      var licFrenzy = enemy.hp <= Math.ceil(enemy.maxHp / 2);
+      if (licFrenzy) {
+        dice += 2;
+        threshold = 3;
+        tag = '🐺 Furia bestial';
+        if (!enemy._rageAnnounced) {
+          enemy._rageAnnounced = true;
+          pushCombatLog('¡El Licántropo entra en FURIA BESTIAL! Ataque devastador.');
+        }
+      }
+    } else if (enemy.type === 'troll' && target && target.hp > Math.ceil((target.maxHp || target.hp) / 2)) {
+      dice += 1;
+      tag = 'Aplastante';
+    } else if (enemy.type === 'arana') {
+      tag = 'Veneno';
     }
     return { dice: dice, threshold: threshold, tag: tag };
   }
@@ -3562,6 +3671,46 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
       updateTurnInfo();
       render();
 
+      // Troll: regenera 1 PV al inicio de su turno
+      if (enemy.type === 'troll' && enemy.hp > 0 && enemy.hp < enemy.maxHp) {
+        enemy.hp = Math.min(enemy.maxHp, enemy.hp + 1);
+        addCombatFx(enemy.x, enemy.y, '+1', 'block');
+        pushCombatLog(unitDisplayName(enemy) + ' regenera 1 PV. Vida: ' + enemy.hp + '/' + enemy.maxHp + '.');
+        computeVisibility(current);
+        render();
+      }
+
+      // Boss: invoca un goblin servidor cada 5 rondas
+      if (enemy.boss && current.turn && current.turn.round > 0 && current.turn.round % 5 === 0) {
+        enemy._summonedRounds = enemy._summonedRounds || {};
+        if (!enemy._summonedRounds[current.turn.round]) {
+          enemy._summonedRounds[current.turn.round] = true;
+          var summonNs = neighbors4(enemy.x, enemy.y);
+          var spawnPos = null;
+          for (var sni = 0; sni < summonNs.length; sni++) {
+            var sx = summonNs[sni][0], sy = summonNs[sni][1];
+            if (sy < 0 || sy >= current.height || sx < 0 || sx >= current.width) continue;
+            var sTile = current.map[sy][sx];
+            var sDoor = current.doors[tileKey(sx, sy)] || null;
+            if (!isWalkableTile(sTile, sDoor)) continue;
+            if (getEnemyAt(sx, sy) || getHeroAt(sx, sy)) continue;
+            spawnPos = { x: sx, y: sy };
+            break;
+          }
+          if (spawnPos) {
+            current.enemies.push({
+              id: 'enemy_s' + Date.now(), label: 'g', type: 'goblin',
+              hp: 2, maxHp: 2, atk: 2, def: 1, move: 3,
+              x: spawnPos.x, y: spawnPos.y, boss: false
+            });
+            pushCombatLog('¡El Jefe del Caos invoca un Goblin servidor!');
+            setStatus('¡El Jefe del Caos invoca un Goblin servidor!');
+            computeVisibility(current);
+            render();
+          }
+        }
+      }
+
       var target = nearestVisibleHero(enemy);
       if (!target) {
         setStatus(unitDisplayName(enemy) + ' no encuentra a ningún héroe y mantiene la posición.');
@@ -3569,10 +3718,20 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
         return;
       }
 
+      var isFleeing = enemy.type === 'goblin' && enemy.hp === 1;
       var moveBudget = getEnemyMoveBudget(enemy, target);
       var moved = 0;
 
       function resolveAttackOrEnd() {
+        if (isFleeing) {
+          current.movementAnimationActive = false;
+          var fleeLine = unitDisplayName(enemy) + ' huye despavorido' + (moved > 0 ? ' ' + moved + ' casilla' + (moved === 1 ? '' : 's') : '') + '.';
+          log.push(fleeLine);
+          pushCombatLog(fleeLine);
+          setStatus(fleeLine);
+          setTimeout(function () { nextEnemy(index + 1); }, delay);
+          return;
+        }
         target = getHeroById(target.id) || nearestVisibleHero(enemy);
         if (target && isAdjacent(enemy, target)) {
           var attackProfile = getEnemyAttackProfile(enemy, target);
@@ -3587,6 +3746,15 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
             dmg = Math.max(0, dmg - 1);
           }
           target.hp -= dmg;
+          // Araña: aplica veneno si impacta
+          if (enemy.type === 'arana' && dmg > 0) {
+            if (!target.effects) target.effects = [];
+            var hasPoison = target.effects.some(function (e) { return e.effect === 'poison'; });
+            if (!hasPoison) {
+              target.effects.push({ effect: 'poison', value: 1, duration: 2, label: 'Veneno' });
+              pushCombatLog(heroDisplayName(target) + ' ha sido envenenado. Perderá 1 PV por turno durante 2 turnos.');
+            }
+          }
           var stats = ensureStats();
           stats.enemyAttacks++;
           stats.damageTaken += dmg;
@@ -3621,7 +3789,13 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
         }
         current.movementAnimationActive = false;
         if (moved > 0) {
-          var moveLine = unitDisplayName(enemy) + ' avanza ' + moved + ' casilla' + (moved === 1 ? '' : 's') + (enemy.type === 'goblin' ? ' con rapidez.' : (enemy.type === 'esqueleto' ? ' con paso pesado.' : (enemy.type === 'caos' ? ' acechando al más débil.' : '.')));
+          var moveDesc = enemy.type === 'goblin' ? ' con rapidez.' :
+            enemy.type === 'esqueleto' ? ' con paso pesado.' :
+            enemy.type === 'caos' ? ' acechando al más débil.' :
+            enemy.type === 'troll' ? ' con pasos retumbantes.' :
+            enemy.type === 'arana' ? ' con sigilo venenoso.' :
+            enemy.type === 'licantropo' ? ' aullando hacia su presa.' : '.';
+          var moveLine = unitDisplayName(enemy) + ' avanza ' + moved + ' casilla' + (moved === 1 ? '' : 's') + moveDesc;
           log.push(moveLine);
           setStatus(moveLine);
         }
@@ -3634,12 +3808,14 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
           return;
         }
         target = getHeroById(target.id) || nearestVisibleHero(enemy);
-        if (!target || moveBudget <= 0 || isAdjacent(enemy, target)) {
+        if (!target || moveBudget <= 0 || (!isFleeing && isAdjacent(enemy, target))) {
           resolveAttackOrEnd();
           return;
         }
-        var step = nextStepTowardsEnemy(enemy, target);
-        if (!step || (step.x === enemy.x && step.y === enemy.y) || (step.x === target.x && step.y === target.y)) {
+        var step = isFleeing
+          ? nextStepAwayFromEnemy(enemy, target)
+          : nextStepTowardsEnemy(enemy, target);
+        if (!step || (step.x === enemy.x && step.y === enemy.y) || (!isFleeing && step.x === target.x && step.y === target.y)) {
           resolveAttackOrEnd();
           return;
         }
@@ -3649,7 +3825,10 @@ function generateDungeon(width, height, enemyCount, heroCount, roomCount, style)
         moveBudget--;
         moved++;
         computeVisibility(current);
-        setStatus(unitDisplayName(enemy) + ' avanza hacia ' + heroDisplayName(target) + '...');
+        var moveMsg = isFleeing
+          ? unitDisplayName(enemy) + ' huye despavorido...'
+          : unitDisplayName(enemy) + ' avanza hacia ' + heroDisplayName(target) + '...';
+        setStatus(moveMsg);
         updateTurnInfo();
         render();
         setTimeout(moveStep, delay);
