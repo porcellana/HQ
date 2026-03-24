@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HeroQuest Generador Quality</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell"></div>
+  <div class="app">
+    <aside class="sidebar">
+
+      <section class="panel compact panel-hero-main">
+        <div id="activeHeroCard" class="active-hero-card">
+          <div class="hero-card-empty">Sin partida activa.</div>
+        </div>
+        <div class="hero-main-actions">
+          <div class="turn-action-row">
+            <span id="turnInfo" class="turn-info-inline">—</span>
+            <div class="turn-buttons">
+              <button id="rollBtn">🎲 Tirar</button>
+              <button id="shopBtn" class="secondary">🛒 Tienda</button>
+              <button id="endTurnBtn" class="secondary">⏭ Fin turno</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Generador</h2>
+        <div class="grid2">
+          <label><span>Ancho</span><input id="mapWidth" type="number" min="18" max="80" value="30"></label>
+          <label><span>Alto</span><input id="mapHeight" type="number" min="10" max="50" value="20"></label>
+          <label><span>Enemigos</span><input id="enemyCount" type="number" min="0" max="40" value="4"></label>
+          <label><span>Héroes</span><input id="heroCount" type="number" min="1" max="4" value="1"></label>
+          <label><span>Salas</span><input id="extraRooms" type="number" min="1" max="25" value="15"></label>
+          <label><span>Estilo</span>
+            <select id="styleSelect">
+              <option value="classic">Clásico</option>
+              <option value="fortress">Fortaleza</option>
+              <option value="catacomb">Catacumba</option>
+            </select>
+          </label>
+        </div>
+        <div class="buttons">
+          <button id="generateBtn">Generar mapa</button>
+          <button id="fitBtn" class="secondary">Ajustar</button>
+          <button id="saveBtn" class="secondary">💾 Guardar</button>
+          <button id="loadBtn" class="secondary">📂 Cargar</button>
+        </div>
+      </section>
+
+    </aside>
+
+    <main class="main">
+      <div class="board-wrap">
+        <div id="board" class="board"></div>
+        <div id="endOverlay" class="end-overlay hidden">
+          <div class="end-card">
+            <div id="endTitle" class="end-title">Fin de la partida</div>
+            <div id="endSummary" class="end-summary"></div>
+            <div class="buttons end-buttons">
+              <button id="endRestartBtn">Jugar otra vez</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <div id="shopOverlay" class="shop-overlay hidden">
+    <div class="shop-card">
+      <div class="shop-header">
+        <span class="shop-title">🛒 Tienda del mercader</span>
+        <span id="shopGold" class="shop-gold">Oro: 0</span>
+        <button id="shopCloseBtn" class="shop-close">✕</button>
+      </div>
+      <div id="shopItems" class="shop-items"></div>
+    </div>
+  </div>
+  <div id="toast-container" class="toast-container"></div>
+  <script src="app.js"></script>
+</body>
+</html>
