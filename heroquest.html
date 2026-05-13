@@ -1,0 +1,2174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>HeroQuest Digital</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  background: #030503;
+  overflow: hidden;
+  font-family: 'Press Start 2P', monospace;
+  touch-action: none;
+}
+#root {
+  display: flex;
+  width: 100vw; height: 100vh;
+}
+#mapArea {
+  flex: 0 0 68%;
+  display: flex;
+  flex-direction: column;
+  background: #030503;
+}
+#mapCanvas {
+  flex: 1;
+  display: block;
+  cursor: pointer;
+}
+#logArea {
+  background: #020605;
+  border-top: 2px solid #0d5020;
+  padding: 6px 8px;
+  height: 90px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+#logArea p {
+  color: #22ee55;
+  font-size: 7px;
+  line-height: 1.6;
+}
+#sidebar {
+  flex: 0 0 32%;
+  background: #020806;
+  border-left: 2px solid #0d5020;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  overflow: hidden;
+}
+#heroStats {
+  flex: 1;
+  overflow: hidden;
+}
+.statLabel {
+  color: #0d5020;
+  font-size: 6px;
+  margin-bottom: 2px;
+}
+.statValue {
+  color: #44ff88;
+  font-size: 8px;
+  margin-bottom: 6px;
+}
+.statBar {
+  height: 6px;
+  background: #0d2010;
+  border: 1px solid #0d5020;
+  margin-bottom: 6px;
+}
+.statBarFill {
+  height: 100%;
+  background: #44ff88;
+  transition: width 0.3s;
+}
+.statBarFillRed { background: #ff4422; }
+#heroName {
+  color: #44ff88;
+  font-size: 9px;
+  margin-bottom: 8px;
+  text-align: center;
+  border-bottom: 1px solid #0d5020;
+  padding-bottom: 6px;
+}
+#buttonArea {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.btn {
+  background: #0d2010;
+  border: 2px solid #0d5020;
+  color: #44ff88;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 10px 6px;
+  cursor: pointer;
+  text-align: center;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active { background: #1a4010; border-color: #44ff88; }
+.btn:disabled, .btn.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.btn.primary { border-color: #44ff88; color: #88ffaa; }
+#moveInfo {
+  color: #44ff88;
+  font-size: 7px;
+  text-align: center;
+  margin-bottom: 4px;
+  min-height: 16px;
+}
+#phaseInfo {
+  color: #ffcc44;
+  font-size: 6px;
+  text-align: center;
+  margin-bottom: 6px;
+}
+/* Hero Select Screen */
+#heroSelect {
+  position: fixed;
+  inset: 0;
+  background: #030503;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+#heroSelect h1 {
+  color: #44ff88;
+  font-size: 14px;
+  margin-bottom: 8px;
+  text-shadow: 0 0 10px #44ff88;
+}
+#heroSelect p {
+  color: #0d5020;
+  font-size: 7px;
+  margin-bottom: 20px;
+}
+#heroCards {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 0 16px;
+}
+.heroCard {
+  background: #020806;
+  border: 2px solid #0d5020;
+  padding: 10px;
+  width: 140px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.heroCard:hover, .heroCard:active { border-color: #44ff88; background: #0d2010; }
+.heroCard canvas { margin-bottom: 8px; image-rendering: pixelated; }
+.heroCard h3 { color: #44ff88; font-size: 7px; margin-bottom: 6px; }
+.heroCard .heroDesc { color: #0d5020; font-size: 5px; line-height: 1.6; margin-bottom: 8px; text-align: center; }
+.heroCard .heroStatRow { display: flex; justify-content: space-between; width: 100%; margin-bottom: 3px; }
+.heroCard .hsl { color: #0d5020; font-size: 5px; }
+.heroCard .hsv { color: #44ff88; font-size: 5px; }
+.chooseBtn {
+  background: #0d4020;
+  border: 2px solid #44ff88;
+  color: #44ff88;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  margin-top: 6px;
+  width: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+.chooseBtn:active { background: #1a6030; }
+/* Overlay screens */
+#gameOver, #victory, #armory {
+  position: fixed;
+  inset: 0;
+  background: rgba(3,5,3,0.92);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+#gameOver h1 { color: #ff4422; font-size: 18px; text-shadow: 0 0 20px #ff4422; margin-bottom: 16px; }
+#victory h1 { color: #ffdd44; font-size: 18px; text-shadow: 0 0 20px #ffdd44; margin-bottom: 16px; }
+#gameOver p, #victory p { color: #44ff88; font-size: 8px; margin-bottom: 20px; }
+.bigBtn {
+  background: #0d4020;
+  border: 2px solid #44ff88;
+  color: #44ff88;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px;
+  padding: 16px 32px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.bigBtn:active { background: #1a6030; }
+/* Dice overlay */
+#diceOverlay {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #020806;
+  border: 2px solid #44ff88;
+  padding: 10px 16px;
+  display: none;
+  z-index: 150;
+  color: #44ff88;
+  font-size: 8px;
+  text-align: center;
+  min-width: 200px;
+}
+#diceResult { font-size: 11px; margin-top: 6px; color: #ffdd44; }
+/* Spell select */
+#spellSelect {
+  position: fixed;
+  inset: 0;
+  background: rgba(3,5,3,0.9);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 180;
+}
+#spellSelect h2 { color: #44ff88; font-size: 10px; margin-bottom: 12px; }
+#spellList { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 0 20px; }
+.spellCard {
+  background: #020806;
+  border: 2px solid #0d5020;
+  padding: 10px;
+  cursor: pointer;
+  min-width: 120px;
+  max-width: 140px;
+  -webkit-tap-highlight-color: transparent;
+}
+.spellCard:hover, .spellCard:active { border-color: #44ff88; }
+.spellCard h4 { color: #44ff88; font-size: 7px; margin-bottom: 4px; }
+.spellCard p { color: #0d5020; font-size: 5px; line-height: 1.5; }
+.cancelBtn {
+  margin-top: 16px;
+  background: #200808;
+  border: 2px solid #882222;
+  color: #ff4422;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  padding: 10px 20px;
+  cursor: pointer;
+}
+/* Gold display in armory */
+#armory {
+  overflow-y: auto;
+  padding: 20px;
+}
+#armory h1 { color: #ffdd44; font-size: 12px; margin-bottom: 12px; }
+#armory .goldDisplay { color: #ffdd44; font-size: 9px; margin-bottom: 16px; }
+#armoryItems { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 20px; }
+.armoryItem {
+  background: #020806;
+  border: 2px solid #0d5020;
+  padding: 10px;
+  min-width: 120px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.armoryItem:hover { border-color: #44ff88; }
+.armoryItem h4 { color: #44ff88; font-size: 7px; margin-bottom: 4px; }
+.armoryItem p { color: #0d5020; font-size: 5px; margin-bottom: 6px; }
+.armoryItem .price { color: #ffdd44; font-size: 6px; }
+</style>
+</head>
+<body>
+
+<!-- Hero Selection Screen -->
+<div id="heroSelect">
+  <h1>HEROQUEST</h1>
+  <p>ELIGE TU HEROE</p>
+  <div id="heroCards"></div>
+</div>
+
+<!-- Main Game -->
+<div id="root" style="display:none">
+  <div id="mapArea">
+    <canvas id="mapCanvas"></canvas>
+    <div id="logArea" id="logArea"></div>
+  </div>
+  <div id="sidebar">
+    <div id="heroName">HEROE</div>
+    <div id="heroStats"></div>
+    <div id="phaseInfo">TURNO HEROE</div>
+    <div id="moveInfo"></div>
+    <div id="buttonArea">
+      <button class="btn primary" id="btnRoll" onclick="handleRollMove()">🎲 MOVER</button>
+      <button class="btn" id="btnSearch" onclick="handleSearch()">🔍 BUSCAR</button>
+      <button class="btn" id="btnSpell" onclick="handleSpell()">✨ HECHIZO</button>
+      <button class="btn" id="btnPotion" onclick="handlePotion()">🧪 POCION</button>
+      <button class="btn" id="btnEnd" onclick="handleEndTurn()">⏭ PASAR TURNO</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game Over / Victory / Armory -->
+<div id="gameOver">
+  <h1>HAS MUERTO</h1>
+  <p id="gameOverMsg"></p>
+  <button class="bigBtn" onclick="restartGame()">REINTENTAR</button>
+</div>
+<div id="victory">
+  <h1>¡VICTORIA!</h1>
+  <p id="victoryMsg"></p>
+  <button class="bigBtn" onclick="goToArmory()">ARMERIA</button>
+</div>
+<div id="armory">
+  <h1>ARMERIA</h1>
+  <div class="goldDisplay" id="armoryGold"></div>
+  <div id="armoryItems"></div>
+  <button class="bigBtn" onclick="startQuest()">SIGUIENTE QUEST</button>
+</div>
+
+<!-- Dice overlay -->
+<div id="diceOverlay">
+  <div id="diceLabel"></div>
+  <div id="diceResult"></div>
+</div>
+
+<!-- Spell Select -->
+<div id="spellSelect">
+  <h2>ELEGIR HECHIZO</h2>
+  <div id="spellList"></div>
+  <button class="cancelBtn" onclick="closeSpellSelect()">CANCELAR</button>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// CONSTANTS & CONFIG
+// ─────────────────────────────────────────────
+const COLS = 26, ROWS = 19;
+const TILE_VOID = 0, TILE_FLOOR = 1, TILE_WALL = 2, TILE_DOOR_H = 3, TILE_DOOR_V = 4,
+      TILE_TORCH = 5, TILE_CHEST = 6, TILE_TRAP = 7, TILE_STAIR = 8, TILE_SECRET_DOOR = 9;
+
+const PAL = {
+  void: '#030503', wall1: '#1c2238', wall2: '#242c48', wallHL: '#343c58', mortar: '#0c0e1c',
+  floor1: '#111c0d', floor2: '#0d1609', floorGrid: '#090f07',
+  fogDark: '#080c06', doorFrame: '#1a4010', doorWood: '#2a6018', doorKnob: '#88cc22',
+  torchFlame1: '#ff9900', torchFlame2: '#ffee00', torchCore: '#ffffff',
+  uiBg: '#020806', uiText: '#44ff88', uiLabel: '#0d5020',
+  logBg: '#020605', logText: '#22ee55'
+};
+
+const HERO_DEFS = {
+  barbarian: { name: 'BARBARO', body: 8, mind: 2, attackDice: 3, defendDice: 2, potions: 2, gold: 0, spells: [], equipment: ['broadsword'], special: 'Ninguno' },
+  dwarf:     { name: 'ENANO',   body: 7, mind: 3, attackDice: 2, defendDice: 2, potions: 2, gold: 0, spells: [], equipment: ['shortsword'], special: 'Desactiva trampas con 2 dados' },
+  elf:       { name: 'ELFO',    body: 6, mind: 4, attackDice: 2, defendDice: 2, potions: 2, gold: 0, spells: ['wind_blast','swift_wind','veil_mist'], equipment: ['shortsword'], special: '3 hechizos de Aire' },
+  wizard:    { name: 'MAGO',    body: 4, mind: 6, attackDice: 1, defendDice: 2, potions: 2, gold: 0, spells: ['fireball','rock_skin','fire_wall','freeze','storm','water_shield','earth_quake','rock_volley','healing'], equipment: ['dagger'], special: '9 hechizos (3 mazos)' }
+};
+
+const SPELLS = {
+  fireball:    { name: 'Bola de Fuego',  desc: '2 daño a monstruo visible sin defensa', target: 'enemy' },
+  rock_volley: { name: 'Roca Voladora',  desc: '+1 dado ataque vs monstruo visible', target: 'enemy' },
+  healing:     { name: 'Curacion',       desc: 'Recupera 4 Vida', target: 'self' },
+  swift_wind:  { name: 'Viento Rapido',  desc: 'Mueve 4 casillas extra este turno', target: 'self' },
+  wind_blast:  { name: 'Rafaga',         desc: '1 dado ataque a todos los monstruos visibles', target: 'all_enemies' },
+  veil_mist:   { name: 'Velo de Niebla', desc: 'No puedes ser atacado este turno', target: 'self' },
+  freeze:      { name: 'Congelar',       desc: 'Monstruo no actua 1 turno', target: 'enemy' },
+  storm:       { name: 'Tormenta',       desc: '1 daño a todos los monstruos visibles', target: 'all_enemies' },
+  fire_wall:   { name: 'Muro de Fuego',  desc: '3 daño a monstruo sin defensa', target: 'enemy' },
+  water_shield:{ name: 'Escudo Agua',    desc: '+2 dados defensa este turno', target: 'self' },
+  rock_skin:   { name: 'Piel de Roca',   desc: '+1 dado defensa permanente (turno)', target: 'self' },
+  earth_quake: { name: 'Terremoto',      desc: '2 dados ataque a todos los monstruos', target: 'all_enemies' }
+};
+
+const MONSTER_DEFS = {
+  goblin:        { name: 'Goblin',        move: 10, attackDice: 2, defendDice: 1, body: 1, mind: 1 },
+  goblin_dark:   { name: 'Goblin Oscuro', move: 8,  attackDice: 2, defendDice: 2, body: 2, mind: 1 },
+  orc:           { name: 'Orco',          move: 8,  attackDice: 3, defendDice: 2, body: 1, mind: 2 },
+  skeleton:      { name: 'Esqueleto',     move: 6,  attackDice: 2, defendDice: 2, body: 1, mind: 0 },
+  zombie:        { name: 'Zombie',        move: 5,  attackDice: 2, defendDice: 3, body: 1, mind: 0 },
+  mummy:         { name: 'Momia',         move: 4,  attackDice: 3, defendDice: 4, body: 2, mind: 0 },
+  fimir:         { name: 'Fimir',         move: 6,  attackDice: 3, defendDice: 3, body: 2, mind: 3 },
+  chaos_warrior: { name: 'Guer.Caos',     move: 6,  attackDice: 3, defendDice: 4, body: 1, mind: 2 },
+  gargoyle:      { name: 'GARGOYLE',      move: 6,  attackDice: 4, defendDice: 5, body: 3, mind: 4 }
+};
+
+// ─────────────────────────────────────────────
+// GAME STATE
+// ─────────────────────────────────────────────
+let state = null;
+let tick = 0;
+let animFrame = null;
+let pendingMoveSteps = 0;
+let moveMode = false;
+let attackAnim = null; // {fromCol, fromRow, toCol, toRow, t, cb}
+let damageFlash = {}; // key: 'c,r' -> {t, frames}
+let deathAnim = {}; // key: 'c,r' -> {t, opacity}
+let revealAnim = []; // [{col, row, t}]
+let heroMoveAnim = null; // {fromCol, fromRow, toCol, toRow, t, cb}
+let invulnerable = false; // veil of mist
+let extraDefDice = 0;
+let frozenMonsters = new Set();
+let waitingMonsterTarget = null; // spell targeting mode
+let spellPending = null;
+let currentSpellCallback = null;
+let questNumber = 1;
+
+// ─────────────────────────────────────────────
+// MAP BUILDER
+// ─────────────────────────────────────────────
+function buildMap() {
+  const m = [];
+  for (let r = 0; r < ROWS; r++) {
+    m.push(new Array(COLS).fill(TILE_VOID));
+  }
+  function fillRoom(c1, r1, c2, r2) {
+    for (let r = r1; r <= r2; r++)
+      for (let c = c1; c <= c2; c++)
+        m[r][c] = (r === r1 || r === r2 || c === c1 || c === c2) ? TILE_WALL : TILE_FLOOR;
+  }
+  function fillCorridor(c1, r1, c2, r2) {
+    if (r1 === r2) for (let c = c1; c <= c2; c++) m[r1][c] = TILE_FLOOR;
+    else           for (let r = r1; r <= r2; r++) m[r][c1] = TILE_FLOOR;
+  }
+  // Sala inicio (cols 1-8, filas 1-6)
+  fillRoom(1, 1, 8, 6);
+  // Corredor este (cols 9-12, fila 3) — add walls above/below
+  for (let c = 9; c <= 12; c++) { m[3][c] = TILE_FLOOR; m[2][c] = TILE_WALL; m[4][c] = TILE_WALL; }
+  // Sala cofre (cols 13-18, filas 1-6)
+  fillRoom(13, 1, 18, 6);
+  // Corredor sur desde sala inicio (col 4, filas 7-10)
+  for (let r = 7; r <= 10; r++) { m[r][4] = TILE_FLOOR; m[r][3] = TILE_WALL; m[r][5] = TILE_WALL; }
+  // Sala trono (cols 1-8, filas 11-17)
+  fillRoom(1, 11, 8, 17);
+  // Sala secreta (cols 20-25, filas 8-14)
+  fillRoom(20, 8, 25, 14);
+  // Corredor sala secreta (cols 18-20, fila 11)
+  for (let c = 18; c <= 20; c++) { m[11][c] = TILE_FLOOR; if (c < 20) { m[10][c] = TILE_WALL; m[12][c] = TILE_WALL; } }
+
+  // Open east corridor → chest room connection
+  m[3][13] = TILE_FLOOR;
+  // Open south corridor → throne room connection
+  m[11][4] = TILE_FLOOR;
+  // East corridor row 7, cols 16-20 (connects secret door to secret room corridor)
+  for (let c = 16; c <= 20; c++) { m[7][c] = TILE_FLOOR; m[6][c] = TILE_WALL; m[8][c] = TILE_WALL; }
+  // Vertical passage col 20, rows 8-11 (connects to secret room and east corridor at row 11)
+  for (let r = 8; r <= 11; r++) { if (m[r][20] !== TILE_FLOOR) m[r][20] = TILE_FLOOR; }
+
+  // Puertas
+  m[3][8] = TILE_DOOR_H;  // Este de sala inicio
+  m[6][4] = TILE_DOOR_V;  // Sur de sala inicio
+  m[6][15] = TILE_DOOR_V; // Sur de sala cofre
+
+  // Antorchas
+  m[2][2] = TILE_TORCH; m[2][7] = TILE_TORCH;
+  m[11][2] = TILE_TORCH; m[11][7] = TILE_TORCH;
+
+  // Cofres
+  m[4][15] = TILE_CHEST;
+  m[11][22] = TILE_CHEST;
+
+  // Escalera
+  m[16][4] = TILE_STAIR;
+
+  return m;
+}
+
+function buildRooms() {
+  // corridor_e includes the opening tile at (13,3) so chest room reveals when hero steps through
+  const corrECells = corridorCells(9,13,3,3);
+  // corridor_s includes the opening tile at (4,11)
+  const corrSCells = corridorCells(4,4,7,11);
+  // secret room + its connecting corridors (east row7 corridor + vertical col20)
+  const secretCells = regionCells(20,8,25,14)
+    .concat(corridorCells(18,20,11,11))
+    .concat(corridorCells(16,20,7,7))
+    .concat(corridorCells(20,20,8,11));
+  return [
+    { id: 'start',      cells: regionCells(1,1,8,6),    revealed: false },
+    { id: 'corridor_e', cells: corrECells,               revealed: false },
+    { id: 'chest',      cells: regionCells(13,1,18,6),   revealed: false },
+    { id: 'corridor_s', cells: corrSCells,               revealed: false },
+    { id: 'throne',     cells: regionCells(1,11,8,17),   revealed: false },
+    { id: 'secret',     cells: secretCells,              revealed: false }
+  ];
+}
+function regionCells(c1,r1,c2,r2) {
+  const cells = [];
+  for (let r=r1;r<=r2;r++) for (let c=c1;c<=c2;c++) cells.push({c,r});
+  return cells;
+}
+function corridorCells(c1,c2,r1,r2) {
+  const cells = [];
+  if (r1===r2) { for (let c=c1;c<=c2;c++) cells.push({c,r:r1}); }
+  else          { for (let r=r1;r<=r2;r++) cells.push({c:c1,r}); }
+  return cells;
+}
+
+// ─────────────────────────────────────────────
+// STATE INIT
+// ─────────────────────────────────────────────
+function initState(heroClass) {
+  const hd = HERO_DEFS[heroClass];
+  const map = buildMap();
+  const rooms = buildRooms();
+  // Reveal start room immediately
+  const revealedSet = new Set();
+  rooms[0].revealed = true;
+  rooms[0].cells.forEach(({c,r}) => revealedSet.add(`${c},${r}`));
+
+  // also corridors adjacent to start door get revealed when door opened
+  const monsters = [
+    { id:1, type:'goblin',        col:6, row:2, body:1, maxBody:1, attackDice:2, defendDice:1, move:10, alive:true },
+    { id:2, type:'goblin',        col:6, row:4, body:1, maxBody:1, attackDice:2, defendDice:1, move:10, alive:true },
+    { id:3, type:'orc',           col:16, row:2, body:1, maxBody:1, attackDice:3, defendDice:2, move:8,  alive:true, roomId:'chest' },
+    { id:4, type:'gargoyle',      col:4,  row:14, body:3, maxBody:3, attackDice:4, defendDice:5, move:6,  alive:true, roomId:'throne' },
+    { id:5, type:'orc',           col:2,  row:12, body:1, maxBody:1, attackDice:3, defendDice:2, move:8,  alive:true, roomId:'throne' },
+    { id:6, type:'orc',           col:6,  row:12, body:1, maxBody:1, attackDice:3, defendDice:2, move:8,  alive:true, roomId:'throne' },
+    { id:7, type:'skeleton',      col:4,  row:12, body:1, maxBody:1, attackDice:2, defendDice:2, move:6,  alive:true, roomId:'throne' },
+    { id:8, type:'chaos_warrior', col:22, row:10, body:1, maxBody:1, attackDice:3, defendDice:4, move:6,  alive:true, roomId:'secret' }
+  ];
+
+  state = {
+    phase: 'hero_turn',
+    hero: {
+      class: heroClass,
+      name: hd.name,
+      body: hd.body, maxBody: hd.body,
+      mind: hd.mind, maxMind: hd.mind,
+      attackDice: hd.attackDice, defendDice: hd.defendDice,
+      gold: hd.gold, potions: hd.potions,
+      spells: [...hd.spells],
+      usedSpells: [],
+      equipment: [...hd.equipment],
+      col: 3, row: 3,
+      moved: false, acted: false,
+      movesLeft: 0
+    },
+    monsters,
+    map,
+    rooms,
+    revealed: revealedSet,
+    traps: [
+      { col:10, row:3, type:'pit', triggered:false, detected:false }
+    ],
+    secrets: [
+      { col:16, row:7, roomId:'secret', revealed:false }
+    ],
+    doors: [
+      { col:8, row:3, dir:'h', open:false },
+      { col:4, row:6, dir:'v', open:false },
+      { col:15, row:6, dir:'v', open:false }
+    ],
+    turn: 1,
+    log: [],
+    questComplete: false,
+    gargoyleAlive: true,
+    secretRevealed: false
+  };
+  invulnerable = false;
+  extraDefDice = 0;
+  frozenMonsters = new Set();
+  pendingMoveSteps = 0;
+  moveMode = false;
+  waitingMonsterTarget = null;
+  spellPending = null;
+}
+
+// ─────────────────────────────────────────────
+// LOGGING
+// ─────────────────────────────────────────────
+function addLog(msg) {
+  state.log.push(msg);
+  if (state.log.length > 8) state.log.shift();
+  const la = document.getElementById('logArea');
+  la.innerHTML = state.log.slice(-4).map(m => `<p>> ${m}</p>`).join('');
+}
+
+// ─────────────────────────────────────────────
+// DICE
+// ─────────────────────────────────────────────
+// Combat die: 0-2=skull, 3-4=white shield, 5=black shield
+const SKULL=0, WHITE_SHIELD=1, BLACK_SHIELD=2;
+function rollCombatDie() {
+  const v = Math.floor(Math.random()*6);
+  if (v<=2) return SKULL;
+  if (v<=4) return WHITE_SHIELD;
+  return BLACK_SHIELD;
+}
+function rollCombatDice(n) {
+  const results = [];
+  for (let i=0;i<n;i++) results.push(rollCombatDie());
+  return results;
+}
+function countSkulls(dice) { return dice.filter(d=>d===SKULL).length; }
+function countWhiteShields(dice) { return dice.filter(d=>d===WHITE_SHIELD).length; }
+function countBlackShields(dice) { return dice.filter(d=>d===BLACK_SHIELD).length; }
+function rollD6() { return Math.floor(Math.random()*6)+1; }
+
+// ─────────────────────────────────────────────
+// CANVAS SETUP
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+let tileSize = 32;
+let camX = 0, camY = 0; // camera offset
+
+function resizeCanvas() {
+  const mapArea = document.getElementById('mapArea');
+  const logArea = document.getElementById('logArea');
+  canvas.width = mapArea.clientWidth;
+  canvas.height = mapArea.clientHeight - logArea.offsetHeight;
+  tileSize = Math.max(22, Math.floor(canvas.width / 18));
+  if (state) render();
+}
+
+// ─────────────────────────────────────────────
+// RENDERING
+// ─────────────────────────────────────────────
+function render() {
+  if (!state) return;
+  ctx.fillStyle = PAL.void;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Camera: center on hero
+  const hx = state.hero.col * tileSize;
+  const hy = state.hero.row * tileSize;
+  camX = Math.max(0, Math.min(hx - canvas.width/2 + tileSize/2, COLS*tileSize - canvas.width));
+  camY = Math.max(0, Math.min(hy - canvas.height/2 + tileSize/2, ROWS*tileSize - canvas.height));
+
+  ctx.save();
+  ctx.translate(-camX, -camY);
+
+  drawTiles();
+  drawMovableHighlights();
+  drawDoors();
+  drawTorches();
+  drawTraps();
+  drawChests();
+  drawStair();
+  drawMonsters();
+  drawHero();
+  drawGlows();
+
+  ctx.restore();
+}
+
+function isRevealed(c, r) {
+  return state.revealed.has(`${c},${r}`);
+}
+
+function drawTiles() {
+  for (let r=0;r<ROWS;r++) {
+    for (let c=0;c<COLS;c++) {
+      const t = state.map[r][c];
+      const px = c*tileSize, py = r*tileSize;
+      if (!isRevealed(c,r)) {
+        // Fog
+        ctx.fillStyle = '#060a05';
+        ctx.fillRect(px,py,tileSize,tileSize);
+        if (t !== TILE_VOID) {
+          ctx.fillStyle = 'rgba(68,255,136,0.04)';
+          ctx.font = `${tileSize*0.4}px monospace`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('?', px+tileSize/2, py+tileSize/2);
+        }
+        continue;
+      }
+      if (t === TILE_VOID) { ctx.fillStyle = PAL.void; ctx.fillRect(px,py,tileSize,tileSize); continue; }
+      if (t === TILE_WALL) { drawWallTile(px,py); continue; }
+      if (t === TILE_FLOOR || t === TILE_TORCH || t === TILE_CHEST || t === TILE_STAIR || t === TILE_TRAP || t === TILE_SECRET_DOOR) {
+        drawFloorTile(px,py,c,r);
+        if (t === TILE_STAIR) drawStairDecal(px,py);
+      }
+      if (t === TILE_DOOR_H || t === TILE_DOOR_V) { drawFloorTile(px,py,c,r); }
+    }
+  }
+}
+
+function drawWallTile(px, py) {
+  const ts = tileSize;
+  ctx.fillStyle = PAL.wall2;
+  ctx.fillRect(px,py,ts,ts);
+  // Brick pattern
+  const bh = Math.max(4, Math.floor(ts/4));
+  const bw = Math.max(6, Math.floor(ts/2));
+  ctx.fillStyle = PAL.mortar;
+  for (let row=0;row<4;row++) {
+    ctx.fillRect(px, py+row*bh, ts, 1);
+    const offset = (row%2===0) ? 0 : bw/2;
+    for (let col=0;col<3;col++) {
+      ctx.fillRect(px+offset+col*bw, py+row*bh, 1, bh);
+    }
+  }
+  // Top highlight
+  ctx.fillStyle = PAL.wallHL;
+  ctx.fillRect(px, py, ts, 1);
+  ctx.fillRect(px, py, 1, ts);
+}
+
+function drawFloorTile(px, py, c, r) {
+  const ts = tileSize;
+  const alt = (c+r)%2;
+  ctx.fillStyle = alt ? PAL.floor1 : PAL.floor2;
+  ctx.fillRect(px,py,ts,ts);
+  ctx.strokeStyle = PAL.floorGrid;
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(px+0.5,py+0.5,ts-1,ts-1);
+}
+
+function drawStairDecal(px, py) {
+  const ts = tileSize;
+  ctx.fillStyle = '#44ff88';
+  const s = Math.max(2, Math.floor(ts*0.12));
+  for (let i=0;i<4;i++) {
+    ctx.fillRect(px+ts*0.2+i*s, py+ts*0.3+i*s*0.8, ts*0.5-i*s, s);
+  }
+}
+
+function drawMovableHighlights() {
+  if (!moveMode || pendingMoveSteps <= 0) return;
+  const {col, row} = state.hero;
+  const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+  dirs.forEach(([dc,dr]) => {
+    const nc=col+dc, nr=row+dr;
+    if (canHeroMoveTo(nc,nr)) {
+      ctx.fillStyle = 'rgba(68,255,136,0.18)';
+      ctx.fillRect(nc*tileSize, nr*tileSize, tileSize, tileSize);
+      ctx.strokeStyle = '#44ff88';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(nc*tileSize+1, nr*tileSize+1, tileSize-2, tileSize-2);
+    }
+  });
+}
+
+function doorState(c,r) {
+  return state.doors.find(d=>d.col===c&&d.row===r);
+}
+
+function drawDoors() {
+  state.doors.forEach(door => {
+    if (!isRevealed(door.col, door.row)) return;
+    const px = door.col*tileSize, py = door.row*tileSize;
+    const ts = tileSize;
+    if (door.open) {
+      // open door — just floor
+      return;
+    }
+    drawDoorSprite(ctx, px, py, ts, door.dir);
+  });
+}
+
+function drawDoorSprite(ctx, px, py, ts, dir) {
+  // Door frame
+  ctx.fillStyle = PAL.doorFrame;
+  ctx.fillRect(px, py, ts, ts);
+  // Wood
+  const m = Math.max(2, Math.floor(ts*0.1));
+  ctx.fillStyle = PAL.doorWood;
+  ctx.fillRect(px+m, py+m, ts-m*2, ts-m*2);
+  // Grain lines
+  ctx.strokeStyle = '#1e4810';
+  ctx.lineWidth = 1;
+  if (dir === 'v') {
+    for (let i=1;i<4;i++) {
+      ctx.beginPath();
+      ctx.moveTo(px+m, py+m+i*(ts-m*2)/4);
+      ctx.lineTo(px+ts-m, py+m+i*(ts-m*2)/4);
+      ctx.stroke();
+    }
+  } else {
+    for (let i=1;i<4;i++) {
+      ctx.beginPath();
+      ctx.moveTo(px+m+i*(ts-m*2)/4, py+m);
+      ctx.lineTo(px+m+i*(ts-m*2)/4, py+ts-m);
+      ctx.stroke();
+    }
+  }
+  // Iron bar
+  ctx.fillStyle = '#2a3030';
+  if (dir==='v') ctx.fillRect(px+m, py+ts/2-1, ts-m*2, 2);
+  else            ctx.fillRect(px+ts/2-1, py+m, 2, ts-m*2);
+  // Knob
+  ctx.fillStyle = PAL.doorKnob;
+  const kr = Math.max(2, Math.floor(ts*0.08));
+  ctx.beginPath(); ctx.arc(px+ts/2, py+ts/2, kr, 0, Math.PI*2); ctx.fill();
+}
+
+function drawTorches() {
+  for (let r=0;r<ROWS;r++) {
+    for (let c=0;c<COLS;c++) {
+      if (state.map[r][c] !== TILE_TORCH) continue;
+      if (!isRevealed(c,r)) continue;
+      const px = c*tileSize, py = r*tileSize;
+      drawTorchSprite(px, py, tileSize, tick);
+    }
+  }
+}
+
+function drawTorchSprite(px, py, ts, tick) {
+  const flicker = Math.sin(tick*0.07) + Math.sin(tick*0.17);
+  const cx = px + ts/2;
+  // Wall mount
+  ctx.fillStyle = '#3a3a2a';
+  ctx.fillRect(cx-ts*0.08, py+ts*0.55, ts*0.15, ts*0.3);
+  // Handle
+  ctx.fillStyle = '#5a4020';
+  ctx.fillRect(cx-ts*0.05, py+ts*0.3, ts*0.1, ts*0.35);
+  // Flame layers
+  const fy = py + ts*0.15 + flicker*ts*0.04;
+  const fw = ts*0.22;
+  ctx.fillStyle = PAL.torchFlame1;
+  ctx.beginPath();
+  ctx.ellipse(cx, fy+ts*0.1, fw*0.7, ts*0.15, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = PAL.torchFlame2;
+  ctx.beginPath();
+  ctx.ellipse(cx+flicker*ts*0.02, fy+ts*0.05, fw*0.4, ts*0.1, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(cx+flicker*ts*0.01, fy+ts*0.02, fw*0.15, ts*0.05, 0, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function drawTraps() {
+  state.traps.forEach(trap => {
+    if (!isRevealed(trap.col, trap.row)) return;
+    if (!trap.detected && !trap.triggered) return;
+    const px = trap.col*tileSize, py = trap.row*tileSize;
+    drawTrapSprite(ctx, px, py, tileSize, trap.triggered);
+  });
+}
+
+function drawTrapSprite(ctx, px, py, ts, triggered) {
+  const cx = px+ts/2, cy = py+ts/2;
+  const r = ts*0.35;
+  // Base disc
+  ctx.fillStyle = triggered ? '#200020' : '#0a0020';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+  // Inner ring
+  ctx.strokeStyle = triggered ? '#dd00dd' : '#880080';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, r*0.6, 0, Math.PI*2); ctx.stroke();
+  // Spikes
+  for (let i=0;i<8;i++) {
+    const angle = (i/8)*Math.PI*2;
+    const sx = cx + Math.cos(angle)*r*0.55;
+    const sy = cy + Math.sin(angle)*r*0.55;
+    const ex = cx + Math.cos(angle)*r;
+    const ey = cy + Math.sin(angle)*r;
+    ctx.fillStyle = triggered ? '#ff00ff' : '#880080';
+    ctx.beginPath();
+    ctx.moveTo(sx,sy);
+    ctx.lineTo(ex,ey);
+    const perp = angle + Math.PI/2;
+    ctx.lineTo(cx+Math.cos(perp)*r*0.1+Math.cos(angle)*r*0.6, cy+Math.sin(perp)*r*0.1+Math.sin(angle)*r*0.6);
+    ctx.fill();
+  }
+  // Center
+  ctx.fillStyle = triggered ? '#ff88ff' : '#dd00dd';
+  ctx.beginPath(); ctx.arc(cx, cy, r*0.15, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(cx-1, cy-1, 2, 2);
+}
+
+function drawChests() {
+  for (let r=0;r<ROWS;r++) {
+    for (let c=0;c<COLS;c++) {
+      if (state.map[r][c] !== TILE_CHEST) continue;
+      if (!isRevealed(c,r)) continue;
+      const px = c*tileSize, py = r*tileSize;
+      drawChestSprite(ctx, px, py, tileSize);
+    }
+  }
+}
+
+function drawChestSprite(ctx, px, py, ts) {
+  const m = Math.max(2, Math.floor(ts*0.1));
+  const cw = ts-m*2, ch = Math.floor(ts*0.55);
+  const cx = px+m, cy = py+ts-m-ch;
+  // Body
+  ctx.fillStyle = '#5a2c10';
+  ctx.fillRect(cx, cy, cw, ch);
+  // Lid (arched effect)
+  ctx.fillStyle = '#7a4018';
+  ctx.fillRect(cx, cy-Math.floor(ch*0.3), cw, Math.floor(ch*0.3));
+  // Top shine
+  ctx.fillStyle = '#8a5020';
+  ctx.fillRect(cx, cy-Math.floor(ch*0.3), cw, 2);
+  // Straps
+  ctx.fillStyle = '#2a1408';
+  ctx.fillRect(cx+cw*0.3, cy-Math.floor(ch*0.3), Math.max(2,cw*0.08), ch+Math.floor(ch*0.3));
+  ctx.fillRect(cx, cy+ch*0.4, cw, Math.max(2,ch*0.1));
+  // Lock
+  ctx.fillStyle = '#c8a020';
+  const lw=Math.max(4,cw*0.2), lh=Math.max(3,ch*0.25);
+  ctx.fillRect(cx+cw/2-lw/2, cy+ch*0.35, lw, lh);
+  // Lock shine
+  ctx.fillStyle = '#ffdd44';
+  ctx.fillRect(cx+cw/2-1, cy+ch*0.37, 2, 2);
+}
+
+function drawStair() {
+  // Already drawn as decal via drawStairDecal
+}
+
+function drawMonsters() {
+  state.monsters.forEach(m => {
+    if (!m.alive) return;
+    if (!isRevealed(m.col, m.row)) return;
+    const key = `${m.col},${m.row}`;
+    let px = m.col*tileSize, py = m.row*tileSize;
+
+    // Attack animation
+    if (attackAnim && attackAnim.target === `${m.col},${m.row}`) {
+      const t = attackAnim.t;
+      const dx = (attackAnim.toCol - attackAnim.fromCol)*tileSize;
+      const dy = (attackAnim.toRow - attackAnim.fromRow)*tileSize;
+      const progress = t < 0.5 ? t*2 : (1-t)*2;
+      px += dx * progress * 0.3;
+      py += dy * progress * 0.3;
+    }
+
+    const flash = damageFlash[key];
+    const death = deathAnim[key];
+
+    ctx.save();
+    if (death) {
+      ctx.globalAlpha = death.opacity;
+    }
+    if (flash && flash.on) {
+      ctx.globalAlpha = 0.5 + Math.sin(flash.t*10)*0.5;
+    }
+
+    drawMonsterSprite(ctx, px, py, tileSize, m.type);
+
+    // Health dots
+    if (!death) {
+      const md = MONSTER_DEFS[m.type];
+      if (md && md.body > 1) {
+        for (let i=0;i<md.body;i++) {
+          ctx.fillStyle = i < m.body ? '#ff4422' : '#331111';
+          ctx.fillRect(px+2+i*5, py+2, 4, 4);
+        }
+      }
+    }
+    ctx.restore();
+  });
+}
+
+function drawMonsterSprite(ctx, px, py, ts, type) {
+  const isGoblin = type==='goblin' || type==='goblin_dark';
+  const isChaos = type==='chaos_warrior';
+  const isGargoyle = type==='gargoyle';
+  const isDark = type==='goblin_dark';
+
+  const cx = px + ts/2, by = py + ts - Math.floor(ts*0.1);
+
+  if (isGoblin) {
+    const bodyColor = isDark ? '#6a2010' : '#2a5a18';
+    const headColor = isDark ? '#8a2818' : '#3a6a20';
+    const eyeColor = isDark ? '#ff2200' : '#ffee00';
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(cx, by, ts*0.28, ts*0.07, 0, 0, Math.PI*2); ctx.fill();
+    // Legs
+    ctx.fillStyle = '#1a2e10';
+    ctx.fillRect(cx-ts*0.15, by-ts*0.3, ts*0.12, ts*0.22);
+    ctx.fillRect(cx+ts*0.03, by-ts*0.3, ts*0.12, ts*0.22);
+    // Feet
+    ctx.fillStyle = '#101508';
+    ctx.fillRect(cx-ts*0.17, by-ts*0.1, ts*0.14, ts*0.1);
+    ctx.fillRect(cx+ts*0.02, by-ts*0.1, ts*0.14, ts*0.1);
+    // Body
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(cx-ts*0.2, by-ts*0.58, ts*0.4, ts*0.3);
+    // Body highlight
+    ctx.fillStyle = isDark ? '#7a2818' : '#3a6a20';
+    ctx.fillRect(cx-ts*0.2, by-ts*0.58, ts*0.4, ts*0.06);
+    // Arms
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(cx-ts*0.3, by-ts*0.55, ts*0.12, ts*0.2);
+    ctx.fillRect(cx+ts*0.18, by-ts*0.55, ts*0.12, ts*0.2);
+    // Weapon (mace)
+    ctx.fillStyle = '#6a3a10';
+    ctx.fillRect(cx+ts*0.26, by-ts*0.7, ts*0.06, ts*0.35);
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(cx+ts*0.22, by-ts*0.78, ts*0.14, ts*0.12);
+    // Spikes on mace
+    ctx.fillStyle = '#aaaaaa';
+    for (let i=0;i<4;i++) { const a=(i/4)*Math.PI*2; ctx.fillRect(cx+ts*0.29+Math.cos(a)*ts*0.06, by-ts*0.72+Math.sin(a)*ts*0.06, ts*0.04, ts*0.04); }
+    // Head
+    ctx.fillStyle = headColor;
+    ctx.fillRect(cx-ts*0.22, by-ts*0.82, ts*0.44, ts*0.28);
+    // Ears
+    ctx.fillStyle = headColor;
+    ctx.fillRect(cx-ts*0.32, by-ts*0.78, ts*0.12, ts*0.08);
+    ctx.fillRect(cx+ts*0.2, by-ts*0.78, ts*0.12, ts*0.08);
+    ctx.fillRect(cx-ts*0.36, by-ts*0.82, ts*0.08, ts*0.06);
+    ctx.fillRect(cx+ts*0.28, by-ts*0.82, ts*0.08, ts*0.06);
+    // Crest
+    ctx.fillStyle = isDark ? '#aa3020' : '#4a8a28';
+    for (let i=0;i<3;i++) ctx.fillRect(cx-ts*0.1+i*ts*0.1, by-ts*0.9-i*ts*0.03, ts*0.08, ts*0.1+i*ts*0.03);
+    // Eyes
+    ctx.fillStyle = eyeColor;
+    ctx.fillRect(cx-ts*0.15, by-ts*0.72, ts*0.1, ts*0.08);
+    ctx.fillRect(cx+ts*0.05, by-ts*0.72, ts*0.1, ts*0.08);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(cx-ts*0.11, by-ts*0.7, ts*0.04, ts*0.05);
+    ctx.fillRect(cx+ts*0.07, by-ts*0.7, ts*0.04, ts*0.05);
+    // Nose
+    ctx.fillStyle = isDark ? '#6a1a08' : '#2a4a10';
+    ctx.fillRect(cx-ts*0.04, by-ts*0.64, ts*0.08, ts*0.06);
+    // Fangs
+    ctx.fillStyle = '#d8d8b0';
+    ctx.fillRect(cx-ts*0.1, by-ts*0.57, ts*0.06, ts*0.08);
+    ctx.fillRect(cx+ts*0.0, by-ts*0.57, ts*0.06, ts*0.08);
+    ctx.fillRect(cx+ts*0.1, by-ts*0.57, ts*0.06, ts*0.08);
+  } else if (type === 'orc') {
+    // Orc sprite
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(cx, by, ts*0.3, ts*0.08, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#3a5a10'; ctx.fillRect(cx-ts*0.2, by-ts*0.35, ts*0.18, ts*0.28); ctx.fillRect(cx+ts*0.02, by-ts*0.35, ts*0.18, ts*0.28);
+    ctx.fillStyle = '#1a2a08'; ctx.fillRect(cx-ts*0.22, by-ts*0.1, ts*0.18, ts*0.1); ctx.fillRect(cx+ts*0.04, by-ts*0.1, ts*0.18, ts*0.1);
+    ctx.fillStyle = '#4a6a20'; ctx.fillRect(cx-ts*0.25, by-ts*0.68, ts*0.5, ts*0.35);
+    ctx.fillStyle = '#2a3a18'; ctx.fillRect(cx-ts*0.35, by-ts*0.65, ts*0.12, ts*0.28); ctx.fillRect(cx+ts*0.23, by-ts*0.65, ts*0.12, ts*0.28);
+    // Axe
+    ctx.fillStyle = '#6a4020'; ctx.fillRect(cx+ts*0.28, by-ts*0.8, ts*0.06, ts*0.4);
+    ctx.fillStyle = '#909090'; ctx.fillRect(cx+ts*0.2, by-ts*0.9, ts*0.22, ts*0.18);
+    ctx.fillStyle = '#5a6a20'; ctx.fillRect(cx-ts*0.25, by-ts*0.66, ts*0.5, ts*0.3); // armor plate
+    ctx.fillStyle = '#5a7a28'; ctx.fillRect(cx-ts*0.24, by-ts*0.9, ts*0.48, ts*0.3);
+    ctx.fillStyle = '#ffee00'; ctx.fillRect(cx-ts*0.12, by-ts*0.82, ts*0.08, ts*0.07); ctx.fillRect(cx+ts*0.04, by-ts*0.82, ts*0.08, ts*0.07);
+    ctx.fillStyle = '#000000'; ctx.fillRect(cx-ts*0.1, by-ts*0.8, ts*0.04, ts*0.05); ctx.fillRect(cx+ts*0.06, by-ts*0.8, ts*0.04, ts*0.05);
+    ctx.fillStyle = '#d8c0a0'; ctx.fillRect(cx-ts*0.08, by-ts*0.73, ts*0.16, ts*0.06);
+    ctx.fillStyle = '#3a5a10'; ctx.fillRect(cx-ts*0.14, by-ts*0.76, ts*0.04, ts*0.04); ctx.fillRect(cx+ts*0.1, by-ts*0.76, ts*0.04, ts*0.04);
+  } else if (type === 'skeleton') {
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath(); ctx.ellipse(cx, by, ts*0.25, ts*0.06, 0, 0, Math.PI*2); ctx.fill();
+    const bc = '#c8c0a0';
+    ctx.fillStyle = bc;
+    ctx.fillRect(cx-ts*0.12, by-ts*0.38, ts*0.08, ts*0.3); ctx.fillRect(cx+ts*0.04, by-ts*0.38, ts*0.08, ts*0.3);
+    ctx.fillRect(cx-ts*0.04, by-ts*0.1, ts*0.08, ts*0.1); ctx.fillRect(cx-ts*0.08, by-ts*0.1, ts*0.06, ts*0.1);
+    ctx.fillRect(cx-ts*0.18, by-ts*0.65, ts*0.36, ts*0.3);
+    ctx.fillRect(cx-ts*0.26, by-ts*0.62, ts*0.1, ts*0.2); ctx.fillRect(cx+ts*0.16, by-ts*0.62, ts*0.1, ts*0.2);
+    // Sword
+    ctx.fillStyle = '#d0d0c0'; ctx.fillRect(cx+ts*0.24, by-ts*0.85, ts*0.05, ts*0.42);
+    ctx.fillStyle = '#a08030'; ctx.fillRect(cx+ts*0.18, by-ts*0.62, ts*0.17, ts*0.05);
+    ctx.fillStyle = bc; ctx.fillRect(cx-ts*0.2, by-ts*0.92, ts*0.4, ts*0.3);
+    ctx.fillStyle = '#080808'; ctx.fillRect(cx-ts*0.12, by-ts*0.84, ts*0.08, ts*0.08); ctx.fillRect(cx+ts*0.04, by-ts*0.84, ts*0.08, ts*0.08);
+    ctx.fillRect(cx-ts*0.06, by-ts*0.72, ts*0.12, ts*0.05);
+    ctx.fillStyle = '#1a1a10'; ctx.fillRect(cx-ts*0.08, by-ts*0.78, ts*0.04, ts*0.05); ctx.fillRect(cx+ts*0.04, by-ts*0.78, ts*0.04, ts*0.05);
+  } else if (type === 'gargoyle') {
+    // Big boss sprite
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath(); ctx.ellipse(cx, by, ts*0.4, ts*0.1, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#3a3060';
+    ctx.fillRect(cx-ts*0.3, by-ts*0.45, ts*0.25, ts*0.38); ctx.fillRect(cx+ts*0.05, by-ts*0.45, ts*0.25, ts*0.38);
+    ctx.fillStyle = '#1a1838'; ctx.fillRect(cx-ts*0.32, by-ts*0.1, ts*0.22, ts*0.1); ctx.fillRect(cx+ts*0.1, by-ts*0.1, ts*0.22, ts*0.1);
+    ctx.fillStyle = '#4a4080'; ctx.fillRect(cx-ts*0.35, by-ts*0.82, ts*0.7, ts*0.42);
+    ctx.fillStyle = '#2a2060'; ctx.fillRect(cx-ts*0.45, by-ts*0.78, ts*0.14, ts*0.32); ctx.fillRect(cx+ts*0.31, by-ts*0.78, ts*0.14, ts*0.32);
+    // Wings
+    ctx.fillStyle = 'rgba(60,40,100,0.7)';
+    ctx.beginPath(); ctx.moveTo(cx-ts*0.35, by-ts*0.75); ctx.lineTo(cx-ts*0.7, by-ts*0.5); ctx.lineTo(cx-ts*0.5, by-ts*0.3); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx+ts*0.35, by-ts*0.75); ctx.lineTo(cx+ts*0.7, by-ts*0.5); ctx.lineTo(cx+ts*0.5, by-ts*0.3); ctx.fill();
+    // Claws
+    ctx.fillStyle = '#cc2200'; ctx.fillRect(cx-ts*0.48, by-ts*0.5, ts*0.08, ts*0.22); ctx.fillRect(cx+ts*0.4, by-ts*0.5, ts*0.08, ts*0.22);
+    // Head
+    ctx.fillStyle = '#5a5090'; ctx.fillRect(cx-ts*0.28, by-ts*1.08, ts*0.56, ts*0.3);
+    // Horns
+    ctx.fillStyle = '#cc2200'; ctx.fillRect(cx-ts*0.22, by-ts*1.16, ts*0.08, ts*0.12); ctx.fillRect(cx+ts*0.14, by-ts*1.16, ts*0.08, ts*0.12);
+    // Eyes glow
+    ctx.fillStyle = '#ff0000'; ctx.fillRect(cx-ts*0.18, by-ts*1.02, ts*0.12, ts*0.1); ctx.fillRect(cx+ts*0.06, by-ts*1.02, ts*0.12, ts*0.1);
+    ctx.fillStyle = '#ff6666'; ctx.fillRect(cx-ts*0.14, by-ts*1.0, ts*0.05, ts*0.06); ctx.fillRect(cx+ts*0.09, by-ts*1.0, ts*0.05, ts*0.06);
+    ctx.fillStyle = '#cc4400'; ctx.fillRect(cx-ts*0.1, by-ts*0.92, ts*0.2, ts*0.06);
+    // Health bar for boss
+    const md = MONSTER_DEFS['gargoyle'];
+    const m = state.monsters.find(m=>m.type==='gargoyle');
+    if (m) {
+      ctx.fillStyle = '#330000'; ctx.fillRect(cx-ts*0.35, by-ts*1.22, ts*0.7, ts*0.06);
+      ctx.fillStyle = '#ff2200'; ctx.fillRect(cx-ts*0.35, by-ts*1.22, ts*0.7*(m.body/md.body), ts*0.06);
+    }
+  } else if (type === 'chaos_warrior') {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(cx, by, ts*0.28, ts*0.07, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#3a2010'; ctx.fillRect(cx-ts*0.18, by-ts*0.38, ts*0.15, ts*0.3); ctx.fillRect(cx+ts*0.03, by-ts*0.38, ts*0.15, ts*0.3);
+    ctx.fillStyle = '#1a1008'; ctx.fillRect(cx-ts*0.2, by-ts*0.1, ts*0.16, ts*0.1); ctx.fillRect(cx+ts*0.04, by-ts*0.1, ts*0.16, ts*0.1);
+    ctx.fillStyle = '#4a2818'; ctx.fillRect(cx-ts*0.26, by-ts*0.7, ts*0.52, ts*0.35);
+    ctx.fillStyle = '#6a3820'; ctx.fillRect(cx-ts*0.26, by-ts*0.7, ts*0.52, ts*0.06);
+    ctx.fillStyle = '#3a2010'; ctx.fillRect(cx-ts*0.36, by-ts*0.67, ts*0.12, ts*0.25); ctx.fillRect(cx+ts*0.24, by-ts*0.67, ts*0.12, ts*0.25);
+    // Chaos sword
+    ctx.fillStyle = '#808090'; ctx.fillRect(cx+ts*0.3, by-ts*0.95, ts*0.06, ts*0.52);
+    ctx.fillStyle = '#cc0000'; ctx.fillRect(cx+ts*0.22, by-ts*0.7, ts*0.22, ts*0.06);
+    ctx.fillStyle = '#5a3828'; ctx.fillRect(cx-ts*0.24, by-ts*0.98, ts*0.48, ts*0.32);
+    // Horned helmet
+    ctx.fillStyle = '#2a1808'; ctx.fillRect(cx-ts*0.22, by-ts*1.05, ts*0.44, ts*0.1);
+    ctx.fillStyle = '#cc2200'; ctx.fillRect(cx-ts*0.16, by-ts*1.14, ts*0.06, ts*0.12); ctx.fillRect(cx+ts*0.1, by-ts*1.14, ts*0.06, ts*0.12);
+    // Visor slit
+    ctx.fillStyle = '#ff4400'; ctx.fillRect(cx-ts*0.14, by-ts*0.98, ts*0.28, ts*0.06);
+    ctx.fillStyle = '#1a1008'; ctx.fillRect(cx-ts*0.1, by-ts*0.95, ts*0.08, ts*0.04); ctx.fillRect(cx+ts*0.02, by-ts*0.95, ts*0.08, ts*0.04);
+  } else {
+    // Generic fallback
+    ctx.fillStyle = '#aa8844';
+    ctx.fillRect(cx-ts*0.2, by-ts*0.6, ts*0.4, ts*0.6);
+    ctx.fillStyle = '#ffee00';
+    ctx.fillRect(cx-ts*0.12, by-ts*0.52, ts*0.08, ts*0.08);
+    ctx.fillRect(cx+ts*0.04, by-ts*0.52, ts*0.08, ts*0.08);
+  }
+}
+
+function drawHero() {
+  let hpx, hpy;
+  if (heroMoveAnim) {
+    const t = heroMoveAnim.t;
+    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+    hpx = (heroMoveAnim.fromCol + (heroMoveAnim.toCol-heroMoveAnim.fromCol)*ease) * tileSize;
+    hpy = (heroMoveAnim.fromRow + (heroMoveAnim.toRow-heroMoveAnim.fromRow)*ease) * tileSize;
+  } else {
+    hpx = state.hero.col * tileSize;
+    hpy = state.hero.row * tileSize;
+  }
+
+  ctx.save();
+  // Attack animation for hero
+  if (attackAnim && attackAnim.isHero) {
+    const t2 = attackAnim.t;
+    const dx = (attackAnim.toCol - attackAnim.fromCol)*tileSize;
+    const dy = (attackAnim.toRow - attackAnim.fromRow)*tileSize;
+    const progress = t2 < 0.5 ? t2*2 : (1-t2)*2;
+    hpx += dx * progress * 0.3;
+    hpy += dy * progress * 0.3;
+  }
+
+  const key = `${state.hero.col},${state.hero.row}`;
+  const flash = damageFlash[key];
+  if (flash && flash.on) {
+    ctx.globalAlpha = 0.5 + Math.sin(flash.t*10)*0.5;
+  }
+
+  drawHeroSprite(ctx, hpx, hpy, tileSize);
+  ctx.restore();
+}
+
+function drawHeroSprite(ctx, px, py, ts) {
+  const cx = px+ts/2, by = py+ts-Math.floor(ts*0.08);
+  // Cape (back)
+  ctx.fillStyle = '#8a1515';
+  ctx.fillRect(cx-ts*0.22, by-ts*0.72, ts*0.44, ts*0.5);
+  // Boots
+  ctx.fillStyle = '#2a1808';
+  ctx.fillRect(cx-ts*0.18, by-ts*0.18, ts*0.15, ts*0.18);
+  ctx.fillRect(cx+ts*0.03, by-ts*0.18, ts*0.15, ts*0.18);
+  // Legs / tabard
+  ctx.fillStyle = '#9a2010';
+  ctx.fillRect(cx-ts*0.18, by-ts*0.42, ts*0.36, ts*0.26);
+  // Belt
+  ctx.fillStyle = '#3a2010';
+  ctx.fillRect(cx-ts*0.2, by-ts*0.45, ts*0.4, ts*0.06);
+  // Torso armor
+  ctx.fillStyle = '#2a5a9a';
+  ctx.fillRect(cx-ts*0.22, by-ts*0.72, ts*0.44, ts*0.3);
+  // Armor highlight
+  ctx.fillStyle = '#3a6aaa';
+  ctx.fillRect(cx-ts*0.22, by-ts*0.72, ts*0.44, ts*0.05);
+  // Pauldrons
+  ctx.fillStyle = '#3a6aaa';
+  ctx.fillRect(cx-ts*0.3, by-ts*0.71, ts*0.12, ts*0.1);
+  ctx.fillRect(cx+ts*0.18, by-ts*0.71, ts*0.12, ts*0.1);
+  ctx.fillStyle = '#5a8aba';
+  ctx.fillRect(cx-ts*0.3, by-ts*0.73, ts*0.12, ts*0.03);
+  ctx.fillRect(cx+ts*0.18, by-ts*0.73, ts*0.12, ts*0.03);
+  // Arms
+  ctx.fillStyle = '#2a5a9a';
+  ctx.fillRect(cx-ts*0.32, by-ts*0.7, ts*0.12, ts*0.26);
+  ctx.fillRect(cx+ts*0.2, by-ts*0.7, ts*0.12, ts*0.26);
+  // Gloves
+  ctx.fillStyle = '#1a0808';
+  ctx.fillRect(cx-ts*0.32, by-ts*0.46, ts*0.12, ts*0.08);
+  ctx.fillRect(cx+ts*0.2, by-ts*0.46, ts*0.12, ts*0.08);
+  // Sword (right side)
+  ctx.fillStyle = '#d8d8d0';
+  ctx.fillRect(cx+ts*0.28, by-ts*0.9, ts*0.05, ts*0.48);
+  ctx.fillStyle = '#c8a030';
+  ctx.fillRect(cx+ts*0.2, by-ts*0.66, ts*0.2, ts*0.05);
+  ctx.fillStyle = '#a88020';
+  ctx.fillRect(cx+ts*0.3, by-ts*0.97, ts*0.06, ts*0.1);
+  // Head
+  ctx.fillStyle = '#d4a060';
+  ctx.fillRect(cx-ts*0.18, by-ts*0.95, ts*0.36, ts*0.28);
+  // Eyes
+  ctx.fillStyle = '#ffff00';
+  ctx.fillRect(cx-ts*0.12, by-ts*0.88, ts*0.08, ts*0.07);
+  ctx.fillRect(cx+ts*0.04, by-ts*0.88, ts*0.08, ts*0.07);
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(cx-ts*0.09, by-ts*0.86, ts*0.04, ts*0.04);
+  ctx.fillRect(cx+ts*0.05, by-ts*0.86, ts*0.04, ts*0.04);
+  // Mouth
+  ctx.fillStyle = '#8a4020';
+  ctx.fillRect(cx-ts*0.06, by-ts*0.74, ts*0.12, ts*0.04);
+  // Helmet
+  ctx.fillStyle = '#3a6aaa';
+  ctx.fillRect(cx-ts*0.2, by-ts*1.0, ts*0.4, ts*0.1);
+  ctx.fillRect(cx-ts*0.18, by-ts*1.08, ts*0.36, ts*0.12);
+  // Nasal visor
+  ctx.fillStyle = '#2a5090';
+  ctx.fillRect(cx-ts*0.04, by-ts*0.97, ts*0.08, ts*0.1);
+  // Helmet top
+  ctx.fillStyle = '#4a7aba';
+  ctx.fillRect(cx-ts*0.16, by-ts*1.1, ts*0.32, ts*0.04);
+}
+
+function drawGlows() {
+  // Torch glows
+  for (let r=0;r<ROWS;r++) {
+    for (let c=0;c<COLS;c++) {
+      if (state.map[r][c] !== TILE_TORCH) continue;
+      if (!isRevealed(c,r)) continue;
+      const px = (c+0.5)*tileSize, py = (r+0.5)*tileSize;
+      const flicker = 0.06 + 0.06*Math.abs(Math.sin(tick*0.05));
+      const grad = ctx.createRadialGradient(px,py,0,px,py,tileSize*3);
+      grad.addColorStop(0, `rgba(255,160,20,${flicker*2})`);
+      grad.addColorStop(1, 'rgba(255,160,20,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(px-tileSize*3,py-tileSize*3,tileSize*6,tileSize*6);
+    }
+  }
+  // Hero glow
+  let hpx, hpy;
+  if (heroMoveAnim) {
+    const t = heroMoveAnim.t;
+    hpx = (heroMoveAnim.fromCol + (heroMoveAnim.toCol-heroMoveAnim.fromCol)*t + 0.5)*tileSize;
+    hpy = (heroMoveAnim.fromRow + (heroMoveAnim.toRow-heroMoveAnim.fromRow)*t + 0.5)*tileSize;
+  } else {
+    hpx = (state.hero.col+0.5)*tileSize;
+    hpy = (state.hero.row+0.5)*tileSize;
+  }
+  const hgrad = ctx.createRadialGradient(hpx,hpy,0,hpx,hpy,tileSize*2);
+  hgrad.addColorStop(0,'rgba(255,255,200,0.06)');
+  hgrad.addColorStop(1,'rgba(255,255,200,0)');
+  ctx.fillStyle = hgrad;
+  ctx.fillRect(hpx-tileSize*2,hpy-tileSize*2,tileSize*4,tileSize*4);
+}
+
+// ─────────────────────────────────────────────
+// ANIMATION LOOP
+// ─────────────────────────────────────────────
+const ANIM_SPEED = 1000/60;
+let lastTime = 0;
+function loop(ts) {
+  animFrame = requestAnimationFrame(loop);
+  const dt = ts - lastTime;
+  if (dt < 14) return;
+  lastTime = ts;
+  tick++;
+
+  // Update attack anim
+  if (attackAnim) {
+    attackAnim.t += 0.08;
+    if (attackAnim.t >= 1) {
+      const cb = attackAnim.cb;
+      attackAnim = null;
+      if (cb) cb();
+    }
+  }
+  // Update hero move anim
+  if (heroMoveAnim) {
+    heroMoveAnim.t += 0.12;
+    if (heroMoveAnim.t >= 1) {
+      state.hero.col = heroMoveAnim.toCol;
+      state.hero.row = heroMoveAnim.toRow;
+      const cb = heroMoveAnim.cb;
+      heroMoveAnim = null;
+      if (cb) cb();
+    }
+  }
+  // Update damage flash
+  Object.keys(damageFlash).forEach(key => {
+    const f = damageFlash[key];
+    f.t++;
+    f.on = Math.floor(f.t/4) % 2 === 0;
+    if (f.t > 18) delete damageFlash[key];
+  });
+  // Update death anim
+  Object.keys(deathAnim).forEach(key => {
+    const d = deathAnim[key];
+    d.opacity -= 0.03;
+    if (d.opacity <= 0) {
+      delete deathAnim[key];
+      if (d.cb) d.cb();
+    }
+  });
+  // Update reveal anim
+  revealAnim = revealAnim.filter(ra => {
+    ra.t++;
+    return ra.t < 20;
+  });
+
+  if (state) {
+    updateHUD();
+    render();
+  }
+}
+
+// ─────────────────────────────────────────────
+// HUD
+// ─────────────────────────────────────────────
+function updateHUD() {
+  const h = state.hero;
+  document.getElementById('heroName').textContent = h.name;
+
+  const bodyPct = h.body/h.maxBody*100;
+  const mindPct = h.mind/h.maxMind*100;
+
+  document.getElementById('heroStats').innerHTML = `
+    <div class="statLabel">VIDA</div>
+    <div class="statBar"><div class="statBarFill ${bodyPct<=25?'statBarFillRed':''}" style="width:${bodyPct}%"></div></div>
+    <div class="statValue">${h.body} / ${h.maxBody}</div>
+    <div class="statLabel">MENTE</div>
+    <div class="statBar"><div class="statBarFill" style="width:${mindPct}%;background:#4488ff"></div></div>
+    <div class="statValue">${h.mind} / ${h.maxMind}</div>
+    <div class="statLabel">ATAQUE</div>
+    <div class="statValue">${h.attackDice} DADOS</div>
+    <div class="statLabel">DEFENSA</div>
+    <div class="statValue">${h.defendDice} DADOS</div>
+    <div class="statLabel">ORO</div>
+    <div class="statValue">${h.gold} 💰</div>
+    <div class="statLabel">POCIONES</div>
+    <div class="statValue">${h.potions} 🧪</div>
+    ${h.spells.length>0?`<div class="statLabel">HECHIZOS</div><div class="statValue">${h.spells.length}</div>`:''}
+  `;
+
+  const isMon = state.phase==='monster_turn';
+  const isHeroTurn = state.phase==='hero_turn';
+  const canAct = isHeroTurn && !state.hero.acted && !attackAnim && !heroMoveAnim;
+  const canMove = isHeroTurn && !state.hero.moved && !attackAnim && !heroMoveAnim;
+  const canRoll = canMove && !moveMode;
+
+  document.getElementById('phaseInfo').textContent = isMon ? '<<TURNO ENEMIGO>>' : (state.phase==='hero_turn' ? `TURNO ${state.turn}` : '');
+  document.getElementById('moveInfo').textContent = moveMode && pendingMoveSteps>0 ? `Movimientos: ${pendingMoveSteps}` : (moveMode && pendingMoveSteps===0 ? 'Sin movimientos' : '');
+
+  const canEnd = isHeroTurn && !isMon && !attackAnim && !heroMoveAnim &&
+                 (state.hero.moved || state.hero.acted || moveMode);
+  setBtn('btnRoll', !canRoll || isMon);
+  setBtn('btnSearch', !canAct || isMon || moveMode);
+  setBtn('btnSpell', !canAct || isMon || state.hero.spells.length===0 || moveMode);
+  setBtn('btnPotion', (!isHeroTurn && !isMon) || state.hero.potions===0 || moveMode);
+  setBtn('btnEnd', !canEnd);
+}
+
+function setBtn(id, disabled) {
+  const btn = document.getElementById(id);
+  if (disabled) btn.classList.add('disabled');
+  else btn.classList.remove('disabled');
+}
+
+// ─────────────────────────────────────────────
+// GAMEPLAY — MOVEMENT
+// ─────────────────────────────────────────────
+function handleRollMove() {
+  if (state.phase !== 'hero_turn' || state.hero.moved || moveMode) return;
+  const d1 = rollD6(), d2 = rollD6();
+  pendingMoveSteps = d1 + d2;
+  // Swift wind spell bonus
+  moveMode = true;
+  addLog(`Mueves ${pendingMoveSteps} casillas (${d1}+${d2})`);
+  showDice(`Tirada de movimiento: ${d1} + ${d2} = ${pendingMoveSteps}`);
+}
+
+function canHeroMoveTo(c, r) {
+  if (c<0||c>=COLS||r<0||r>=ROWS) return false;
+  const t = state.map[r][c];
+  if (t===TILE_VOID||t===TILE_WALL) return false;
+  // Check doors
+  const door = state.doors.find(d=>d.col===c&&d.row===r);
+  if (door && !door.open) return false;
+  // Can't move onto monsters
+  const mon = state.monsters.find(m=>m.alive&&m.col===c&&m.row===r);
+  if (mon) return false;
+  // Must be adjacent
+  const dc = Math.abs(c-state.hero.col), dr = Math.abs(r-state.hero.row);
+  if (dc+dr !== 1) return false;
+  return true;
+}
+
+function heroMoveStep(toCol, toRow, cb) {
+  const fc = state.hero.col, fr = state.hero.row;
+  heroMoveAnim = { fromCol:fc, fromRow:fr, toCol, toRow, t:0, cb: ()=>{
+    // Check trap
+    checkTrap(toCol, toRow);
+    // Check door reveal
+    checkAutoReveal(toCol, toRow);
+    if (cb) cb();
+  }};
+}
+
+function checkTrap(c, r) {
+  const trap = state.traps.find(t=>t.col===c&&t.row===r&&!t.triggered&&!t.detected);
+  if (!trap) return;
+  trap.triggered = true;
+  addLog('⚠ ¡TRAMPA DE FOSO! Pierdes 1 Vida.');
+  damageHero(1);
+}
+
+function checkAutoReveal(c, r) {
+  // If hero enters a room, reveal it
+  state.rooms.forEach(room => {
+    if (!room.revealed && room.cells.some(cell=>cell.c===c&&cell.r===r)) {
+      revealRoom(room);
+    }
+  });
+}
+
+function revealRoom(room) {
+  room.revealed = true;
+  const newCells = [];
+  room.cells.forEach(({c,r}) => {
+    if (!state.revealed.has(`${c},${r}`)) {
+      state.revealed.add(`${c},${r}`);
+      newCells.push({c,r});
+    }
+  });
+  addLog(`Sala revelada: ${room.id}`);
+  // Animate reveal
+  newCells.sort((a,b)=>a.r===b.r?a.c-b.c:a.r-b.r);
+  newCells.forEach(({c,r},i)=>{
+    setTimeout(()=>{ revealAnim.push({col:c,row:r,t:0}); }, i*15);
+  });
+}
+
+// ─────────────────────────────────────────────
+// CANVAS CLICK / TOUCH
+// ─────────────────────────────────────────────
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  let cx, cy;
+  if (e.touches) {
+    cx = e.touches[0].clientX - rect.left;
+    cy = e.touches[0].clientY - rect.top;
+  } else {
+    cx = e.clientX - rect.left;
+    cy = e.clientY - rect.top;
+  }
+  const col = Math.floor((cx + camX) / tileSize);
+  const row = Math.floor((cy + camY) / tileSize);
+  return {col, row};
+}
+
+canvas.addEventListener('click', handleCanvasTap);
+canvas.addEventListener('touchstart', e=>{e.preventDefault(); handleCanvasTap(e);}, {passive:false});
+
+function handleCanvasTap(e) {
+  if (!state || state.phase !== 'hero_turn' || attackAnim || heroMoveAnim) return;
+  const {col, row} = getCanvasPos(e);
+
+  // Spell targeting mode
+  if (waitingMonsterTarget) {
+    const mon = state.monsters.find(m=>m.alive&&m.col===col&&m.row===row&&isRevealed(m.col,m.row));
+    if (mon && hasLineOfSight(state.hero.col, state.hero.row, mon.col, mon.row)) {
+      const cb = waitingMonsterTarget;
+      waitingMonsterTarget = null;
+      spellPending = null;
+      closeSpellSelect();
+      cb(mon);
+    } else {
+      addLog('Objetivo invalido. Selecciona un monstruo visible.');
+    }
+    return;
+  }
+
+  // Check if tapping a monster (attack)
+  const mon = state.monsters.find(m=>m.alive&&m.col===col&&m.row===row);
+  if (mon && isRevealed(mon.col,mon.row)) {
+    const dc = Math.abs(col-state.hero.col), dr = Math.abs(row-state.hero.row);
+    if (dc+dr===1 && !state.hero.acted) {
+      heroAttack(mon);
+      return;
+    } else if (dc+dr>1 && !state.hero.acted) {
+      addLog('El monstruo esta fuera de alcance de ataque cuerpo a cuerpo.');
+      return;
+    }
+  }
+
+  // Check door tap
+  const door = state.doors.find(d=>d.col===col&&d.row===row);
+  if (door && isRevealed(door.col, door.row) && !door.open) {
+    tryOpenDoor(door);
+    return;
+  }
+
+  // Movement
+  if (moveMode && pendingMoveSteps>0) {
+    if (canHeroMoveTo(col, row)) {
+      pendingMoveSteps--;
+      heroMoveStep(col, row, ()=>{
+        if (pendingMoveSteps===0) {
+          moveMode = false;
+          state.hero.moved = true;
+          checkVictory();
+        }
+      });
+    }
+  } else if (!moveMode && !state.hero.moved) {
+    addLog('Pulsa MOVER para tirar el dado de movimiento.');
+  } else if (moveMode && pendingMoveSteps===0) {
+    moveMode = false;
+    state.hero.moved = true;
+    state.hero.col = state.hero.col; // ensure state sync
+    checkVictory();
+  }
+}
+
+function tryOpenDoor(door) {
+  door.open = true;
+  state.map[door.row][door.col] = TILE_FLOOR;
+  addLog('Abres la puerta.');
+  // Reveal connected room
+  const adjCells = [[door.col-1,door.row],[door.col+1,door.row],[door.col,door.row-1],[door.col,door.row+1]];
+  adjCells.forEach(([c,r])=>{
+    state.rooms.forEach(room=>{
+      if (!room.revealed && room.cells.some(cell=>cell.c===c&&cell.r===r)) {
+        revealRoom(room);
+      }
+    });
+  });
+}
+
+// ─────────────────────────────────────────────
+// COMBAT
+// ─────────────────────────────────────────────
+function hasLineOfSight(c1,r1,c2,r2) {
+  if (c1===c2 && r1===r2) return true;
+  const dx = c2-c1, dy = r2-r1;
+  const steps = Math.max(Math.abs(dx),Math.abs(dy));
+  for (let i=1;i<steps;i++) {
+    const c = Math.round(c1+dx*(i/steps));
+    const r = Math.round(r1+dy*(i/steps));
+    const t = state.map[r][c];
+    if (t===TILE_WALL||t===TILE_VOID) return false;
+    const door2 = state.doors.find(d=>d.col===c&&d.row===r&&!d.open);
+    if (door2) return false;
+  }
+  return true;
+}
+
+function heroAttack(mon) {
+  if (state.hero.acted) { addLog('Ya actuaste este turno.'); return; }
+  state.hero.acted = true;
+  // Attack animation
+  attackAnim = {
+    fromCol: state.hero.col, fromRow: state.hero.row,
+    toCol: mon.col, toRow: mon.row,
+    isHero: true, t: 0,
+    cb: () => resolveCombat(state.hero, mon, true)
+  };
+}
+
+function resolveCombat(attacker, defender, isHeroAttacking) {
+  const isHero = isHeroAttacking;
+  const atkDice = attacker.attackDice;
+  const heroDefDice = state.hero.defendDice + extraDefDice + (invulnerable ? 99 : 0);
+  const defDice = isHero ? defender.defendDice : heroDefDice;
+  const atkRoll = rollCombatDice(atkDice);
+  const defRoll = rollCombatDice(defDice);
+
+  const skulls = countSkulls(atkRoll);
+  // Hero attacks monsters → black shields block; monsters attack hero → white shields block
+  const shields = isHero ? countBlackShields(defRoll) : countWhiteShields(defRoll);
+  const damage = Math.max(0, skulls - shields);
+
+  const atkName = isHero ? state.hero.name : MONSTER_DEFS[attacker.type]?.name || 'Monstruo';
+  const defName = isHero ? MONSTER_DEFS[defender.type]?.name || 'Monstruo' : state.hero.name;
+  addLog(`${atkName} ataca ${defName}: ${skulls} calavers vs ${shields} escudos = ${damage} daño`);
+
+  if (damage > 0) {
+    if (isHero) {
+      // Damage monster
+      const key = `${defender.col},${defender.row}`;
+      damageFlash[key] = {t:0, on:true};
+      defender.body -= damage;
+      if (defender.body <= 0) {
+        defender.alive = false;
+        addLog(`${defName} eliminado!`);
+        deathAnim[key] = {opacity:1, cb: ()=>{
+          checkVictory();
+        }};
+      }
+    } else {
+      // Damage hero
+      damageFlash[`${state.hero.col},${state.hero.row}`] = {t:0, on:true};
+      damageHero(damage);
+    }
+  } else {
+    addLog('Ataque bloqueado!');
+  }
+
+  if (isHero) {
+    // After hero attack, if still in hero turn
+    setTimeout(()=>{}, 100);
+  }
+}
+
+function damageHero(amount) {
+  state.hero.body -= amount;
+  addLog(`Recibes ${amount} de daño. Vida: ${state.hero.body}/${state.hero.maxBody}`);
+  if (state.hero.body <= 0) {
+    state.hero.body = 0;
+    state.phase = 'game_over';
+    setTimeout(()=>showGameOver(), 800);
+  }
+}
+
+// ─────────────────────────────────────────────
+// HERO ACTIONS
+// ─────────────────────────────────────────────
+function handleSearch() {
+  if (state.phase !== 'hero_turn' || state.hero.acted || moveMode) return;
+  // Check no monsters in "room"
+  const visibleMonsters = state.monsters.filter(m=>m.alive&&isRevealed(m.col,m.row));
+  if (visibleMonsters.length > 0) {
+    addLog('No puedes buscar con monstruos presentes.');
+    return;
+  }
+  state.hero.acted = true;
+  // Roll for trap detection or secret door
+  const nDice = state.hero.class==='dwarf' ? 2 : 1;
+  const roll = rollCombatDice(nDice);
+  const skulls = countSkulls(roll);
+  addLog(`Buscas... ${skulls} calavera(s)`);
+
+  // Check traps in adjacent cells
+  let found = false;
+  const adj = [[0,0],[0,-1],[0,1],[-1,0],[1,0]];
+  adj.forEach(([dc,dr])=>{
+    const tc=state.hero.col+dc, tr=state.hero.row+dr;
+    const trap = state.traps.find(t=>t.col===tc&&t.row===tr&&!t.detected&&!t.triggered);
+    if (trap && skulls>0) {
+      trap.detected = true;
+      addLog(`¡Trampa detectada en (${tc},${tr})!`);
+      found = true;
+    }
+  });
+
+  // Check secret doors
+  if (!found && skulls>0) {
+    state.secrets.forEach(sec=>{
+      if (!sec.revealed) {
+        const dc=Math.abs(state.hero.col-sec.col), dr=Math.abs(state.hero.row-sec.row);
+        if (dc+dr<=2) {
+          sec.revealed = true;
+          state.secretRevealed = true;
+          // Add a door
+          state.doors.push({col:sec.col, row:sec.row, dir:'v', open:false});
+          state.map[sec.row][sec.col] = TILE_DOOR_V;
+          state.revealed.add(`${sec.col},${sec.row}`);
+          addLog('¡Puerta secreta revelada!');
+          found = true;
+        }
+      }
+    });
+  }
+
+  // Check chests
+  if (!found) {
+    const {col,row} = state.hero;
+    const adj2 = [[0,-1],[0,1],[-1,0],[1,0]];
+    adj2.forEach(([dc,dr])=>{
+      const tc=col+dc, tr=row+dr;
+      if (state.map[tr]?.[tc]===TILE_CHEST) {
+        openChest(tc,tr);
+        found = true;
+      }
+    });
+  }
+
+  if (!found) addLog('No encuentras nada.');
+}
+
+function openChest(c, r) {
+  state.map[r][c] = TILE_FLOOR;
+  addLog('¡Abres el cofre!');
+  const roll = rollD6();
+  if (roll <= 2) {
+    // Trap
+    addLog('¡TRAMPA EN EL COFRE! 1 dado de ataque.');
+    const atkRoll = rollCombatDice(1);
+    const skulls = countSkulls(atkRoll);
+    if (skulls > 0) {
+      addLog(`¡${skulls} daño de trampa!`);
+      damageHero(skulls);
+    } else {
+      addLog('Esquivas la trampa.');
+    }
+  } else if (roll <= 4) {
+    const gold = rollD6() * 10;
+    state.hero.gold += gold;
+    addLog(`Encuentras ${gold} piezas de oro!`);
+  } else if (roll === 5) {
+    state.hero.potions++;
+    addLog('¡Encuentras una pocion de curacion!');
+  } else {
+    // Equipment
+    const items = ['Escudo (+1 def)', 'Cota de malla (+1 def)', 'Broadsword (+1 atk)'];
+    const item = items[Math.floor(Math.random()*items.length)];
+    addLog(`¡Encuentras: ${item}!`);
+    if (item.includes('+1 atk')) state.hero.attackDice++;
+    else state.hero.defendDice++;
+    state.hero.equipment.push(item);
+  }
+}
+
+function handlePotion() {
+  if (state.hero.potions <= 0) return;
+  state.hero.potions--;
+  const healed = Math.min(4, state.hero.maxBody - state.hero.body);
+  state.hero.body = Math.min(state.hero.maxBody, state.hero.body + 4);
+  addLog(`Usas una pocion. +${healed} Vida. Vida: ${state.hero.body}/${state.hero.maxBody}`);
+}
+
+function handleEndTurn() {
+  if (!state || state.phase !== 'hero_turn' || attackAnim || heroMoveAnim) return;
+  if (moveMode) { moveMode = false; state.hero.moved = true; pendingMoveSteps=0; return; }
+  state.hero.moved = true;
+  state.hero.acted = true;
+  startMonsterTurn();
+}
+
+// ─────────────────────────────────────────────
+// SPELLS
+// ─────────────────────────────────────────────
+function handleSpell() {
+  if (state.phase !== 'hero_turn' || state.hero.acted || state.hero.spells.length===0 || moveMode) return;
+  // Show spell select overlay
+  const sl = document.getElementById('spellList');
+  sl.innerHTML = '';
+  state.hero.spells.forEach(spellKey => {
+    const spell = SPELLS[spellKey];
+    if (!spell) return;
+    const div = document.createElement('div');
+    div.className = 'spellCard';
+    div.innerHTML = `<h4>${spell.name}</h4><p>${spell.desc}</p>`;
+    div.onclick = () => castSpell(spellKey);
+    sl.appendChild(div);
+  });
+  document.getElementById('spellSelect').style.display = 'flex';
+}
+
+function closeSpellSelect() {
+  document.getElementById('spellSelect').style.display = 'none';
+  waitingMonsterTarget = null;
+}
+
+function castSpell(spellKey) {
+  const spell = SPELLS[spellKey];
+  if (!spell) return;
+  state.hero.spells = state.hero.spells.filter(s=>s!==spellKey);
+  state.hero.usedSpells.push(spellKey);
+  document.getElementById('spellSelect').style.display = 'none';
+
+  if (spell.target === 'self') {
+    state.hero.acted = true;
+    applySelfSpell(spellKey);
+  } else if (spell.target === 'enemy') {
+    // Need to pick a target
+    spellPending = spellKey;
+    waitingMonsterTarget = (mon) => {
+      state.hero.acted = true;
+      applyEnemySpell(spellKey, mon);
+    };
+    addLog(`${spell.name}: toca un monstruo visible como objetivo.`);
+    document.getElementById('spellSelect').style.display = 'none';
+  } else if (spell.target === 'all_enemies') {
+    state.hero.acted = true;
+    applyAllEnemiesSpell(spellKey);
+  }
+}
+
+function applySelfSpell(spellKey) {
+  switch(spellKey) {
+    case 'healing':
+      const healed = Math.min(4, state.hero.maxBody-state.hero.body);
+      state.hero.body = Math.min(state.hero.maxBody, state.hero.body+4);
+      addLog(`Curacion: +${healed} Vida.`);
+      break;
+    case 'swift_wind':
+      pendingMoveSteps += 4;
+      if (!moveMode) { moveMode = true; }
+      addLog('Viento Rapido: +4 casillas de movimiento.');
+      break;
+    case 'veil_mist':
+      invulnerable = true;
+      addLog('Velo de Niebla: eres invulnerable este turno.');
+      break;
+    case 'water_shield': case 'rock_skin':
+      extraDefDice += 2;
+      addLog('Escudo magico: +2 dados defensa este turno.');
+      break;
+  }
+}
+
+function applyEnemySpell(spellKey, mon) {
+  const mName = MONSTER_DEFS[mon.type]?.name||'Monstruo';
+  switch(spellKey) {
+    case 'fireball':
+      mon.body -= 2;
+      addLog(`Bola de Fuego: ${mName} recibe 2 daño.`);
+      break;
+    case 'fire_wall':
+      mon.body -= 3;
+      addLog(`Muro de Fuego: ${mName} recibe 3 daño.`);
+      break;
+    case 'freeze':
+      frozenMonsters.add(mon.id);
+      addLog(`Congelar: ${mName} no actua el siguiente turno.`);
+      break;
+    case 'rock_volley': {
+      const roll = rollCombatDice(1);
+      const dmg = countSkulls(roll);
+      mon.body -= dmg;
+      addLog(`Roca Voladora: ${mName} recibe ${dmg} daño.`);
+      break;
+    }
+  }
+  const key = `${mon.col},${mon.row}`;
+  damageFlash[key] = {t:0, on:true};
+  if (mon.body <= 0) {
+    mon.alive = false;
+    addLog(`${mName} eliminado!`);
+    deathAnim[key] = {opacity:1, cb:()=>checkVictory()};
+  }
+}
+
+function applyAllEnemiesSpell(spellKey) {
+  const visible = state.monsters.filter(m=>m.alive&&isRevealed(m.col,m.row)&&hasLineOfSight(state.hero.col,state.hero.row,m.col,m.row));
+  if (visible.length===0) { addLog('No hay monstruos visibles.'); state.hero.spells.push(spellKey); state.hero.usedSpells.pop(); return; }
+  visible.forEach(mon=>{
+    const mName = MONSTER_DEFS[mon.type]?.name||'Monstruo';
+    const key = `${mon.col},${mon.row}`;
+    let dmg = 0;
+    if (spellKey==='wind_blast') {
+      const roll = rollCombatDice(1); dmg = countSkulls(roll);
+    } else if (spellKey==='storm') {
+      dmg = 1;
+    } else if (spellKey==='earth_quake') {
+      const roll = rollCombatDice(2); dmg = countSkulls(roll);
+    }
+    mon.body -= dmg;
+    addLog(`${mName}: ${dmg} daño.`);
+    damageFlash[key] = {t:0, on:true};
+    if (mon.body<=0) { mon.alive=false; addLog(`${mName} eliminado!`); deathAnim[key]={opacity:1, cb:()=>checkVictory()}; }
+  });
+}
+
+// ─────────────────────────────────────────────
+// MONSTER TURN (Zargon AI)
+// ─────────────────────────────────────────────
+function startMonsterTurn() {
+  state.phase = 'monster_turn';
+  invulnerable = false;
+  extraDefDice = 0;
+
+  const aliveVisible = state.monsters.filter(m=>m.alive&&isRevealed(m.col,m.row));
+  if (aliveVisible.length===0) {
+    endMonsterTurn();
+    return;
+  }
+
+  let idx = 0;
+  function nextMonster() {
+    if (idx >= aliveVisible.length) { endMonsterTurn(); return; }
+    const mon = aliveVisible[idx++];
+    if (!mon.alive) { nextMonster(); return; }
+    if (frozenMonsters.has(mon.id)) {
+      frozenMonsters.delete(mon.id);
+      addLog(`${MONSTER_DEFS[mon.type]?.name} esta congelado, salta turno.`);
+      setTimeout(nextMonster, 400);
+      return;
+    }
+    monsterAct(mon, ()=>setTimeout(nextMonster, 300));
+  }
+  setTimeout(nextMonster, 400);
+}
+
+function monsterAct(mon, cb) {
+  const h = state.hero;
+  const dc = Math.abs(mon.col-h.col), dr = Math.abs(mon.row-h.row);
+  if (dc+dr===1) {
+    // Attack hero
+    const mName = MONSTER_DEFS[mon.type]?.name||'Monstruo';
+    addLog(`${mName} ataca al heroe!`);
+    attackAnim = {
+      fromCol: mon.col, fromRow: mon.row,
+      toCol: h.col, toRow: h.row,
+      target: `${mon.col},${mon.row}`, isHero: false, t: 0,
+      cb: ()=>{
+        resolveCombat(mon, h, false);
+        setTimeout(cb, 200);
+      }
+    };
+  } else {
+    // Move toward hero
+    monsterMove(mon, cb);
+  }
+}
+
+function monsterMove(mon, cb) {
+  const steps = Math.min(rollD6()+2, mon.move);
+  let remaining = steps;
+  function step() {
+    if (remaining<=0 || !mon.alive) { cb(); return; }
+    remaining--;
+    const next = bestMoveToward(mon, state.hero.col, state.hero.row);
+    if (!next) { cb(); return; }
+    mon.col = next.c; mon.row = next.r;
+    // Check if adjacent after move
+    const dc=Math.abs(mon.col-state.hero.col), dr2=Math.abs(mon.row-state.hero.row);
+    if (dc+dr2===1) { remaining=0; }
+    setTimeout(step, 80);
+  }
+  step();
+}
+
+function bestMoveToward(mon, tc, tr) {
+  const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+  let best = null, bestDist = Infinity;
+  dirs.forEach(([dc,dr])=>{
+    const nc=mon.col+dc, nr=mon.row+dr;
+    if (!canMonsterMoveTo(nc,nr)) return;
+    const dist = Math.abs(nc-tc)+Math.abs(nr-tr);
+    if (dist<bestDist) { bestDist=dist; best={c:nc,r:nr}; }
+  });
+  return best;
+}
+
+function canMonsterMoveTo(c,r) {
+  if (c<0||c>=COLS||r<0||r>=ROWS) return false;
+  const t = state.map[r][c];
+  if (t===TILE_VOID||t===TILE_WALL) return false;
+  const door = state.doors.find(d=>d.col===c&&d.row===r&&!d.open);
+  if (door) return false; // monsters can't open doors
+  if (state.hero.col===c&&state.hero.row===r) return false;
+  if (state.monsters.some(m=>m.alive&&m.col===c&&m.row===r)) return false;
+  return true;
+}
+
+function endMonsterTurn() {
+  state.phase = 'hero_turn';
+  state.turn++;
+  state.hero.moved = false;
+  state.hero.acted = false;
+  addLog(`--- Turno ${state.turn} ---`);
+}
+
+// ─────────────────────────────────────────────
+// VICTORY / DEFEAT
+// ─────────────────────────────────────────────
+function checkVictory() {
+  // Check gargoyle alive
+  const gargoyle = state.monsters.find(m=>m.type==='gargoyle');
+  if (gargoyle && !gargoyle.alive) {
+    state.gargoyleAlive = false;
+  }
+  // Victory: hero on stair tile and gargoyle dead
+  if (!state.gargoyleAlive && state.hero.col===4 && state.hero.row===16) {
+    state.questComplete = true;
+    state.phase = 'victory';
+    showVictory();
+  }
+  // Also check if hero is on stair
+  if (state.map[state.hero.row]?.[state.hero.col]===TILE_STAIR) {
+    if (!state.gargoyleAlive) {
+      state.questComplete = true;
+      state.phase = 'victory';
+      showVictory();
+    } else {
+      addLog('El Gargoyle bloquea el paso! Debes derrotarlo primero.');
+    }
+  }
+}
+
+function showGameOver() {
+  document.getElementById('gameOverMsg').textContent = `Caiste en el turno ${state.turn}.`;
+  document.getElementById('gameOver').style.display = 'flex';
+}
+
+function showVictory() {
+  document.getElementById('victoryMsg').textContent = `Quest completada en ${state.turn} turnos! Oro: ${state.hero.gold}`;
+  document.getElementById('victory').style.display = 'flex';
+}
+
+function goToArmory() {
+  document.getElementById('victory').style.display = 'none';
+  const armoryGold = document.getElementById('armoryGold');
+  armoryGold.textContent = `ORO: ${state.hero.gold}`;
+  renderArmory();
+  document.getElementById('armory').style.display = 'flex';
+}
+
+function renderArmory() {
+  const items = [
+    { name:'Broadsword', desc:'+1 dado ataque', price:100, key:'broadsword', effect:()=>state.hero.attackDice++ },
+    { name:'Hacha de Batalla', desc:'+2 dados ataque', price:150, key:'battleaxe', effect:()=>state.hero.attackDice+=2 },
+    { name:'Escudo', desc:'+1 dado defensa', price:50, key:'shield', effect:()=>state.hero.defendDice++ },
+    { name:'Cota de Malla', desc:'+1 dado defensa', price:150, key:'chainmail', effect:()=>state.hero.defendDice++ },
+    { name:'Pocion Curacion', desc:'Recupera 4 vida', price:100, key:'potion', effect:()=>state.hero.potions++ },
+  ];
+  const container = document.getElementById('armoryItems');
+  container.innerHTML = '';
+  items.forEach(item=>{
+    const div = document.createElement('div');
+    div.className = 'armoryItem';
+    div.innerHTML = `<h4>${item.name}</h4><p>${item.desc}</p><div class="price">${item.price} oro</div>`;
+    div.onclick = ()=>{
+      if (state.hero.gold >= item.price) {
+        state.hero.gold -= item.price;
+        item.effect();
+        addLog(`Compraste: ${item.name}`);
+        document.getElementById('armoryGold').textContent = `ORO: ${state.hero.gold}`;
+      } else {
+        addLog('No tienes suficiente oro.');
+      }
+    };
+    container.appendChild(div);
+  });
+}
+
+function startQuest() {
+  document.getElementById('armory').style.display = 'none';
+  // Keep hero stats, restart map
+  const savedHero = {...state.hero};
+  questNumber++;
+  initState(savedHero.class);
+  // Restore upgraded stats
+  state.hero.body = savedHero.body;
+  state.hero.maxBody = savedHero.maxBody;
+  state.hero.mind = savedHero.mind;
+  state.hero.maxMind = savedHero.maxMind;
+  state.hero.attackDice = savedHero.attackDice;
+  state.hero.defendDice = savedHero.defendDice;
+  state.hero.gold = savedHero.gold;
+  state.hero.potions = savedHero.potions;
+  state.hero.equipment = savedHero.equipment;
+  // Restore spells
+  const hd = HERO_DEFS[savedHero.class];
+  state.hero.spells = [...hd.spells];
+  state.hero.usedSpells = [];
+  addLog(`Quest ${questNumber} comienza!`);
+  saveGame();
+}
+
+function restartGame() {
+  document.getElementById('gameOver').style.display = 'none';
+  showHeroSelect();
+}
+
+// ─────────────────────────────────────────────
+// UI HELPERS
+// ─────────────────────────────────────────────
+function showDice(msg) {
+  const overlay = document.getElementById('diceOverlay');
+  document.getElementById('diceLabel').textContent = msg;
+  overlay.style.display = 'block';
+  setTimeout(()=>{ overlay.style.display='none'; }, 1800);
+}
+
+// ─────────────────────────────────────────────
+// HERO SELECTION SCREEN
+// ─────────────────────────────────────────────
+function showHeroSelect() {
+  document.getElementById('heroSelect').style.display = 'flex';
+  document.getElementById('root').style.display = 'none';
+  document.getElementById('gameOver').style.display = 'none';
+  document.getElementById('victory').style.display = 'none';
+
+  const container = document.getElementById('heroCards');
+  container.innerHTML = '';
+  const heroList = [
+    { key:'barbarian', ...HERO_DEFS.barbarian },
+    { key:'dwarf',     ...HERO_DEFS.dwarf },
+    { key:'elf',       ...HERO_DEFS.elf },
+    { key:'wizard',    ...HERO_DEFS.wizard }
+  ];
+  heroList.forEach(h => {
+    const card = document.createElement('div');
+    card.className = 'heroCard';
+
+    const miniCanvas = document.createElement('canvas');
+    miniCanvas.width = 50; miniCanvas.height = 50;
+    const mctx = miniCanvas.getContext('2d');
+    mctx.fillStyle = '#020806';
+    mctx.fillRect(0,0,50,50);
+    drawHeroSprite(mctx, 0, 0, 50);
+
+    const nameEl = document.createElement('h3');
+    nameEl.textContent = h.name;
+
+    const descEl = document.createElement('div');
+    descEl.className = 'heroDesc';
+    descEl.textContent = h.special;
+
+    const stats = [['VIDA',h.body],['MENTE',h.mind],['ATAQUE',h.attackDice+'d'],['DEFENSA',h.defendDice+'d']];
+    const statsDiv = document.createElement('div');
+    statsDiv.style.width='100%';
+    stats.forEach(([label,val])=>{
+      const row = document.createElement('div');
+      row.className = 'heroStatRow';
+      const l = document.createElement('span'); l.className='hsl'; l.textContent=label;
+      const v = document.createElement('span'); v.className='hsv'; v.textContent=val;
+      row.appendChild(l); row.appendChild(v);
+      statsDiv.appendChild(row);
+    });
+
+    const btn = document.createElement('button');
+    btn.className = 'chooseBtn';
+    btn.textContent = 'ELEGIR';
+    btn.onclick = () => startGame(h.key);
+
+    card.appendChild(miniCanvas);
+    card.appendChild(nameEl);
+    card.appendChild(descEl);
+    card.appendChild(statsDiv);
+    card.appendChild(btn);
+    container.appendChild(card);
+  });
+}
+
+function startGame(heroClass) {
+  document.getElementById('heroSelect').style.display = 'none';
+  document.getElementById('root').style.display = 'flex';
+  initState(heroClass);
+  resizeCanvas();
+  addLog(`Bienvenido, ${state.hero.name}!`);
+  addLog('Objetivo: llega a la escalera en la Sala del Trono.');
+  addLog('Mata al Gargoyle para abrir el paso.');
+  saveGame();
+  if (!animFrame) loop(0);
+}
+
+// ─────────────────────────────────────────────
+// SAVE / LOAD
+// ─────────────────────────────────────────────
+function saveGame() {
+  try {
+    const save = {
+      hero: state.hero,
+      questNumber,
+      gold: state.hero.gold
+    };
+    localStorage.setItem('heroquest_save', JSON.stringify(save));
+  } catch(e) {}
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('load', ()=>{
+  showHeroSelect();
+  requestAnimationFrame(loop);
+});
+</script>
+</body>
+</html>
