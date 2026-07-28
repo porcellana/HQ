@@ -1,18 +1,135 @@
 //+------------------------------------------------------------------+
-//|                                               TrendRiderH1.mq5   |
+//|                                                 TrendRiderH1.mq5 |
 //|                                                                  |
-//|  Estrategia seguidora de tendencia (NO reversion) para H1.       |
-//|                                                                  |
-//|  Logica:                                                         |
-//|    1) Filtro de tendencia   : EMA rapida vs EMA lenta            |
-//|    2) Filtro de TF superior : precio / pendiente EMA (opcional)  |
-//|    3) Fuerza de tendencia   : ADX minimo (opcional)              |
-//|    4) Entrada               : ruptura de canal Donchian a favor  |
-//|    5) Salida                : SL por ATR, breakeven, parcial y   |
-//|                               trailing Chandelier por ATR        |
-//|                                                                  |
-//|  Todo esta parametrizado para poder optimizar en el Strategy      |
-//|  Tester de MetaTrader 5.                                          |
+//|   ESTRATEGIA SEGUIDORA DE TENDENCIA PARA H1 (NO reversion)       |
+//|   Archivo unico y autocontenido: manual + codigo.                |
+//+------------------------------------------------------------------+
+//
+//  ==================================================================
+//  1. INSTALACION
+//  ==================================================================
+//  1) MetaEditor -> Archivo -> Abrir carpeta de datos.
+//  2) Copiar este archivo en MQL5\Experts\
+//  3) Abrirlo en MetaEditor y compilar con F7.
+//  4) Arrastrarlo a un grafico H1 y habilitar el trading algoritmico.
+//
+//  El parametro InpSignalTF fija el timeframe de las senales (H1 por
+//  defecto), asi que funciona aunque el grafico este en otro periodo.
+//
+//  ==================================================================
+//  2. IDEA DE LA ESTRATEGIA
+//  ==================================================================
+//  Cuatro bloques, sin amontonar indicadores:
+//
+//    1) DIRECCION : EMA rapida vs EMA lenta (50/200). Decide si solo
+//                   se permiten compras o solo ventas.
+//    2) CONTEXTO  : EMA del timeframe superior (D1). Opcional.
+//    3) DISPARO   : ruptura de canal Donchian (20 velas) A FAVOR de
+//                   la tendencia, confirmada al cierre de la vela.
+//    4) GESTION   : ATR -> stop inicial, breakeven, cierre parcial y
+//                   trailing Chandelier.
+//
+//  Es la estructura clasica de un sistema de breakout con filtro de
+//  tendencia. Su ventaja NO viene del porcentaje de aciertos (sera
+//  bajo, 30-45% tipicamente) sino de la ASIMETRIA: perdidas acotadas
+//  a 1R y ganadoras que el trailing deja correr varios R.
+//
+//  ------------------------------------------------------------------
+//  REGLAS EXACTAS
+//  ------------------------------------------------------------------
+//  Todo se evalua AL CIERRE de la vela H1 (vela 1) y la orden se envia
+//  en la apertura de la siguiente. No hay repintado ni lectura de la
+//  vela en curso.
+//
+//  COMPRA (se exigen todas):
+//    1) EMA_rapida(1) > EMA_lenta(1)
+//    2) Cierre(1) > EMA_rapida(1)      [si InpRequirePriceSide=true]
+//    3) Filtro TF superior: Cierre(D1,1) > EMA_D1(1) y/o EMA de D1
+//       ascendente, segun InpHtfMode
+//    4) ADX(1) >= InpAdxMinLevel       [si InpUseAdx=true]
+//    5) Cierre(1) > maximo de las N velas anteriores. El canal se
+//       calcula EXCLUYENDO la vela de la ruptura.
+//    6) |Cierre(1) - EMA_rapida(1)| <= InpMaxExtAtr * ATR
+//       (evita perseguir un movimiento ya estirado)
+//
+//  VENTA: exactamente lo simetrico.
+//
+//  ------------------------------------------------------------------
+//  GESTION DE LA POSICION
+//  ------------------------------------------------------------------
+//    - Stop inicial : InpSlAtrMult * ATR desde la entrada. Es la
+//                     referencia de 1R y la base del calculo del lote.
+//    - Take profit  : opcional (InpTpAtrMult). Desactivado por defecto
+//                     para no cortar las tendencias largas.
+//    - Breakeven    : al alcanzar InpBeTriggerAtr * ATR de beneficio,
+//                     el stop pasa a entrada + InpBeOffsetAtr * ATR.
+//    - Parcial      : al alcanzar InpPartialTriggerAtr * ATR se cierra
+//                     el InpPartialPercent % del volumen inicial, una
+//                     sola vez por posicion.
+//    - Trailing     : Chandelier. Para largos, maximo de las ultimas N
+//                     velas - InpTrailAtrMult * ATR (simetrico en
+//                     cortos). Solo se mueve a favor, nunca en contra,
+//                     y respeta la distancia minima del broker.
+//
+//  ==================================================================
+//  3. COMO OPTIMIZARLA SIN SOBREAJUSTAR
+//  ==================================================================
+//  No optimices los 40 parametros a la vez: el resultado lo determinan
+//  5 o 6. Trabaja por fases y fija el resto.
+//
+//  PASO 1 - Nucleo de la senal (lo que mas pesa):
+//     Parametro            Inicio   Paso   Fin
+//     InpEmaFastPeriod        20      10    80
+//     InpEmaSlowPeriod       100      25   250
+//     InpBreakoutPeriod       10       5    55
+//
+//  PASO 2 - Gestion (fijando ya lo del paso 1):
+//     InpSlAtrMult           1.0     0.5   4.0
+//     InpTrailAtrMult        1.5     0.5   5.0
+//     InpTrailLookback        10       5    40
+//
+//  PASO 3 - Filtros, uno a uno y solo si aportan:
+//     InpAdxMinLevel          15       5    35
+//     InpHtfMode               0       1     3
+//     InpMaxExtAtr           1.5     0.5   5.0
+//     franja horaria (InpStartHour / InpEndHour)
+//
+//  REGLAS PRACTICAS
+//    - Modelado: "Every tick based on real ticks" para la validacion
+//      final. "1 minute OHLC" vale para las pasadas rapidas, pero
+//      confirma siempre el mejor grupo con ticks reales.
+//    - Criterio: optimiza por FACTOR DE RECUPERACION o SHARPE, nunca
+//      por beneficio neto: el beneficio neto premia el sobreajuste.
+//    - Muestra minima: descarta combinaciones con menos de ~100
+//      operaciones. Con menos, el resultado es ruido.
+//    - Mesetas, no picos: en el mapa de optimizacion elige un valor
+//      rodeado de vecinos tambien rentables. Un pico aislado no
+//      sobrevive fuera de muestra.
+//    - Out-of-sample: optimiza en el 70% inicial del historico y valida
+//      en el 30% final SIN TOCAR NADA. Si se desmorona, estaba
+//      sobreajustado.
+//    - Forward test: 1-2 meses en demo con el broker real antes de ir
+//      a real. En H1 el spread, la comision y el swap cambian mucho el
+//      resultado.
+//    - Riesgo: empieza en 0.5-1%. Optimizar el riesgo no mejora el
+//      sistema, solo escala la curva y el drawdown.
+//
+//  DONDE FUNCIONA MEJOR
+//    Instrumentos con tendencias sostenidas y coste de transaccion bajo
+//    respecto al ATR de H1: indices (US500, NAS100, GER40), oro
+//    (XAUUSD) y divisas con recorrido (GBPJPY, EURUSD, AUDJPY). En
+//    pares muy laterales o con spread alto frente a su ATR, el rango se
+//    lo come a base de pequenas perdidas.
+//
+//  ==================================================================
+//  4. AVISO
+//  ==================================================================
+//  Esto es una herramienta de investigacion, no una garantia de
+//  rentabilidad. Un backtest favorable describe el pasado; no promete
+//  el futuro. Prueba en demo antes de arriesgar dinero real y dimensiona
+//  el riesgo asumiendo que habra rachas perdedoras largas: son
+//  intrinsecas a cualquier sistema seguidor de tendencia.
+//
 //+------------------------------------------------------------------+
 #property copyright "TrendRider"
 #property link      ""
