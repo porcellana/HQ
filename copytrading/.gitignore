@@ -1,0 +1,9 @@
+# Sesión de Telethon: equivale a credenciales de acceso a la cuenta de Telegram
+*.session
+*.session-journal
+
+# Variables de entorno con secretos
+.env
+
+__pycache__/
+*.pyc
