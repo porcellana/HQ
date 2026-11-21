@@ -59,6 +59,7 @@ export function questStatus(h: QuestHolder, id: string): QuestStatus {
   }
   const reqOk = (q.requires ?? []).every((r) => h.quests[r]?.status === 'completada' || (h.quests[r]?.completions ?? 0) > 0);
   if (!reqOk || h.player.level < (q.minLevel ?? 1)) return 'bloqueada';
+  if (q.requiresFlag && !h.flags[q.requiresFlag]) return 'bloqueada';
   return 'disponible';
 }
 

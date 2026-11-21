@@ -5,7 +5,7 @@
  * SUBE `CURRENT_SAVE_VERSION` en save/migrations.ts y añade una migración
  * para que las partidas antiguas sigan funcionando.
  */
-import { START_ZONE_ID, getClass, getZoneDef } from '@/data/registry';
+import { START_ZONE_ID, getBackground, getClass, getZoneDef } from '@/data/registry';
 import type { StatBlock } from '@/data/schema';
 import { addItem, equip, type Equipment } from './items/inventory';
 import { createItem, type ItemInstance } from './items/items';
@@ -38,6 +38,12 @@ export interface PlayerState {
   equipment: Equipment;
   /** Pendiente de recibir el equipo inicial de su clase (partidas migradas). */
   needsStarterKit?: boolean;
+  /** Trasfondo (data/backgrounds). */
+  background?: string;
+  /** Talentos elegidos (data/talents). */
+  talents: string[];
+  /** Talentos pendientes de elegir (uno por cada nivel subido). */
+  talentChoices: number;
   /** Zona (templo) donde reapareces al caer. Por defecto, la capilla de la aldea. */
   respawnZone?: string;
   level: number;
@@ -71,6 +77,8 @@ export interface GameState {
   world: WorldState;
   /** Estadísticas de la partida (pantalla final). */
   record: GameRecord;
+  /** Compañeros: quién va contigo, su vida y su aprobación. */
+  party: PartyState;
   playTimeSec: number;
   createdAt: string;
 }
@@ -85,6 +93,20 @@ export interface GameRecord {
   victoryTime: number;
 }
 
+export interface PartyState {
+  /** Id del compañero que va contigo (data/companions) o null. */
+  active: string | null;
+  hp: number;
+  /** Caído (0 PV): no lucha hasta que acabe el combate o descanses. */
+  down: boolean;
+  /** Aprobación de cada compañero (−10..10). */
+  approval: Record<string, number>;
+}
+
+export function emptyParty(): PartyState {
+  return { active: null, hp: 0, down: false, approval: {} };
+}
+
 export function emptyRecord(): GameRecord {
   return { kills: 0, bosses: 0, deaths: 0, victoryTurn: 0, victoryTime: 0 };
 }
@@ -93,8 +115,10 @@ export interface NewGameOptions {
   name: string;
   classId: string;
   portrait: number;
-  /** Características ya repartidas en la pantalla de creación. */
+  /** Características ya repartidas en la pantalla de creación (sin el bono del trasfondo). */
   stats: StatBlock;
+  /** Trasfondo elegido (por defecto, "aventurero"). */
+  background?: string;
   seed: number;
 }
 
@@ -105,6 +129,9 @@ export function createNewGame(opts: NewGameOptions): GameState {
   const zone = buildZone(def);
   const spawn = zone.spawn ?? { x: 1, y: 1 };
   const cls = getClass(opts.classId);
+  const bg = getBackground(opts.background);
+  const stats = { ...opts.stats };
+  for (const [k, v] of Object.entries(bg?.statBonus ?? {})) stats[k as keyof StatBlock] += v ?? 0;
   const state: GameState = {
     seed: opts.seed,
     turn: 0,
@@ -112,8 +139,11 @@ export function createNewGame(opts: NewGameOptions): GameState {
       name: opts.name,
       classId: cls.id,
       portrait: opts.portrait,
-      stats: { ...opts.stats },
+      stats,
       attributePoints: 0,
+      background: bg?.id ?? 'aventurero',
+      talents: [],
+      talentChoices: 0,
       inventory: [],
       equipment: {},
       needsStarterKit: true,
@@ -123,7 +153,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
       maxHp: 1,
       mp: 0,
       maxMp: 0,
-      gold: cls.startingGold,
+      gold: cls.startingGold + (bg?.gold ?? 0),
       pos: { zone: zone.id, x: spawn.x, y: spawn.y },
     },
     visitedZones: [zone.id],
@@ -132,9 +162,19 @@ export function createNewGame(opts: NewGameOptions): GameState {
     shops: {},
     world: emptyWorld(),
     record: emptyRecord(),
+    party: emptyParty(),
     playTimeSec: 0,
     createdAt: new Date().toISOString(),
   };
+  // Objetos del trasfondo (no se equipan solos: el jugador decide).
+  const rng = new Rng(0xb6);
+  for (const s of bg?.startingItems ?? []) {
+    try {
+      addItem(state.player, createItem(s.item, 'comun', rng, { qty: s.qty ?? 1 }));
+    } catch {
+      console.warn(`[trasfondo] objeto desconocido: ${s.item}`);
+    }
+  }
   recalcPlayer(state.player);
   state.player.hp = state.player.maxHp;
   state.player.mp = state.player.maxMp;
@@ -152,6 +192,8 @@ export function recalcPlayer(p: PlayerState): void {
   p.classId = cls.id;
   p.inventory ??= [];
   p.equipment ??= {};
+  p.talents ??= [];
+  p.talentChoices ??= 0;
   if (p.needsStarterKit) giveStarterKit(p);
   const d = derive(p);
   p.maxHp = d.maxHp;

@@ -34,9 +34,9 @@ export function sellRate(cha: number): number {
   return Math.max(0.2, Math.min(0.5, 0.35 + 0.03 * abilityModifier(cha)));
 }
 
-/** Precio de compra de UNA unidad. */
-export function buyPrice(it: ItemInstance, shop: ShopDef, cha: number): number {
-  return Math.max(1, Math.round(itemValue({ ...it, qty: 1 }) * shop.priceMult * buyDiscount(cha)));
+/** Precio de compra de UNA unidad. `discount` = % ganado en diálogos (0..50). */
+export function buyPrice(it: ItemInstance, shop: ShopDef, cha: number, discount = 0): number {
+  return Math.max(1, Math.round(itemValue({ ...it, qty: 1 }) * shop.priceMult * buyDiscount(cha) * (1 - Math.min(50, discount) / 100)));
 }
 
 /** Lo que te pagan por UNA unidad. */
@@ -97,20 +97,20 @@ export interface Customer {
 }
 
 /** Compra `qty` unidades de un objeto del stock. Devuelve un error o null. */
-export function buy(t: Trader, shopId: string, c: Customer, cha: number, uid: string, qty = 1): string | null {
+export function buy(t: Trader, shopId: string, c: Customer, cha: number, uid: string, qty = 1, discount = 0): string | null {
   const shop = getShop(shopId);
   const st = ensureStock(t, shopId);
   const it = st.items.find((x) => x.uid === uid);
   if (!it) return 'Ese objeto ya no está a la venta.';
   const n = Math.min(qty, it.qty);
-  const cost = buyPrice(it, shop, cha) * n;
+  const cost = buyPrice(it, shop, cha, discount) * n;
   if (c.gold < cost) return `No tienes suficiente oro (cuesta ${cost}).`;
   if (freeSlots(c) <= 0 && !c.inventory.some((x) => x.id === it.id && itemDef(x).stackable)) return 'Tu mochila está llena.';
   const bought: ItemInstance = { ...it, uid: newUid(), qty: n, affixes: it.affixes.map((a) => ({ ...a })) };
   const left = addItem(c, bought);
   const got = n - left;
   if (got <= 0) return 'Tu mochila está llena.';
-  c.gold -= buyPrice(it, shop, cha) * got;
+  c.gold -= buyPrice(it, shop, cha, discount) * got;
   it.qty -= got;
   if (it.qty <= 0) st.items = st.items.filter((x) => x !== it);
   return null;

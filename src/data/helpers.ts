@@ -2,7 +2,7 @@
  * Ayudantes para escribir contenido más rápido. NO es una carpeta de datos:
  * el registro no carga este archivo; los datos lo importan.
  */
-import type { DialogNode, DialogOption, ZoneDef } from './schema';
+import type { DialogEffect, DialogNode, DialogOption, ZoneDef } from './schema';
 
 /**
  * Crea un interior (casa, tienda, templo...). La salida '1' del mapa vuelve a
@@ -64,4 +64,15 @@ export function npcDialog(o: {
     };
   }
   return nodes;
+}
+
+/** Opciones estándar para cerrar un nodo de respuesta. */
+export const BACK: DialogOption[] = [
+  { label: 'Volver', goto: 'inicio' },
+  { label: 'Adiós', action: { type: 'end' } },
+];
+
+/** Nodo de respuesta con efectos (aplicados una sola vez si se da `once`). */
+export function reply(text: string | string[], effects?: DialogEffect[], once?: string, options: DialogOption[] = BACK): DialogNode {
+  return { text, options, ...(effects ? { effects } : {}), ...(once ? { once } : {}) };
 }

@@ -262,6 +262,8 @@ export interface ClassDef {
   unarmed?: { name: string; dice: string; stat: AbilityKey; damageType: DamageType };
   /** Equipo y objetos con los que empieza. */
   startingItems: StartingItem[];
+  /** Competencias en habilidades sociales (suman el bonificador de competencia). */
+  skillProficiencies?: SkillKey[];
   /** Rango de crítico natural (20 = sólo 20; 19 = 19-20). */
   critRange: number;
   startingGold: number;
@@ -517,6 +519,8 @@ export type DialogAction =
   | { type: 'quests' }
   /** Pone una bandera de historia. */
   | { type: 'flag'; flag: string }
+  /** El compañero que te acompaña se separa de ti. */
+  | { type: 'dismiss' }
   /** Cierra el diálogo. */
   | { type: 'end' };
 
@@ -529,12 +533,55 @@ export interface DialogOption {
   ifFlag?: string;
   /** Sólo aparece si la misión está en ese estado. */
   ifQuest?: { quest: string; state: 'disponible' | 'activa' | 'completada' };
+  /** Sólo con este trasfondo (o alguno de la lista). La opción se marca con su nombre. */
+  ifBackground?: string | string[];
+  /** Sólo con esta clase (o alguna de la lista). */
+  ifClass?: string | string[];
+  /** Sólo si este compañero va contigo. */
+  ifCompanion?: string;
+  /** Sólo si llevas al menos este oro (para opciones de pago). */
+  ifGold?: number;
+  /** Sólo si la actitud del PNJ es al menos `min` (ver efecto `attitude`). */
+  ifAttitude?: { npc: string; min: number };
+  /**
+   * Prueba de habilidad: se tira d20 + bonificador contra `dc`. Salta al nodo
+   * `success` o `failure` (y a `crit`/`fumble` con un 20 o un 1 naturales, si existen).
+   */
+  check?: { skill: SkillKey; dc: number; success: string; failure: string; crit?: string; fumble?: string };
 }
+
+/**
+ * Consecuencia de un diálogo (se aplica al entrar en el nodo). Con `once` en el
+ * nodo, sólo la primera vez.
+ */
+export type DialogEffect =
+  | { type: 'gold'; amount: number }
+  | { type: 'item'; item: string; qty?: number }
+  | { type: 'xp'; amount: number }
+  | { type: 'flag'; flag: string; value?: boolean | number | string }
+  /** Descuento permanente (porcentaje 0..50) en una tienda. */
+  | { type: 'discount'; shop: string; pct: number }
+  /** Aparecen enemigos junto a ti y empieza una pelea (cierra el diálogo). */
+  | { type: 'fight'; enemy: string; count?: number }
+  /** Cambia la aprobación de un compañero (si va contigo). */
+  | { type: 'approval'; companion: string; amount: number }
+  /** Cambia la actitud de un PNJ hacia ti (se guarda como número). */
+  | { type: 'attitude'; npc: string; amount: number }
+  /** Recluta a un compañero. */
+  | { type: 'recruit'; companion: string }
+  /** Curación completa. */
+  | { type: 'heal' }
+  /** Acepta una misión. */
+  | { type: 'quest'; quest: string };
 
 export interface DialogNode {
   /** Texto del PNJ. Si es una lista, se elige uno al azar (rumores). */
   text: string | string[];
   options: DialogOption[];
+  /** Consecuencias al llegar a este nodo. */
+  effects?: DialogEffect[];
+  /** Bandera que impide repetir los efectos (se pone al aplicarlos). */
+  once?: string;
 }
 
 /** Aspecto de un PNJ (cuerpo humanoide con colores y capa opcional). */
@@ -561,6 +608,10 @@ export interface NpcDef {
   dialog: Record<string, DialogNode>;
   /** Mira hacia la izquierda. */
   facingLeft?: boolean;
+  /** No aparece si esta bandera está puesta (p. ej. compañero ya reclutado). */
+  hideIfFlag?: string;
+  /** Sólo aparece si esta bandera está puesta. */
+  showIfFlag?: string;
 }
 
 /** Entrada del stock de una tienda. */
@@ -609,7 +660,126 @@ export interface QuestDef {
   rewards: { xp: number; gold: number; items?: Array<{ item: string; qty?: number }>; flag?: string };
   /** Misiones que hay que haber completado antes. */
   requires?: string[];
+  /** Sólo disponible si esta bandera de historia está puesta. */
+  requiresFlag?: string;
   minLevel?: number;
   /** Repetibles: turnos hasta que se puede volver a coger. */
   cooldownTurns?: number;
+}
+
+// ===========================================================================
+// IDENTIDAD DEL PERSONAJE (v0.2): HABILIDADES, TRASFONDOS, TALENTOS, COMPAÑEROS
+// ===========================================================================
+
+/** Habilidades para pruebas en diálogos (estilo D&D). */
+export type SkillKey =
+  | 'persuasion' | 'intimidacion' | 'engano' | 'perspicacia' | 'arcanos' | 'atletismo' | 'sigilo' | 'juego_manos';
+
+/** Trasfondo: quién eras antes de ser aventurero. */
+export interface BackgroundDef {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  /** Rasgo descrito al jugador (sabor). */
+  feature: string;
+  /** Bonificación a características (se suma al crear el personaje). */
+  statBonus?: Partial<StatBlock>;
+  /** Competencias en habilidades. */
+  proficiencies: SkillKey[];
+  startingItems?: StartingItem[];
+  gold?: number;
+  /** No se ofrece al crear (p. ej. el de las partidas antiguas). */
+  hidden?: boolean;
+}
+
+/**
+ * Efecto declarativo de un talento. El motor (game.ts) los consulta en sus
+ * "ganchos": al atacar, al matar, al recibir un ataque, al lanzar habilidades...
+ */
+export type TalentEffect =
+  /** Bono pasivo (como el de un objeto). */
+  | { type: 'stat'; stat: BonusStat; amount: number }
+  /** Al matar a un enemigo: recuperas recurso/vida, te ocultas o atacas a otro adyacente. */
+  | { type: 'onKill'; restore?: number; heal?: number; stealth?: number; cleave?: boolean }
+  /** Tus críticos con arma aplican un estado. */
+  | { type: 'onCrit'; status: StatusApply }
+  /** Rango de crítico del arma −N (19-20, 18-20…). */
+  | { type: 'critRange'; amount: number }
+  /** Si un enemigo falla un ataque cuerpo a cuerpo contra ti, puedes devolver el golpe. */
+  | { type: 'counter'; chance: number }
+  /** Probabilidad de esquivar por completo un golpe que te iba a dar. */
+  | { type: 'dodge'; chance: number }
+  /** Quien te golpea cuerpo a cuerpo recibe daño. */
+  | { type: 'thorns'; dice: string; damageType: DamageType }
+  /** Con poca vida (≤ threshold %) haces más daño con el arma. */
+  | { type: 'berserk'; threshold: number; damage: number }
+  /** Tus ataques con arma pueden envenenar. */
+  | { type: 'poisonStrike'; chance: number; turns: number }
+  /** El primer ataque desde sigilo aturde 1 turno. */
+  | { type: 'stealthStun' }
+  /** Recuperas vida al dañar con el arma (porcentaje del daño). */
+  | { type: 'lifesteal'; pct: number }
+  /** En combate recuperas `amount` PV cada `every` turnos. */
+  | { type: 'regen'; every: number; amount: number }
+  /** Inmune a un estado. */
+  | { type: 'immune'; status: StatusId }
+  /** +daño a los hechizos de un tipo. */
+  | { type: 'spellPower'; damageType: DamageType; amount: number }
+  /** Modifica una habilidad de clase. */
+  | {
+      type: 'skillMod';
+      skill: string;
+      extraDice?: string;
+      damageType?: DamageType;
+      applyStatus?: StatusApply;
+      costDelta?: number;
+      radiusDelta?: number;
+      hitsDelta?: number;
+      /** Salta a `bounce` enemigos más cercanos (hechizos de un objetivo). */
+      bounce?: number;
+      /** Deja el suelo ardiendo N turnos donde impacta (hechizos de área). */
+      burnGround?: number;
+    }
+  /** Tus curaciones dañan a los no-muertos cercanos. */
+  | { type: 'healSmite'; dice: string; radius: number };
+
+export interface TalentDef {
+  id: string;
+  /** Clase a la que pertenece ("todas" = genérico). */
+  classId: string;
+  /** Rama (Piromante, Berserker...). */
+  branch: string;
+  name: string;
+  icon: string;
+  description: string;
+  /** Nivel mínimo para que se ofrezca. */
+  minLevel: number;
+  /** Se puede elegir varias veces (talentos genéricos de relleno). */
+  repeatable?: boolean;
+  /** Requiere tener antes otro talento. */
+  requires?: string;
+  effects: TalentEffect[];
+}
+
+/** Momentos en los que un compañero comenta algo. */
+export type CompanionEvent = 'recluta' | 'mazmorra' | 'jefe' | 'nivel' | 'aprueba' | 'desaprueba' | 'caido' | 'victoria' | 'mata';
+
+export interface CompanionDef {
+  id: string;
+  name: string;
+  title: string;
+  /** PNJ con el que se habla para reclutarle (y su diálogo cuando va contigo). */
+  npc: string;
+  look: NpcLook;
+  /** Forma de luchar. */
+  role: 'melee' | 'ranged';
+  hpBase: number;
+  hpPerLevel: number;
+  ac: number;
+  attack: { name: string; toHit: number; dice: string; damageType: DamageType; range: number };
+  /** Frases por momento (se elige una al azar). */
+  comments: Partial<Record<CompanionEvent, string[]>>;
+  /** Qué le gusta y qué no (texto para el jugador). */
+  likes: string;
 }

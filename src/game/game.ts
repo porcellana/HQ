@@ -7,8 +7,8 @@
  *     → inicio del turno del jugador (estados, regeneración, encuentros)
  * El combate ocurre en el mismo mapa, sin cambiar de pantalla.
  */
-import { ORES, TRAPS, getClass, getEnemy, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
-import type { DamageType, EnemySpell, NpcDef, SkillDef, SkillEffect, StatusApply, ZoneFeature } from '@/data/schema';
+import { COMPANIONS, NPCS, ORES, TRAPS, getClass, getEnemy, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
+import type { CompanionDef, CompanionEvent, DamageType, DialogNode, EnemySpell, NpcDef, SkillDef, SkillEffect, SkillKey, StatusApply, StatusId, ZoneFeature } from '@/data/schema';
 import { Emitter } from '@/engine/events';
 import { findPath, type Point } from '@/engine/pathfinding';
 import { Rng, hashString } from '@/engine/rng';
@@ -29,7 +29,9 @@ import { attributePointsAtLevel, proficiencyBonus, unlockedSkills } from './rule
 import { derive, type Derived } from './rules/derived';
 import { abilityModifier, roll, rollD20 } from './rules/dice';
 import { levelForXp } from './rules/progression';
-import { emptyRecord, recalcPlayer, type GameState } from './state';
+import { emptyParty, emptyRecord, recalcPlayer, type GameState } from './state';
+import { skillMods, talentEffects } from './talents';
+import { SKILLS, skillBonus } from './rules/skills';
 import { nextHop, questGoalZone, zoneName } from './quests/guide';
 import { addItem, equip, removeQty, unequip } from './items/inventory';
 import { itemDef, rarityOf, type ItemInstance } from './items/items';
@@ -64,6 +66,40 @@ export interface LevelUpEvent {
   mpGain: number;
   points: number;
   skills: SkillDef[];
+  /** Talentos por elegir tras esta subida. */
+  talentChoices: number;
+}
+
+/** Compañero en el mapa (su vida y aprobación se guardan en state.party). */
+export interface Ally {
+  def: CompanionDef;
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  facing: 'left' | 'right';
+  bumpT: number;
+  bumpDx: number;
+  bumpDy: number;
+  flashT: number;
+}
+
+/** Casilla peligrosa temporal (suelo ardiendo). No se guarda. */
+export interface Hazard {
+  x: number;
+  y: number;
+  turns: number;
+  dice: string;
+  damageType: DamageType;
+}
+
+/** Resultado de una prueba de habilidad en un diálogo. */
+export interface CheckResult {
+  success: boolean;
+  natural: number;
+  total: number;
+  bonus: number;
+  dc: number;
 }
 
 export interface GameEvents extends Record<string, unknown> {
@@ -158,6 +194,15 @@ export class Game {
   /** Golpes de pico dados a cada veta (se pierde al salir de la zona). */
   private mineHits = new Map<string, number>();
   ground: GroundLoot[] = [];
+  /** Compañero que te acompaña en esta zona (null si no hay). */
+  ally: Ally | null = null;
+  /** Suelo ardiendo y similares. */
+  hazards: Hazard[] = [];
+  private allyPending = false;
+  /** Quién causó el daño en curso (para los efectos "al matar" de los talentos). */
+  private killContext: 'weapon' | 'spell' | 'ally' | 'other' = 'other';
+  /** Evita encadenar golpes gratis infinitos (Carnicería). */
+  private freeStrike = false;
   fx: Fx[] = [];
   /** Habilidad elegida esperando objetivo. */
   targeting: SkillDef | null = null;
@@ -190,7 +235,9 @@ export class Game {
       rx: p.x, ry: p.y, facing: 'right', stepT: -1, from: { x: p.x, y: p.y }, to: { x: p.x, y: p.y },
       path: [], target: null, bumpT: 0, bumpDx: 0, bumpDy: 0, flashT: 0,
     };
+    state.party ??= emptyParty();
     this.populateZone();
+    this.spawnAlly();
   }
 
   private loadZoneOrFallback(id: string): Zone {
@@ -286,6 +333,17 @@ export class Game {
     }
     const from = this.isMoving ? this.view.to : this.playerPos;
     this.pendingTalk = null;
+    // Tocar al compañero (fuera de combate) = hablar con él.
+    if (this.allyAt(x, y) && !this.inCombat && this.canAct) {
+      const cn = this.companionNpc();
+      if (cn) {
+        this.cancelPath();
+        const qm = Quests.onTalk(this.state, cn.id);
+        for (const m of qm) this.msg(m, 'good');
+        this.events.emit('npcTalk', { npc: cn });
+        return;
+      }
+    }
     const npc = this.npcAt(x, y);
     if (npc && this.canAct && this.canTalk(npc)) {
       this.cancelPath();
@@ -383,8 +441,13 @@ export class Game {
     const p = this.state.player;
     if (skill.unlockLevel > p.level) return `Se desbloquea a nivel ${skill.unlockLevel}.`;
     if ((this.combat.cooldowns[skill.id] ?? 0) > 0) return `${skill.name} se está recargando (${this.combat.cooldowns[skill.id]} turnos).`;
-    if (p.mp < skill.cost) return `No tienes suficiente ${this.cls.resource.name.toLowerCase()}.`;
+    if (p.mp < this.skillCost(skill)) return `No tienes suficiente ${this.cls.resource.name.toLowerCase()}.`;
     return null;
+  }
+
+  /** Coste real de una habilidad (los talentos pueden abaratarla). */
+  skillCost(skill: SkillDef): number {
+    return Math.max(0, skill.cost + skillMods(this.state.player, skill.id).reduce((a, m) => a + (m.costDelta ?? 0), 0));
   }
 
   inSkillRange(skill: SkillDef, target: Point): boolean {
@@ -461,6 +524,12 @@ export class Game {
       return;
     }
     v.path.shift();
+    // Si el compañero está en medio, os intercambiáis el sitio.
+    const al = this.allyAt(next.x, next.y);
+    if (al) {
+      al.x = pos.x;
+      al.y = pos.y;
+    }
     v.from = pos;
     v.to = { x: next.x, y: next.y };
     if (next.x !== pos.x) v.facing = next.x > pos.x ? 'right' : 'left';
@@ -534,6 +603,9 @@ export class Game {
     this.interrupt = false;
     const p = this.playerPos;
     this.enemyQueue = [...this.enemies].sort((a, b) => dist(a.x, a.y, p.x, p.y) - dist(b.x, b.y, p.x, p.y));
+    for (const h of this.hazards) h.turns--;
+    this.hazards = this.hazards.filter((h) => h.turns > 0);
+    this.allyPending = !!this.ally;
     this.enemyTimer = 0;
     this.phase = 'enemies';
     // Sin enemigos cerca, todo ocurre en el acto para que caminar sea fluido.
@@ -541,6 +613,12 @@ export class Game {
   }
 
   private processNextEnemy(): void {
+    if (this.allyPending) {
+      this.allyPending = false;
+      const acted = this.allyTurn();
+      if (acted && this.inCombat) this.enemyTimer = ENEMY_DELAY;
+      return;
+    }
     const e = this.enemyQueue.shift();
     if (!e) {
       this.startPlayerTurn();
@@ -564,6 +642,15 @@ export class Game {
     for (const part of tick.parts) {
       this.damagePlayer(part.amount, STATUS_INFO[part.id].name.toLowerCase());
       if (this.isDead) return;
+    }
+    // Talentos de regeneración en combate
+    if (this.inCombat) {
+      for (const r of this.talentList('regen')) {
+        if (this.state.turn % r.every === 0 && p.hp < p.maxHp) {
+          p.hp = Math.min(p.maxHp, p.hp + r.amount);
+          this.floatText(this.playerPos.x, this.playerPos.y, `+${r.amount}`, '#60e070');
+        }
+      }
     }
     // Regeneración fuera de combate
     if (!this.inCombat) {
@@ -645,12 +732,16 @@ export class Game {
     this.phase = 'player';
     this.combat.stealth = 0;
     this.populateZone();
+    this.spawnAlly();
     const dz = this.zone.def.dungeon;
     if (dz) {
       const prog = progressOf(this.state.world, dz.id);
       const depth = dz.floor === 'jefe' ? 99 : dz.floor;
       prog.deepest = Math.max(prog.deepest, depth);
-      if (dz.floor === 'jefe' && !prog.cleared) this.msg('Sientes una presencia poderosa. Prepárate.', 'warn');
+      if (dz.floor === 'jefe' && !prog.cleared) {
+        this.msg('Sientes una presencia poderosa. Prepárate.', 'warn');
+        this.companionSay('jefe');
+      } else if (dz.floor === 1) this.companionSay('mazmorra', 0.7);
     }
     const firstVisit = !this.state.visitedZones.includes(this.zone.id);
     if (firstVisit) this.state.visitedZones.push(this.zone.id);
@@ -665,9 +756,10 @@ export class Game {
   // =============================================================== encuentros
   /** Coloca los grupos iniciales de la zona (los enemigos no se guardan). */
   private populateZone(): void {
-    this.npcs = npcsInZone(this.zone.id);
+    this.npcs = npcsInZone(this.zone.id, this.state.flags);
     this.pendingTalk = null;
     this.enemies = [];
+    this.hazards = [];
     this.ground = [];
     this.fx = [];
     this.detectedTraps.clear();
@@ -739,7 +831,7 @@ export class Game {
 
   freeForEnemy(x: number, y: number): boolean {
     const p = this.playerPos;
-    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(p.x === x && p.y === y);
+    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(p.x === x && p.y === y) && !this.allyAt(x, y);
   }
 
   private freeSpotNear(c: Point, r: number): Point | null {
@@ -753,7 +845,10 @@ export class Game {
 
   // ======================================================== ataques del jugador
   /** Ataque con el arma (también lo usan las habilidades de tipo "attack"). */
-  playerAttack(enemy: Enemy, opt: { extraDice?: string; toHitBonus?: number; critRange?: number; applyStatus?: StatusApply }): void {
+  playerAttack(
+    enemy: Enemy,
+    opt: { extraDice?: string; moreDice?: string[]; toHitBonus?: number; critRange?: number; applyStatus?: StatusApply; moreStatus?: StatusApply[] },
+  ): void {
     const d = this.derived;
     const weapon = d.weapon;
     const pos = this.playerPos;
@@ -785,10 +880,31 @@ export class Game {
       this.msg(r.fumble ? `¡Pifia! Tu ${weapon.name.toLowerCase()} golpea el aire.` : `Fallas contra ${enemy.def.name} (${r.total} vs CA ${enemy.def.ac}).`, 'combat');
       return;
     }
-    let dmg = damageRoll(this.rng, weapon.dice, d.damageMod + this.buffTotal('daño'), r.crit).total;
+    const p = this.state.player;
+    let bonus = d.damageMod + this.buffTotal('daño');
+    for (const t of this.talentList('berserk')) if (p.hp <= (p.maxHp * t.threshold) / 100) bonus += t.damage;
+    let dmg = damageRoll(this.rng, weapon.dice, bonus, r.crit).total;
     if (opt.extraDice) dmg += damageRoll(this.rng, opt.extraDice, 0, r.crit).total;
+    for (const extra of opt.moreDice ?? []) dmg += damageRoll(this.rng, extra, 0, r.crit).total;
+    this.killContext = 'weapon';
     this.damageEnemy(enemy, dmg, weapon.damageType, r.crit);
-    if (enemy.hp > 0 && opt.applyStatus) this.applyStatusToEnemy(enemy, opt.applyStatus);
+    this.killContext = 'other';
+    // Robo de vida
+    const steal = this.talentList('lifesteal').reduce((a, t) => a + t.pct, 0);
+    if (steal > 0) {
+      const heal = Math.max(1, Math.round((dmg * steal) / 100));
+      p.hp = Math.min(p.maxHp, p.hp + heal);
+      this.floatText(pos.x, pos.y, `+${heal}`, '#60e070');
+    }
+    if (enemy.hp <= 0) return;
+    if (opt.applyStatus) this.applyStatusToEnemy(enemy, opt.applyStatus);
+    for (const st of opt.moreStatus ?? []) this.applyStatusToEnemy(enemy, st);
+    if (r.crit) for (const t of this.talentList('onCrit')) this.applyStatusToEnemy(enemy, t.status);
+    for (const t of this.talentList('poisonStrike')) this.applyStatusToEnemy(enemy, { id: 'veneno', chance: t.chance, turns: t.turns });
+    if (adv && this.talentList('stealthStun').length) {
+      this.msg('¡Golpe desde la sombra! Queda aturdido.', 'good');
+      this.applyStatusToEnemy(enemy, { id: 'aturdido', turns: 1 });
+    }
   }
 
   private applyStatusToEnemy(enemy: Enemy, s: StatusApply): void {
@@ -819,8 +935,13 @@ export class Game {
   private killEnemy(enemy: Enemy): void {
     enemy.hp = 0;
     this.enemies = this.enemies.filter((e) => e !== enemy);
+    const ctx = this.killContext;
+    if (ctx === 'weapon' || ctx === 'spell') this.onKillTalents(enemy, ctx);
+    if (ctx === 'ally') this.companionSay('mata', 0.25);
     this.fx.push({ kind: 'burst', x: enemy.x, y: enemy.y, radius: 0.8, color: '#e05050', t: 0, life: 0.4 });
-    const xp = xpForKill(enemy.def.xp, enemy.def.level, this.state.player.level);
+    // Con compañero, él se lleva parte del mérito (compensa la ayuda).
+    const share = this.state.party?.active ? 0.85 : 1;
+    const xp = Math.max(1, Math.round(xpForKill(enemy.def.xp, enemy.def.level, this.state.player.level) * share));
     this.msg(`${enemy.def.name} cae derrotado.`, 'good');
     const rec = (this.state.record ??= emptyRecord());
     rec.kills++;
@@ -1004,7 +1125,7 @@ export class Game {
     }
     this.targeting = null;
     this.cancelPath();
-    p.mp -= skill.cost;
+    p.mp -= this.skillCost(skill);
     if (skill.cooldown > 0) this.combat.cooldowns[skill.id] = skill.cooldown + 1;
     this.msg(`${skill.icon} ${skill.name}`, 'combat');
     for (const eff of skill.effects) this.applySkillEffect(skill, eff, center);
@@ -1014,6 +1135,9 @@ export class Game {
   private applySkillEffect(skill: SkillDef, eff: SkillEffect, center: Point): void {
     const p = this.state.player;
     const pos = this.playerPos;
+    const mods = skillMods(p, skill.id);
+    const modDice = mods.map((m) => m.extraDice).filter((x): x is string => !!x);
+    const modStatus = mods.map((m) => m.applyStatus).filter((x): x is StatusApply => !!x);
     switch (eff.type) {
       case 'attack': {
         const targets = eff.allAdjacent
@@ -1027,24 +1151,45 @@ export class Game {
               ...(eff.toHitBonus ? { toHitBonus: eff.toHitBonus } : {}),
               ...(eff.critRange ? { critRange: eff.critRange } : {}),
               ...(eff.applyStatus ? { applyStatus: eff.applyStatus } : {}),
+              moreDice: modDice,
+              moreStatus: modStatus,
             });
           }
         }
         break;
       }
       case 'spell': {
-        const color = SPELL_COLORS[eff.damageType] ?? '#ffffff';
-        const radius = eff.radius ?? 0;
+        const damageType = mods.find((m) => m.damageType)?.damageType ?? eff.damageType;
+        const color = SPELL_COLORS[damageType] ?? '#ffffff';
+        const radius = (eff.radius ?? 0) > 0 ? (eff.radius ?? 0) + mods.reduce((a, m) => a + (m.radiusDelta ?? 0), 0) : 0;
+        const hits = Math.max(1, (eff.hits ?? 1) + mods.reduce((a, m) => a + (m.hitsDelta ?? 0), 0));
+        const power = this.talentList('spellPower').filter((t) => t.damageType === damageType).reduce((a, t) => a + t.amount, 0);
         const targets = radius > 0
           ? this.enemies.filter((e) => dist(e.x, e.y, center.x, center.y) <= radius && this.los(center, e))
           : [this.enemyAt(center.x, center.y)].filter((e): e is Enemy => !!e);
+        // Rebote: el hechizo salta a otros enemigos cercanos al primero.
+        const bounce = mods.reduce((a, m) => a + (m.bounce ?? 0), 0);
+        if (radius === 0 && bounce > 0 && targets[0]) {
+          const first = targets[0];
+          const near = this.enemies
+            .filter((e) => e !== first && dist(e.x, e.y, first.x, first.y) <= 3 && this.los(first, e))
+            .sort((a, b) => dist(a.x, a.y, first.x, first.y) - dist(b.x, b.y, first.x, first.y))
+            .slice(0, bounce);
+          for (const n of near) {
+            this.fx.push({ kind: 'bolt', fx: first.x, fy: first.y, tx: n.x, ty: n.y, color, t: 0, life: 0.35 });
+            targets.push(n);
+          }
+          if (near.length) this.msg('¡El hechizo rebota!', 'good');
+        }
         if (skill.target !== 'self') this.fx.push({ kind: 'bolt', fx: pos.x, fy: pos.y, tx: center.x, ty: center.y, color, t: 0, life: 0.3 });
         if (radius > 0) this.fx.push({ kind: 'burst', x: center.x, y: center.y, radius: radius + 0.5, color, t: 0, life: 0.5 });
         const mod = abilityModifier(this.derived.stats[eff.stat]);
         const dc = this.spellDC(eff.stat);
+        this.killContext = 'spell';
         for (const t of targets) {
-          for (let i = 0; i < (eff.hits ?? 1) && t.hp > 0; i++) {
-            let dmg = roll(this.rng, eff.dice).total + (eff.hits && eff.hits > 1 ? 0 : Math.max(0, mod));
+          for (let i = 0; i < hits && t.hp > 0; i++) {
+            let dmg = roll(this.rng, eff.dice).total + (hits > 1 ? 0 : Math.max(0, mod)) + power;
+            for (const extra of modDice) dmg += roll(this.rng, extra).total;
             let saved = false;
             if (eff.save) {
               const bonus = enemySave(t, eff.save);
@@ -1053,15 +1198,32 @@ export class Game {
               if (saved) dmg = Math.max(1, Math.floor(dmg / 2));
               this.msg(`${t.def.name} tira salvación de ${eff.save}: ${s.total} vs CD ${dc} — ${saved ? 'la supera (mitad)' : 'falla'}.`, 'combat');
             }
-            this.damageEnemy(t, dmg, eff.damageType);
+            this.damageEnemy(t, dmg, damageType);
             if (t.hp > 0 && eff.applyStatus && !saved) this.applyStatusToEnemy(t, eff.applyStatus);
+            if (t.hp > 0 && !saved) for (const st of modStatus) this.applyStatusToEnemy(t, st);
           }
+        }
+        this.killContext = 'other';
+        // Suelo ardiendo (talento) en los hechizos de área
+        const burn = mods.reduce((a, m) => Math.max(a, m.burnGround ?? 0), 0);
+        if (burn > 0 && radius > 0) {
+          this.burnGround(center, Math.max(1, radius - 1), burn);
+          this.msg('¡El suelo queda en llamas!', 'good');
         }
         if (targets.length === 0) this.msg('El hechizo no alcanza a nadie.', 'warn');
         break;
       }
       case 'heal': {
-        const amount = Math.max(1, roll(this.rng, eff.dice).total + (eff.stat ? abilityModifier(this.derived.stats[eff.stat]) : 0) + (eff.perLevel ?? 0) * p.level);
+        let amount = Math.max(1, roll(this.rng, eff.dice).total + (eff.stat ? abilityModifier(this.derived.stats[eff.stat]) : 0) + (eff.perLevel ?? 0) * p.level);
+        for (const extra of modDice) amount += roll(this.rng, extra).total;
+        // Talento: la curación quema a los no-muertos cercanos
+        for (const t of this.talentList('healSmite')) {
+          const undead = this.enemies.filter((e) => e.def.family === 'no-muerto' && dist(e.x, e.y, pos.x, pos.y) <= t.radius);
+          if (undead.length) this.fx.push({ kind: 'burst', x: pos.x, y: pos.y, radius: t.radius + 0.5, color: '#fff0a0', t: 0, life: 0.5 });
+          this.killContext = 'spell';
+          for (const u of undead) this.damageEnemy(u, roll(this.rng, t.dice).total, 'sagrado');
+          this.killContext = 'other';
+        }
         const before = p.hp;
         p.hp = Math.min(p.maxHp, p.hp + amount);
         this.floatText(pos.x, pos.y, `+${p.hp - before}`, '#60e070');
@@ -1117,6 +1279,15 @@ export class Game {
   /** Turno de un enemigo. Devuelve true si hizo algo visible. */
   private enemyTurn(e: Enemy): boolean {
     const p = this.playerPos;
+    // Suelo ardiendo bajo sus pies
+    const hz = this.hazardAt(e.x, e.y);
+    if (hz) {
+      const burn = roll(this.rng, hz.dice).total;
+      this.floatText(e.x, e.y, `🔥${burn}`, '#ff8030');
+      this.killContext = 'other';
+      this.damageEnemy(e, burn, hz.damageType);
+      if (e.hp <= 0 || !this.enemies.includes(e)) return true;
+    }
     // Estados: daño por turno, aturdido, lento
     const tick = tickStatuses(this.rng, e.statuses);
     if (tick.damage > 0) {
@@ -1165,7 +1336,10 @@ export class Game {
     }
 
     const atk = e.def.attack;
-    const inAtkRange = d <= atk.range && (atk.range === 1 || this.los(e, p));
+    // ¿A quién ataca? Al jugador o al compañero, el que tenga más cerca.
+    const tgt = this.enemyTarget(e);
+    const td = dist(e.x, e.y, tgt.x, tgt.y);
+    const inAtkRange = td <= atk.range && (atk.range === 1 || this.los(e, tgt));
     const ai = e.def.ai;
 
     // Hechizos (casters y jefes)
@@ -1181,7 +1355,8 @@ export class Game {
     // Arqueros: si estás pegado, intentan alejarse
     if (ai === 'ranged' && d === 1 && this.rng.chance(0.3) && this.stepAway(e)) return true;
     if (inAtkRange) {
-      this.enemyAttack(e);
+      if (tgt.ally) this.enemyAttackAlly(e);
+      else this.enemyAttack(e);
       return true;
     }
     // Casters: mantienen la distancia si el hechizo se recarga
@@ -1190,13 +1365,13 @@ export class Game {
     const steps = Math.max(1, e.def.speed);
     let moved = false;
     for (let i = 0; i < steps; i++) {
-      const pp = this.playerPos;
-      if (dist(e.x, e.y, pp.x, pp.y) <= atk.range && (atk.range === 1 || this.los(e, pp))) break;
-      if (!this.approach(e)) break;
+      if (dist(e.x, e.y, tgt.x, tgt.y) <= atk.range && (atk.range === 1 || this.los(e, tgt))) break;
+      if (!this.approach(e, tgt)) break;
       moved = true;
     }
-    if (moved && ai === 'skirmisher' && dist(e.x, e.y, p.x, p.y) <= 1) {
-      this.enemyAttack(e);
+    if (moved && ai === 'skirmisher' && dist(e.x, e.y, tgt.x, tgt.y) <= 1) {
+      if (tgt.ally) this.enemyAttackAlly(e);
+      else this.enemyAttack(e);
     }
     return moved;
   }
@@ -1258,16 +1433,37 @@ export class Game {
     if (!r.hit) {
       this.floatText(p.x, p.y, r.fumble ? 'Pifia' : 'Esquivas', '#a49c8a');
       this.msg(`${e.def.name} falla su ${atk.name.toLowerCase()} (${r.total} vs tu CA ${ac}).`, 'combat');
+      // Talento: contraataque cuando te fallan cuerpo a cuerpo
+      const counter = this.talentList('counter').reduce((a, t) => Math.max(a, t.chance), 0);
+      if (atk.range === 1 && counter > 0 && dist(e.x, e.y, p.x, p.y) === 1 && this.rng.chance(counter)) {
+        this.msg('¡Contraataque!', 'good');
+        this.playerAttack(e, {});
+      }
+      return;
+    }
+    // Talento: esquiva
+    const dodge = this.talentList('dodge').reduce((a, t) => a + t.chance, 0);
+    if (dodge > 0 && this.rng.chance(Math.min(0.5, dodge))) {
+      this.floatText(p.x, p.y, '¡Esquiva!', '#80e0ff');
+      this.msg(`Esquivas en el último instante el ataque de ${e.def.name}.`, 'good');
       return;
     }
     const dmg = damageRoll(this.rng, atk.dice, e.damageBonus, r.crit).total;
     this.msg(`${r.crit ? '¡Crítico! ' : ''}${e.def.name} te alcanza con ${atk.name.toLowerCase()}: ${dmg} de daño.`, 'combat');
     this.damagePlayer(dmg, e.def.name, r.crit);
     if (this.phase !== 'dead' && atk.applyStatus) this.applyStatusToPlayer(atk.applyStatus);
+    // Talento: espinas (daño a quien te golpea cuerpo a cuerpo)
+    if (this.phase !== 'dead' && atk.range === 1) {
+      for (const t of this.talentList('thorns')) {
+        if (e.hp <= 0) break;
+        this.killContext = 'other';
+        this.damageEnemy(e, roll(this.rng, t.dice).total, t.damageType);
+      }
+    }
   }
 
   private applyStatusToPlayer(s: StatusApply): void {
-    if (tryApplyStatus(this.rng, this.combat.statuses, s)) {
+    if (tryApplyStatus(this.rng, this.combat.statuses, s, this.immunities())) {
       const info = STATUS_INFO[s.id];
       this.floatText(this.playerPos.x, this.playerPos.y - 0.4, info.icon, info.color);
       this.msg(`¡${info.name}!`, 'warn');
@@ -1295,16 +1491,29 @@ export class Game {
   }
 
   /** Paso de un enemigo hacia el jugador con A* (los demás enemigos estorban). */
-  private approach(e: Enemy): boolean {
+  /** Paso de un enemigo hacia su objetivo con A* (los demás enemigos estorban). */
+  private approach(e: Enemy, target: Point = this.playerPos): boolean {
     const p = this.playerPos;
     const path = findPath(
-      this.zone.width, this.zone.height, e, p,
-      (x, y) => this.zone.isWalkable(x, y) && !this.enemies.some((o) => o !== e && o.x === x && o.y === y),
+      this.zone.width, this.zone.height, e, target,
+      (x, y) => this.zone.isWalkable(x, y) && !this.enemies.some((o) => o !== e && o.x === x && o.y === y) && !this.npcAt(x, y) && !this.allyAt(x, y),
       { allowGoalBlocked: true, maxNodes: 600 },
     );
     const next = path?.[0];
-    if (!next || (next.x === p.x && next.y === p.y)) return false;
+    if (!next || (next.x === p.x && next.y === p.y) || this.allyAt(next.x, next.y)) return false;
     return this.stepEnemy(e, next, false);
+  }
+
+  /** El objetivo de un enemigo: el jugador o el compañero (el más cercano). */
+  private enemyTarget(e: Enemy): Point & { ally: boolean } {
+    const p = this.playerPos;
+    const a = this.ally;
+    if (!a || this.state.party.down) return { ...p, ally: false };
+    const dp = dist(e.x, e.y, p.x, p.y);
+    const da = dist(e.x, e.y, a.x, a.y);
+    const hidden = this.combat.stealth > 0 && dp > 1;
+    if (hidden || da < dp || (da === dp && this.rng.chance(0.35))) return { x: a.x, y: a.y, ally: true };
+    return { ...p, ally: false };
   }
 
   private stepAway(e: Enemy): boolean {
@@ -1354,13 +1563,16 @@ export class Game {
       p.level++;
       const points = attributePointsAtLevel(p.level);
       p.attributePoints += points;
+      p.talentChoices = (p.talentChoices ?? 0) + 1;
       recalcPlayer(p);
       p.hp = p.maxHp;
       p.mp = p.maxMp;
       const skills = unlockedSkills(this.cls, p.level).filter((s) => s.unlockLevel === p.level);
       this.fx.push({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 1.5, color: '#f2d888', t: 0, life: 0.8 });
       this.sfx('nivel');
-      this.events.emit('levelUp', { level: p.level, hpGain: p.maxHp - hpBefore, mpGain: p.maxMp - mpBefore, points, skills });
+      if (this.state.party?.active) this.state.party.hp = this.allyStats().maxHp;
+      this.companionSay('nivel', 0.5);
+      this.events.emit('levelUp', { level: p.level, hpGain: p.maxHp - hpBefore, mpGain: p.maxMp - mpBefore, points, skills, talentChoices: p.talentChoices });
     }
   }
 
@@ -1375,6 +1587,10 @@ export class Game {
     this.combat.stealth = 0;
     const where = p.respawnZone && getZoneDef(p.respawnZone) ? p.respawnZone : getZoneDef('aldea_capilla') ? 'aldea_capilla' : 'aldea_brumaroja';
     this.enterZone(where, null);
+    if (this.state.party?.active) {
+      this.state.party.down = false;
+      this.state.party.hp = Math.ceil(this.allyStats().maxHp / 2);
+    }
     p.hp = Math.max(1, Math.ceil(p.maxHp / 2));
     p.mp = Math.ceil(p.maxMp / 2);
     this.msg(`Despiertas en ${this.zone.def.name}, magullado. Has perdido ${lost} de oro.`, 'warn');
@@ -1644,6 +1860,7 @@ export class Game {
         rec.victoryTime = Math.round(this.state.playTimeSec);
       }
       this.sfx('victoria');
+      this.companionSay('victoria');
       this.events.emit('victory', {});
     }
     return null;
@@ -1678,7 +1895,7 @@ export class Game {
   }
 
   buyFromShop(shopId: string, uid: string, qty = 1): string | null {
-    const err = Shop.buy(this.state, shopId, this.state.player, this.derived.stats.CAR, uid, qty);
+    const err = Shop.buy(this.state, shopId, this.state.player, this.derived.stats.CAR, uid, qty, this.shopDiscount(shopId));
     if (!err) recalcPlayer(this.state.player);
     return err;
   }
@@ -1698,6 +1915,10 @@ export class Game {
     p.mp = p.maxMp;
     this.combat.statuses = [];
     this.combat.buffs = [];
+    if (this.state.party?.active) {
+      this.state.party.down = false;
+      this.state.party.hp = this.allyStats().maxHp;
+    }
     this.state.turn += 100; // pasa la noche: las tiendas pueden renovar su stock
     this.msg('Duermes de un tirón. Te levantas como nuevo.', 'good');
     return null;
@@ -1725,6 +1946,374 @@ export class Game {
   /** Marca de misión sobre un PNJ. */
   npcMarker(npcId: string): '!' | '?' | null {
     return Quests.npcMarker(this.state, npcId);
+  }
+
+  // ================================================================ compañero
+  get companionDef(): CompanionDef | null {
+    const id = this.state.party?.active;
+    return id ? (COMPANIONS.get(id) ?? null) : null;
+  }
+
+  /** Valores de combate del compañero (escalan con tu nivel). */
+  allyStats(): { maxHp: number; toHit: number; dmgBonus: number; ac: number } {
+    const def = this.companionDef;
+    const L = this.state.player.level;
+    if (!def) return { maxHp: 1, toHit: 0, dmgBonus: 0, ac: 10 };
+    return {
+      maxHp: def.hpBase + def.hpPerLevel * (L - 1),
+      toHit: def.attack.toHit + Math.floor((L - 1) / 4),
+      dmgBonus: Math.floor(L / 3),
+      ac: def.ac + Math.floor(L / 5),
+    };
+  }
+
+  allyAt(x: number, y: number): Ally | null {
+    return this.ally && this.ally.x === x && this.ally.y === y ? this.ally : null;
+  }
+
+  /** Coloca al compañero junto a ti (al cargar o cambiar de zona). */
+  private spawnAlly(): void {
+    this.ally = null;
+    const def = this.companionDef;
+    if (!def) return;
+    const party = this.state.party;
+    party.hp = Math.min(Math.max(0, party.hp), this.allyStats().maxHp);
+    const p = this.playerPos;
+    for (let r = 1; r <= 3; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const x = p.x + dx;
+          const y = p.y + dy;
+          if ((dx === 0 && dy === 0) || !this.zone.isWalkable(x, y) || this.enemyAt(x, y) || this.npcAt(x, y) || this.zone.exitAt(x, y)) continue;
+          this.ally = { def, x, y, rx: x, ry: y, facing: 'right', bumpT: 0, bumpDx: 0, bumpDy: 0, flashT: 0 };
+          return;
+        }
+      }
+    }
+  }
+
+  /** El compañero dice algo (si va contigo y está en pie). */
+  companionSay(event: CompanionEvent, chance = 1): void {
+    const def = this.companionDef;
+    if (!def || this.state.party.down || !this.rng.chance(chance)) return;
+    const lines = def.comments[event];
+    if (!lines?.length) return;
+    this.msg(`${def.name}: «${this.rng.pick(lines)}»`, 'info');
+    if (this.ally) this.floatText(this.ally.x, this.ally.y - 0.5, '💬', '#f2d888');
+  }
+
+  /** Recluta a un compañero (el anterior, si lo hay, vuelve a su sitio). */
+  recruitCompanion(id: string): string | null {
+    const def = COMPANIONS.get(id);
+    if (!def) return 'Ese compañero no existe.';
+    const party = this.state.party;
+    if (party.active === id) return null;
+    if (party.active) this.dismissCompanion();
+    party.active = id;
+    party.down = false;
+    this.state.flags[`reclutado_${id}`] = true;
+    party.hp = this.allyStats().maxHp;
+    party.approval[id] ??= 0;
+    this.npcs = npcsInZone(this.zone.id, this.state.flags);
+    this.spawnAlly();
+    this.msg(`${def.name} se une a ti.`, 'good');
+    this.companionSay('recluta');
+    this.events.emit('questsChanged', {});
+    return null;
+  }
+
+  /** El compañero se separa y vuelve a su sitio de siempre. */
+  dismissCompanion(): void {
+    const def = this.companionDef;
+    if (!def) return;
+    this.state.flags[`reclutado_${def.id}`] = false;
+    this.state.party.active = null;
+    this.ally = null;
+    this.npcs = npcsInZone(this.zone.id, this.state.flags);
+    this.msg(`${def.name} se separa de ti. Le encontrarás donde le conociste.`, 'info');
+  }
+
+  /** Cambia la aprobación de un compañero (sólo si va contigo y lo ve). */
+  changeApproval(id: string, amount: number): void {
+    const def = this.companionDef;
+    if (!def || def.id !== id || amount === 0) return;
+    const ap = this.state.party.approval;
+    ap[id] = Math.max(-10, Math.min(10, (ap[id] ?? 0) + amount));
+    this.msg(`${def.name} ${amount > 0 ? 'aprueba' : 'desaprueba'} (${amount > 0 ? '+' : ''}${amount}).`, amount > 0 ? 'good' : 'warn');
+    this.companionSay(amount > 0 ? 'aprueba' : 'desaprueba');
+  }
+
+  /** Turno del compañero. Devuelve true si hizo algo visible. */
+  private allyTurn(): boolean {
+    const a = this.ally;
+    const def = this.companionDef;
+    if (!a || !def) return false;
+    const party = this.state.party;
+    if (party.down) {
+      if (!this.inCombat) {
+        party.down = false;
+        party.hp = Math.max(1, Math.round(this.allyStats().maxHp * 0.3));
+        this.msg(`${def.name} se levanta tambaleándose.`, 'info');
+        return true;
+      }
+      return false;
+    }
+    // Fuego bajo sus pies: se aparta (no le hace daño, es "fuego amigo" controlado).
+    const p = this.playerPos;
+    const foes = this.enemies
+      .filter((e) => (e.alerted || dist(e.x, e.y, a.x, a.y) <= 4) && dist(e.x, e.y, a.x, a.y) <= 8 && this.los(a, e))
+      .sort((x, y) => dist(x.x, x.y, a.x, a.y) - dist(y.x, y.y, a.x, a.y));
+    const target = foes[0];
+    if (target) {
+      const d = dist(a.x, a.y, target.x, target.y);
+      if (d <= def.attack.range) {
+        this.allyAttack(target);
+        return true;
+      }
+      return this.stepAllyTowards(target, true);
+    }
+    // Seguir al jugador
+    const dp = dist(a.x, a.y, p.x, p.y);
+    if (dp > 2) {
+      this.stepAllyTowards(p, true);
+      if (dp > 5) this.stepAllyTowards(p, true);
+    }
+    return false;
+  }
+
+  private stepAllyTowards(t: Point, goalBlocked: boolean): boolean {
+    const a = this.ally!;
+    const p = this.playerPos;
+    const path = findPath(
+      this.zone.width, this.zone.height, a, t,
+      (x, y) => this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(x === p.x && y === p.y) && !this.zone.exitAt(x, y),
+      { allowGoalBlocked: goalBlocked, maxNodes: 800 },
+    );
+    const next = path?.[0];
+    if (!next || this.enemyAt(next.x, next.y) || (next.x === p.x && next.y === p.y)) return false;
+    if (next.x !== a.x) a.facing = next.x > a.x ? 'right' : 'left';
+    a.x = next.x;
+    a.y = next.y;
+    return true;
+  }
+
+  private allyAttack(e: Enemy): void {
+    const a = this.ally!;
+    const def = this.companionDef!;
+    const st = this.allyStats();
+    a.facing = e.x >= a.x ? 'right' : 'left';
+    if (def.attack.range > 1) {
+      this.fx.push({ kind: 'bolt', fx: a.x, fy: a.y, tx: e.x, ty: e.y, color: '#d8d0bc', t: 0, life: 0.25 });
+    } else {
+      a.bumpT = 1;
+      a.bumpDx = Math.sign(e.x - a.x);
+      a.bumpDy = Math.sign(e.y - a.y);
+    }
+    const r = attackRoll(this.rng, st.toHit, e.def.ac);
+    e.alerted = true;
+    if (!r.hit) {
+      this.floatText(e.x, e.y, 'Fallo', '#a49c8a');
+      return;
+    }
+    const dmg = damageRoll(this.rng, def.attack.dice, st.dmgBonus, r.crit).total;
+    this.killContext = 'ally';
+    this.msg(`${def.name} ${r.crit ? '¡hace un crítico a' : 'golpea a'} ${e.def.name}${r.crit ? '!' : ''}`, 'combat');
+    this.damageEnemy(e, dmg, def.attack.damageType, r.crit);
+    this.killContext = 'other';
+  }
+
+  /** Un enemigo ataca al compañero. */
+  private enemyAttackAlly(e: Enemy): void {
+    const a = this.ally!;
+    const def = this.companionDef!;
+    const atk = e.def.attack;
+    e.facing = a.x >= e.x ? 'right' : 'left';
+    if (atk.range === 1) {
+      e.bumpT = 1;
+      e.bumpDx = Math.sign(a.x - e.x);
+      e.bumpDy = Math.sign(a.y - e.y);
+    } else this.fx.push({ kind: 'bolt', fx: e.x, fy: e.y, tx: a.x, ty: a.y, color: '#d8d0bc', t: 0, life: 0.25 });
+    const r = attackRoll(this.rng, atk.toHit + e.toHitBonus, this.allyStats().ac);
+    if (!r.hit) {
+      this.floatText(a.x, a.y, 'Esquiva', '#a49c8a');
+      return;
+    }
+    const dmg = damageRoll(this.rng, atk.dice, e.damageBonus, r.crit).total;
+    const party = this.state.party;
+    party.hp = Math.max(0, party.hp - dmg);
+    a.flashT = 1;
+    this.floatText(a.x, a.y, `-${dmg}`, '#ff9a60');
+    this.msg(`${e.def.name} hiere a ${def.name}: ${dmg} de daño.`, 'combat');
+    if (party.hp <= 0) {
+      this.companionSay('caido');
+      party.down = true;
+      this.msg(`${def.name} cae al suelo. Se levantará cuando acabe el combate.`, 'warn');
+    }
+  }
+
+  // ================================================================ talentos
+  private talentList<T extends Parameters<typeof talentEffects>[1]>(type: T) {
+    return talentEffects(this.state.player, type);
+  }
+
+  /** Estados a los que eres inmune por talentos. */
+  private immunities(): StatusId[] {
+    return this.talentList('immune').map((t) => t.status);
+  }
+
+  /** Efectos al matar (sólo si lo has matado tú). */
+  private onKillTalents(enemy: Enemy, ctx: 'weapon' | 'spell'): void {
+    const p = this.state.player;
+    for (const t of this.talentList('onKill')) {
+      if (t.restore) p.mp = Math.min(p.maxMp, p.mp + t.restore);
+      if (t.heal) {
+        const before = p.hp;
+        p.hp = Math.min(p.maxHp, p.hp + t.heal);
+        if (p.hp > before) this.floatText(this.playerPos.x, this.playerPos.y, `+${p.hp - before}`, '#60e070');
+      }
+      if (t.stealth) {
+        this.combat.stealth = Math.max(this.combat.stealth, t.stealth + 1);
+        for (const e of this.enemies) if (dist(e.x, e.y, this.playerPos.x, this.playerPos.y) > 1) e.alerted = false;
+        this.msg('Te desvaneces entre las sombras.', 'good');
+      }
+      if (t.cleave && ctx === 'weapon' && !this.freeStrike) {
+        const pos = this.playerPos;
+        const next = this.enemies.find((e) => e !== enemy && dist(e.x, e.y, pos.x, pos.y) === 1);
+        if (next) {
+          this.freeStrike = true;
+          this.msg('¡Carnicería! Golpe gratis.', 'combat');
+          this.playerAttack(next, {});
+          this.freeStrike = false;
+        }
+      }
+    }
+  }
+
+  /** Crea suelo ardiendo alrededor de un punto. */
+  private burnGround(center: Point, radius: number, turns: number): void {
+    for (let y = center.y - radius; y <= center.y + radius; y++) {
+      for (let x = center.x - radius; x <= center.x + radius; x++) {
+        if (!this.zone.isWalkable(x, y) || dist(x, y, center.x, center.y) > radius) continue;
+        const h = this.hazards.find((z) => z.x === x && z.y === y);
+        if (h) h.turns = Math.max(h.turns, turns);
+        else this.hazards.push({ x, y, turns, dice: '1d6', damageType: 'fuego' });
+      }
+    }
+  }
+
+  hazardAt(x: number, y: number): Hazard | undefined {
+    return this.hazards.find((h) => h.x === x && h.y === y && h.turns > 0);
+  }
+
+  // ======================================================== diálogos y tiradas
+  /** Bonificador del jugador en una habilidad. */
+  skillBonusOf(skill: SkillKey): number {
+    return skillBonus(this.state.player, skill);
+  }
+
+  /** Prueba de habilidad de un diálogo: d20 + bonificador contra la CD (con animación). */
+  dialogCheck(skill: SkillKey, dc: number): CheckResult {
+    const bonus = this.skillBonusOf(skill);
+    const natural = this.rng.int(1, 20);
+    const total = natural + bonus;
+    const success = natural === 20 || (natural !== 1 && total >= dc);
+    this.events.emit('dice', {
+      label: SKILLS[skill].name, natural, bonus, total, target: dc, targetLabel: 'CD',
+      outcome: natural === 20 ? 'crit' : natural === 1 ? 'fumble' : success ? 'success' : 'fail',
+    });
+    this.sfx(success ? 'moneda' : 'fallo');
+    return { success, natural, total, bonus, dc };
+  }
+
+  /** Descuento (%) que tienes en una tienda gracias a tus diálogos. */
+  shopDiscount(shopId: string): number {
+    return Math.max(0, Math.min(50, Number(this.state.flags[`descuento:${shopId}`] ?? 0)));
+  }
+
+  /** Actitud de un PNJ hacia ti (por defecto 0). */
+  attitude(npcId: string): number {
+    return Number(this.state.flags[`actitud:${npcId}`] ?? 0);
+  }
+
+  /**
+   * Aplica las consecuencias de un nodo de diálogo. Devuelve true si hay que
+   * cerrar el diálogo (empieza una pelea).
+   */
+  applyDialogEffects(node: DialogNode): boolean {
+    if (!node.effects?.length) return false;
+    if (node.once) {
+      if (this.state.flags[node.once]) return false;
+      this.state.flags[node.once] = true;
+    }
+    const p = this.state.player;
+    let close = false;
+    for (const ef of node.effects) {
+      switch (ef.type) {
+        case 'gold':
+          p.gold = Math.max(0, p.gold + ef.amount);
+          this.msg(ef.amount >= 0 ? `+${ef.amount} de oro.` : `Pagas ${-ef.amount} de oro.`, ef.amount >= 0 ? 'good' : 'info');
+          if (ef.amount > 0) this.sfx('moneda');
+          break;
+        case 'item': {
+          const it = createItem(ef.item, 'comun', this.rng, { qty: ef.qty ?? 1, level: p.level });
+          const left = addItem(p, it);
+          if (left > 0) this.dropLoot(this.playerPos.x, this.playerPos.y, [{ ...it, qty: left }], 0);
+          this.msg(`Recibes: ${itemDef(it).name}${(ef.qty ?? 1) > 1 ? ` ×${ef.qty}` : ''}.`, 'good');
+          break;
+        }
+        case 'xp':
+          this.gainXp(ef.amount, 'buena decisión');
+          break;
+        case 'flag':
+          this.state.flags[ef.flag] = ef.value ?? true;
+          break;
+        case 'discount': {
+          const key = `descuento:${ef.shop}`;
+          this.state.flags[key] = Math.max(Number(this.state.flags[key] ?? 0), ef.pct);
+          this.msg(`Descuento del ${ef.pct} % en esta tienda.`, 'good');
+          break;
+        }
+        case 'fight': {
+          const pos = this.playerPos;
+          for (let i = 0; i < (ef.count ?? 1); i++) {
+            const spot = this.freeSpotNear(pos, 2);
+            const e = spot ? this.spawnEnemy(ef.enemy, spot.x, spot.y) : null;
+            if (e) e.alerted = true;
+          }
+          this.msg('¡Pelea!', 'warn');
+          close = true;
+          break;
+        }
+        case 'approval':
+          this.changeApproval(ef.companion, ef.amount);
+          break;
+        case 'attitude': {
+          const key = `actitud:${ef.npc}`;
+          this.state.flags[key] = Number(this.state.flags[key] ?? 0) + ef.amount;
+          break;
+        }
+        case 'recruit':
+          this.recruitCompanion(ef.companion);
+          break;
+        case 'heal':
+          p.hp = p.maxHp;
+          this.msg('Te sientes mucho mejor.', 'good');
+          break;
+        case 'quest':
+          this.acceptQuest(ef.quest);
+          break;
+      }
+    }
+    // Algún PNJ puede aparecer o desaparecer (p. ej. el prisionero liberado).
+    this.npcs = npcsInZone(this.zone.id, this.state.flags);
+    this.events.emit('questsChanged', {});
+    return close;
+  }
+
+  /** PNJ que representa al compañero (para hablar con él cuando te acompaña). */
+  companionNpc(): NpcDef | null {
+    const def = this.companionDef;
+    return def ? (NPCS.get(def.npc) ?? null) : null;
   }
 }
 

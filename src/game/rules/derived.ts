@@ -11,6 +11,7 @@ import { abilityModifier } from './dice';
 import { maxHpFor, maxResourceFor, proficiencyBonus } from './character';
 import { equippedItems, type Carrier } from '../items/inventory';
 import { itemBonuses, itemDef, rarityOf } from '../items/items';
+import { talentEffects } from '../talents';
 
 export interface WeaponInfo {
   name: string;
@@ -37,6 +38,7 @@ export interface DerivableCharacter extends Carrier {
   classId: string;
   level: number;
   stats: StatBlock;
+  talents?: string[];
 }
 
 export function emptyBonus(): Record<BonusStat, number> {
@@ -56,6 +58,9 @@ export function derive(p: DerivableCharacter): Derived {
       if (def.slot === 'pecho' && def.armor.maxDex !== undefined) maxDex = Math.min(maxDex, def.armor.maxDex);
     }
   }
+  // Bonos pasivos de talentos
+  for (const t of talentEffects(p, 'stat')) bonus[t.stat] += t.amount;
+  const critBonus = talentEffects(p, 'critRange').reduce((a, t) => a + t.amount, 0);
   const stats = { ...p.stats };
   for (const k of ABILITY_KEYS) stats[k] = Math.min(30, stats[k] + bonus[k]);
 
@@ -65,6 +70,7 @@ export function derive(p: DerivableCharacter): Derived {
   const weapon: WeaponInfo = wd?.weapon
     ? { name: wd.name, dice: wd.weapon.dice, stat: wd.weapon.stat, damageType: wd.weapon.damageType, range: wd.weapon.range, critRange: Math.min(cls.critRange, wd.weapon.critRange ?? 20) }
     : { ...unarmed, range: 1, critRange: cls.critRange };
+  weapon.critRange = Math.max(15, weapon.critRange - critBonus);
   const weaponPower = w && wd?.weapon ? rarityOf(w).powerBonus : 0;
 
   const dexMod = Math.min(abilityModifier(stats.DES), maxDex);

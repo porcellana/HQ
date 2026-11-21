@@ -13,7 +13,7 @@
  * Nunca borres migraciones antiguas.
  */
 
-export const CURRENT_SAVE_VERSION = 6;
+export const CURRENT_SAVE_VERSION = 7;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
@@ -50,6 +50,18 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   4: (s) => ({ ...s, world: s['world'] ?? { dungeons: {}, features: {} } }),
   /** v5 → v6 (Hito 7): estadísticas de la partida para la pantalla final. */
   5: (s) => ({ ...s, record: s['record'] ?? { kills: 0, bosses: 0, deaths: 0, victoryTurn: 0, victoryTime: 0 } }),
+  /**
+   * v6 → v7 (v0.2, Fase A): trasfondo, talentos y compañeros. Los personajes
+   * antiguos son "aventureros" sin trasfondo y reciben un talento por elegir por
+   * cada nivel por encima del 1.
+   */
+  6: (s) => {
+    const player = { ...(s['player'] as Record<string, unknown>) };
+    player['background'] ??= 'aventurero';
+    player['talents'] ??= [];
+    player['talentChoices'] ??= Math.max(0, Number(player['level'] ?? 1) - 1);
+    return { ...s, player, party: s['party'] ?? { active: null, hp: 0, down: false, approval: {} } };
+  },
 };
 
 export class SaveMigrationError extends Error {}

@@ -6,7 +6,7 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef } from './schema';
+import type { DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef } from './schema';
 import rarityList from './config/rarities';
 import trapList from './config/traps';
 import oreList from './config/ores';
@@ -116,8 +116,28 @@ export const SHOPS: ReadonlyMap<string, ShopDef> = collect<ShopDef>(import.meta.
 export const QUESTS: ReadonlyMap<string, QuestDef> = collect<QuestDef>(import.meta.glob('./quests/*.{ts,json}', { eager: true }), 'misión');
 
 /** PNJ de una zona. */
-export function npcsInZone(zoneId: string): NpcDef[] {
-  return [...NPCS.values()].filter((n) => n.zone === zoneId);
+export function npcsInZone(zoneId: string, flags: Record<string, unknown> = {}): NpcDef[] {
+  return [...NPCS.values()].filter(
+    (n) => n.zone === zoneId && !(n.hideIfFlag && flags[n.hideIfFlag]) && !(n.showIfFlag && !flags[n.showIfFlag]),
+  );
+}
+
+// --- Identidad del personaje (v0.2) ------------------------------------------
+export const BACKGROUNDS: ReadonlyMap<string, BackgroundDef> = collect<BackgroundDef>(
+  import.meta.glob('./backgrounds/*.{ts,json}', { eager: true }),
+  'trasfondo',
+);
+export const TALENTS: ReadonlyMap<string, TalentDef> = collect<TalentDef>(
+  import.meta.glob('./talents/*.{ts,json}', { eager: true }),
+  'talento',
+);
+export const COMPANIONS: ReadonlyMap<string, CompanionDef> = collect<CompanionDef>(
+  import.meta.glob('./companions/*.{ts,json}', { eager: true }),
+  'compañero',
+);
+export const DEFAULT_BACKGROUND = 'aventurero';
+export function getBackground(id: string | undefined): BackgroundDef | undefined {
+  return BACKGROUNDS.get(id ?? DEFAULT_BACKGROUND) ?? BACKGROUNDS.get(DEFAULT_BACKGROUND);
 }
 
 // --- Mazmorras, trampas y minerales -----------------------------------------

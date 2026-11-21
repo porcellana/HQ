@@ -10,6 +10,7 @@ export default {
   hitDie: 8,
   resource: { name: 'Fe', short: 'FE', base: 6, perLevel: 2, stat: 'SAB', color: '#e0c050' },
   armorBonus: 0,
+  skillProficiencies: ['perspicacia', 'persuasion'],
   startingItems: [
     { item: 'maza', equip: true }, { item: 'cota_anillas', equip: true }, { item: 'escudo_madera', equip: true },
     { item: 'simbolo_sagrado', qty: 1 }, { item: 'pocion_curacion', qty: 2 }, { item: 'pan', qty: 2 },
