@@ -1,5 +1,8 @@
-# Compila un APK de depuración en cada push y lo publica como artefacto
-# descargable (pestaña Actions → la ejecución → "Artifacts").
+# En cada push:
+#   1. Tests + build web.
+#   2. Publica la versión web (PWA) en GitHub Pages (rama gh-pages).
+#   3. Compila el APK de depuración y lo publica como Release con un enlace
+#      fijo (para Obtainium) y como artefacto descargable.
 # No necesita Android SDK local: lo trae el runner de GitHub.
 name: APK Android (debug)
 
@@ -15,6 +18,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write   # para publicar la Release y la rama gh-pages
     steps:
       - uses: actions/checkout@v5
 
@@ -31,6 +36,17 @@ jobs:
 
       - name: Compilar web (TypeScript + Vite)
         run: npm run build
+
+      # Versión web en https://<usuario>.github.io/<repo>/ (activar una vez:
+      # Settings → Pages → Source: "Deploy from a branch" → gh-pages / root).
+      - name: Publicar versión web en GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "Web ${{ github.sha }}"
 
       - uses: actions/setup-java@v5
         with:
@@ -65,9 +81,26 @@ jobs:
           NAME="ecos-del-abismo-v${VERSION}-build${GITHUB_RUN_NUMBER}.apk"
           cp android/app/build/outputs/apk/debug/app-debug.apk "$NAME"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # Copia con nombre fijo: el enlace .../releases/latest/download/ecos-del-abismo.apk
+          # siempre apunta al APK más reciente.
+          cp "$NAME" ecos-del-abismo.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.apk.outputs.name }}
           path: ${{ steps.apk.outputs.name }}
-          retention-days: 30
+          retention-days: 7
+
+      - name: Publicar Release (enlace fijo y Obtainium)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.apk.outputs.version }}-build${{ github.run_number }}
+          name: Ecos del Abismo v${{ steps.apk.outputs.version }} (build ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            APK de depuración compilado automáticamente desde `${{ github.ref_name }}` (${{ github.sha }}).
+            Instálalo encima de la versión anterior: tu partida se conserva.
+            Novedades: ver CHANGELOG.md.
+          files: ecos-del-abismo.apk

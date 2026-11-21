@@ -58,21 +58,38 @@ Otros comandos:
 
 ---
 
-## Compilar e instalar el APK (sin Android SDK local)
+## Jugar y actualizar en el móvil
 
-1. Haz `git push` a GitHub (cualquier rama).
-2. En el repositorio entra en **Actions → «APK Android (debug)»** y abre la última ejecución.
-3. Cuando termine (≈5 min), baja a **Artifacts** y descarga
-   `ecos-del-abismo-vX.Y.Z-buildN.apk` (llega dentro de un `.zip`: descomprímelo).
-4. Pásalo al móvil (o descárgalo directamente desde el móvil con el navegador
-   estando identificado en GitHub).
-5. Ábrelo. La primera vez Android pedirá permitir **«Instalar aplicaciones de
-   origen desconocido»** para tu navegador o gestor de archivos: acéptalo.
-6. Las versiones siguientes se instalan **encima** sin desinstalar, y conservan la
-   partida (todos los APK se firman con la misma clave de depuración de
-   `android-keystore/`).
+Cada `git push` lanza el workflow **«APK Android (debug)»**, que en unos 3 minutos:
 
-También puedes lanzarlo a mano: **Actions → APK Android (debug) → Run workflow**.
+1. Pasa los tests y compila la web.
+2. Publica la **versión web** en GitHub Pages.
+3. Compila el **APK** y lo publica como *Release* (y como artefacto de Actions, 7 días).
+
+### Opción A — Versión web (la más rápida para probar)
+
+- Dirección: **https://porcellana.github.io/HQ/**
+- Ábrela en Chrome del móvil → menú ⋮ → **Añadir a pantalla de inicio**.
+- Se actualiza sola: al abrirla tras un push verás la versión nueva (si no, ciérrala y ábrela otra vez).
+- Su partida guardada es independiente de la del APK.
+- **Activar una sola vez:** en GitHub, *Settings → Pages → Build and deployment →
+  Source: «Deploy from a branch» → Branch: `gh-pages` / `(root)` → Save*.
+
+### Opción B — APK con actualizaciones automáticas (Obtainium)
+
+- Enlace fijo al último APK: **https://github.com/porcellana/HQ/releases/latest/download/ecos-del-abismo.apk**
+- Mejor aún: instala [Obtainium](https://github.com/ImranR98/Obtainium) (gratis, código abierto),
+  pulsa **Añadir app**, pega `https://github.com/porcellana/HQ` y guarda. Te avisará de
+  cada versión nueva y la instala con un toque.
+- La primera vez Android pedirá permitir **«Instalar aplicaciones de origen desconocido»**
+  (y Play Protect puede avisar: *Más detalles → Instalar de todas formas*).
+- Las versiones nuevas se instalan **encima** sin desinstalar y conservan la partida
+  (todos los APK se firman con la misma clave de depuración de `android-keystore/`).
+
+### Opción C — A mano desde Actions
+
+*Actions → APK Android (debug) →* última ejecución con ✅ *→ Artifacts*: descarga el
+`.zip`, extrae el `.apk` e instálalo. También puedes lanzar una compilación con **Run workflow**.
 
 ### Compilar en local (opcional)
 
