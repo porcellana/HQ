@@ -23,6 +23,17 @@ Android en vertical (se juega con una mano) y probable en el navegador como PWA.
 **La v0.1.0 es la primera versión completa**: la historia se puede jugar de principio a
 fin y después se sigue jugando (misiones del gremio, mazmorras rejugables, nivel 20).
 
+### Plan v0.2: «que cada decisión importe»
+
+Tras probar la v0.1.0 el juego resultaba monótono (ir y volver, matar y recoger). La
+v0.2 se centra en el estilo Baldur's Gate / D&D en tres fases:
+
+| Fase | Contenido | Estado |
+|------|-----------|--------|
+| A | **Personaje con identidad**: trasfondos, tiradas de habilidad en diálogos con consecuencias, dilemas morales, talentos al subir de nivel y compañeros | ✅ **v0.2.0** |
+| B | **Mundo con sorpresas**: eventos al viajar (emboscadas, viajeros, mercaderes raros) resueltos con tiradas, misiones con varios finales, mapa del mundo con viaje rápido | ⏳ |
+| C | **Expediciones roguelike**: elegir camino entre salas (combate, tesoro, evento, tienda), recompensas a elegir y mejoras que se conservan aunque mueras | ⏳ |
+
 ### La historia (sin destripes)
 
 Una niebla rojiza cubre la Aldea de Brumaroja y los goblins del Bosque Sombrío se han
@@ -267,6 +278,91 @@ Cada clase es un archivo en `src/data/classes/` (mira `guerrero.ts`). Campos cla
 
 Cambiar los números de una clase también afecta a las partidas guardadas (los PV y
 el recurso máximos se recalculan al cargar).
+
+### Trasfondos (v0.2)
+
+En `src/data/backgrounds/`. Se eligen al crear el personaje:
+
+```ts
+{ id: 'soldado', name: 'Soldado', icon: '🛡️', description: '...', feature: 'Reconoces insignias...',
+  statBonus: { FUE: 1 }, proficiencies: ['atletismo', 'intimidacion'],
+  startingItems: [{ item: 'casco_hierro' }], gold: 10 }
+```
+
+`hidden: true` lo oculta en la creación (lo usan las partidas antiguas: «aventurero»).
+
+### Diálogos con tiradas, condiciones y consecuencias (v0.2)
+
+Las opciones de diálogo de los PNJ (`src/data/npcs/*.ts`) admiten:
+
+- `check: { skill, dc, success, failure, crit?, fumble? }`: tirada de **habilidad**
+  (`persuasion`, `intimidacion`, `engano`, `perspicacia`, `arcanos`, `atletismo`, `sigilo`,
+  `juego_manos`). Bonificador = modificador de la característica + competencia si la clase
+  (`skillProficiencies`) o el trasfondo la dan. Un 20 natural siempre acierta y un 1 siempre
+  falla. La opción muestra la CD y tu probabilidad de éxito.
+- Condiciones: `ifFlag` (`!bandera` = que no esté), `ifQuest`, `ifBackground`, `ifClass`,
+  `ifCompanion`, `ifGold`, `ifAttitude: { npc, min }`.
+- Los nodos pueden tener `effects` (se aplican al entrar; con `once: 'bandera'` sólo la
+  primera vez): `gold`, `item`, `xp`, `flag`, `discount` (en una tienda), `fight` (aparecen
+  enemigos), `approval` (de un compañero), `attitude` (de un PNJ), `recruit`, `heal`, `quest`.
+- `reply(texto, efectos, once)` y `BACK` en `src/data/helpers.ts` ahorran escritura.
+- Un PNJ puede ocultarse con `hideIfFlag` o aparecer con `showIfFlag`.
+
+Ejemplo:
+
+```ts
+extraOptions: [
+  { label: 'Estos precios son de ladrón...', check: { skill: 'persuasion', dc: 12, success: 'ok', failure: 'ko' }, ifFlag: '!pim_regateo' },
+],
+extraNodes: {
+  ok: reply('Un 10 % menos para ti.', [{ type: 'discount', shop: 'tienda_brumaroja', pct: 10 }, { type: 'flag', flag: 'pim_regateo' }], 'pim_regateo'),
+  ko: reply('Ni una moneda menos.', [{ type: 'flag', flag: 'pim_regateo' }]),
+},
+```
+
+### Talentos (v0.2)
+
+En `src/data/talents/`. Al subir de nivel eliges 1 de 3 (de ramas distintas si se puede);
+puedes decidir más tarde desde la Ficha. Cada clase tiene 3 ramas (Mago: Piromante,
+Criomante, Arcanista; Guerrero: Berserker, Guardián, Maestro de armas; Pícaro: Asesino,
+Envenenador, Acróbata; Clérigo: Sanador, Inquisidor, Guardián de la Luz) y hay talentos
+genéricos repetibles (`classId: 'todas'`).
+
+```ts
+{ id: 'mago_suelo_llamas', classId: 'mago', branch: 'Piromante', icon: '🔥', name: 'Suelo en llamas',
+  minLevel: 6, description: '...', effects: [{ type: 'skillMod', skill: 'bola_de_fuego', burnGround: 3 }] }
+```
+
+Efectos disponibles (los interpreta `game.ts` en sus «ganchos»):
+
+| Efecto | Qué hace |
+|---|---|
+| `stat` | Bono pasivo (`FUE`…`CAR`, `ca`, `ataque`, `daño`, `pv`, `recurso`) |
+| `onKill` | Al matar: `restore` recurso, `heal` vida, `stealth` turnos ocultos, `cleave` golpe gratis a otro adyacente |
+| `onCrit` | Tus críticos con arma aplican un estado |
+| `critRange` | Críticos con 1 número menos (19-20, 18-20…) |
+| `counter` | Probabilidad de contraatacar si te fallan cuerpo a cuerpo |
+| `dodge` | Probabilidad de esquivar un golpe que te iba a dar |
+| `thorns` | Daño a quien te golpea cuerpo a cuerpo |
+| `berserk` | +daño con poca vida |
+| `poisonStrike` | Tus ataques con arma pueden envenenar |
+| `stealthStun` | El primer ataque desde sigilo aturde |
+| `lifesteal` | Recuperas un % del daño de tu arma |
+| `regen` | Vida cada N turnos en combate |
+| `immune` | Inmunidad a un estado |
+| `spellPower` | +daño a hechizos de un tipo |
+| `skillMod` | Cambia una habilidad: `extraDice`, `damageType`, `applyStatus`, `costDelta`, `radiusDelta`, `hitsDelta`, `bounce` (salta a N enemigos), `burnGround` (suelo ardiendo N turnos) |
+| `healSmite` | Tus curaciones dañan a los no-muertos cercanos |
+
+### Compañeros (v0.2)
+
+En `src/data/companions/`: nombre, aspecto, `role` (`melee`/`ranged`), vida, CA, ataque y
+**comentarios** por momento (`recluta`, `mazmorra`, `jefe`, `nivel`, `aprueba`,
+`desaprueba`, `caido`, `victoria`, `mata`). Se reclutan con el efecto `recruit` desde el
+diálogo de su PNJ (`npc`), que tiene `hideIfFlag: 'reclutado_<id>'` y opciones con
+`ifCompanion` para cuando te acompaña (opinión, misión personal, separarse). Sólo uno a
+la vez. Sube contigo de nivel, cae (no muere) a 0 PV y se levanta al acabar el combate;
+descansar le cura. Su **aprobación** (−10..10) cambia con los efectos `approval`.
 
 ### Añadir un enemigo
 
@@ -537,7 +633,8 @@ Ideas pendientes para próximas versiones:
 - **Artesanía**: usar los materiales (mineral, seda, pieles, gemas) en el herrero y el
   alquimista.
 - **Durabilidad** y reparación de equipo (opcional según el diseño original).
-- **Más habilidades** por clase a niveles 12-20 y subclases.
+- **Más habilidades** por clase a niveles 12-20 (los talentos de la v0.2 ya dan subclases).
+- Fases B y C del plan v0.2 (ver «Estado»).
 - Enemigos que se muevan en grupo, emboscadas y PNJ con rutinas.
 - Música (ahora sólo hay efectos de sonido generados por código).
 - Logros y estadísticas más detalladas.
@@ -551,6 +648,27 @@ Ideas pendientes para próximas versiones:
 ---
 
 ## Decisiones de diseño
+
+**v0.2, Fase A (identidad del personaje):**
+
+- **Un talento por nivel**, elegido entre 3 de ramas distintas (con la curva actual hay
+  pocas subidas, así que se ofrece en todos los niveles). Si no quieres decidir aún, queda
+  pendiente en la Ficha. Las partidas antiguas reciben un talento pendiente por nivel.
+- **Las tiradas de diálogo se ven siempre** con su CD y tu probabilidad, como en Baldur's
+  Gate 3: decidir arriesgarse es parte del juego. Un 20 natural es «éxito crítico» y un 1,
+  «desastre» (algunas conversaciones tienen ramas propias para ellos).
+- **Un solo compañero a la vez** (Sira, arquera, en La Jarra Roja; Brann, mercenario, en El
+  Faro). Al reclutar a otro, el anterior vuelve a su sitio. Se puede hablar con él tocándolo.
+- **El compañero no muere**: cae a 0 PV y se levanta al terminar el combate con un 30 % de
+  vida (más cómodo en móvil que tener que volver a la posada).
+- **Compensación de dificultad**: con compañero, cada enemigo da un 85 % de la XP.
+- **Consecuencias en datos**: descuentos permanentes por tienda, actitud de los PNJ y
+  aprobación de los compañeros se guardan como números en `flags`/`party`.
+- Dilemas: el alcalde Ortun y su trato con los goblins, el desertor Hal junto al puente,
+  el cultista encadenado de Puerto Ceniza y el relicario robado que vende Fabio. Otros PNJ
+  comentan lo que decidiste.
+
+**v0.1:**
 
 - **Canvas 2D puro + DOM en lugar de Phaser.** El mapa se pre-renderiza una vez
   por zona en un canvas oculto y cada fotograma sólo se copia la parte visible: va

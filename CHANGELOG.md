@@ -2,6 +2,29 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.2.0 · 2026-11-21 — Fase A: personaje con identidad
+
+- **Trasfondos** al crear el personaje (Soldado, Ladrón callejero, Erudito, Noble caído,
+  Acólito y Cazador del bosque): bono a una característica, competencias, objetos y
+  opciones de diálogo exclusivas.
+- **Tiradas de habilidad en los diálogos** (Persuasión, Intimidación, Engaño, Perspicacia,
+  Arcanos, Atletismo, Sigilo, Juego de manos) con el dado animado, CD y probabilidad
+  visibles, éxitos críticos y desastres. Consecuencias reales: descuentos, oro, objetos,
+  XP, pistas, peleas, actitud de los PNJ y aprobación de los compañeros.
+- Casi todos los PNJ tienen ahora alguna decisión con tirada. **Dilemas**: el secreto del
+  alcalde Ortun, Hal el desertor, el cultista encadenado y el relicario robado de la
+  capilla; otros PNJ comentan lo que hiciste.
+- **Talentos**: al subir de nivel eliges 1 de 3. 3 ramas por clase (Piromante,
+  Criomante, Arcanista; Berserker, Guardián, Maestro de armas; Asesino, Envenenador,
+  Acróbata; Sanador, Inquisidor, Guardián de la Luz) con efectos que cambian cómo se
+  juega: suelo en llamas, hechizos que rebotan, contraataque, esquiva, robo de vida,
+  golpes gratis al matar, desvanecerse, críticos que congelan o aturden...
+- **Compañeros**: Sira (arquera, en La Jarra Roja) y Brann (mercenario, en El Faro). Luchan
+  a tu lado, los enemigos también les atacan, comentan lo que pasa, aprueban o desaprueban
+  tus decisiones y tienen misión personal. Mini barra de vida en el HUD.
+- Ficha con trasfondo, talentos y habilidades sociales.
+- Guardado v7 con migración (las partidas antiguas reciben los talentos pendientes).
+
 ## v0.1.0 · 2026-11-21 — Hito 7: historia completa y primera versión completa
 
 - Trama principal de 7 capítulos: tras Gruñaz llegan las Galerías de Seda y Mórgala,
