@@ -1,0 +1,8 @@
+{
+  "appId": "es.ecosdelabismo.juego",
+  "appName": "Ecos del Abismo",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#0b0a10"
+  }
+}

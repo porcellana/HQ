@@ -1,0 +1,50 @@
+/**
+ * REGISTRO DE CONTENIDO
+ * ---------------------
+ * Carga automáticamente TODOS los archivos .ts/.json de cada carpeta de datos
+ * (gracias a import.meta.glob de Vite). Para añadir contenido basta con crear
+ * un archivo nuevo en la carpeta correspondiente con un `export default`
+ * (un objeto o una lista de objetos). El motor sólo consulta este registro.
+ */
+import type { TileDef, ZoneDef } from './schema';
+import tileList from './config/tiles';
+
+type Module = { default: unknown };
+
+/** Aplana los export default de un glob (admite objeto suelto o lista). */
+function collect<T extends { id: string }>(modules: Record<string, unknown>, kind: string): Map<string, T> {
+  const out = new Map<string, T>();
+  for (const [path, mod] of Object.entries(modules)) {
+    const value = (mod as Module).default;
+    const items = Array.isArray(value) ? value : [value];
+    for (const item of items as T[]) {
+      if (!item || typeof item.id !== 'string') {
+        console.error(`[datos] ${kind}: elemento sin "id" en ${path}`);
+        continue;
+      }
+      if (out.has(item.id)) console.error(`[datos] ${kind}: id duplicado "${item.id}" en ${path}`);
+      out.set(item.id, item);
+    }
+  }
+  return out;
+}
+
+// --- Tiles -----------------------------------------------------------------
+export const TILES: ReadonlyMap<string, TileDef> = new Map(tileList.map((t) => [t.id, t]));
+export const TILE_BY_CHAR: ReadonlyMap<string, TileDef> = new Map(tileList.map((t) => [t.char, t]));
+
+// --- Zonas con mapa fijo (pueblos, ciudades, zonas salvajes) --------------
+export const ZONES: ReadonlyMap<string, ZoneDef> = collect<ZoneDef>(
+  {
+    ...import.meta.glob('./towns/*.{ts,json}', { eager: true }),
+    ...import.meta.glob('./wilds/*.{ts,json}', { eager: true }),
+  },
+  'zona',
+);
+
+/** Zona donde empieza una partida nueva. */
+export const START_ZONE_ID = 'aldea_brumaroja';
+
+export function getZoneDef(id: string): ZoneDef | undefined {
+  return ZONES.get(id);
+}

@@ -1,0 +1,6 @@
+{
+  "_comentario": "Curva de experiencia. XP total necesaria para pasar del nivel N al N+1 = round(base * N^exponent). Edita y recompila.",
+  "maxLevel": 20,
+  "xpBase": 100,
+  "xpExponent": 1.6
+}

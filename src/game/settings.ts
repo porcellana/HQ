@@ -1,0 +1,49 @@
+/**
+ * Ajustes del jugador (independientes de la partida). Se guardan en
+ * localStorage con su propia versión; los campos nuevos toman el valor
+ * por defecto automáticamente.
+ */
+export interface Settings {
+  /** Mostrar joystick virtual además del toque para mover. */
+  joystick: boolean;
+  /** Mano dominante: coloca el joystick/botones del lado cómodo. */
+  hand: 'derecha' | 'izquierda';
+  /** Velocidad de animación de movimiento. */
+  moveSpeed: 'normal' | 'rapida';
+  /** Vibración háptica en acciones importantes. */
+  vibration: boolean;
+  /** Dibujar la cuadrícula del mapa. */
+  grid: boolean;
+  /** Tamaño de la interfaz. */
+  uiScale: 'normal' | 'grande';
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  joystick: false,
+  hand: 'derecha',
+  moveSpeed: 'normal',
+  vibration: true,
+  grid: false,
+  uiScale: 'normal',
+};
+
+const KEY = 'ecos.settings';
+
+export function loadSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<Settings>;
+    return { ...DEFAULT_SETTINGS, ...parsed };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+export function saveSettings(s: Settings): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {
+    /* sin almacenamiento disponible: se ignoran */
+  }
+}
