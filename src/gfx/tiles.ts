@@ -1,0 +1,335 @@
+/**
+ * GENERADORES DE TILES PIXEL ART
+ * ------------------------------
+ * Cada generador pinta una casilla de 16x16 con un Rng propio, de modo que
+ * cada tile tiene varias variantes deterministas (sin assets externos).
+ * Para crear un tile nuevo: añade aquí una función y úsala como `sprite`
+ * en src/data/config/tiles.ts.
+ */
+import { Rng, hashString } from '@/engine/rng';
+import { PAL } from './palette';
+import { TILE, ctx2d, makeCanvas, px } from './canvas';
+
+type Gen = (c: CanvasRenderingContext2D, r: Rng) => void;
+
+const speckle = (c: CanvasRenderingContext2D, r: Rng, n: number, colors: readonly string[]) => {
+  for (let i = 0; i < n; i++) px(c, r.int(0, 15), r.int(0, 15), r.pick(colors));
+};
+
+const grass: Gen = (c, r) => {
+  px(c, 0, 0, PAL.grass, TILE, TILE);
+  speckle(c, r, 22, [PAL.grassD, PAL.grassD, PAL.grassL]);
+  for (let i = 0; i < 3; i++) {
+    const x = r.int(1, 14), y = r.int(2, 14);
+    px(c, x, y, PAL.grassL);
+    px(c, x, y - 1, PAL.grassLL);
+  }
+};
+
+const flowers: Gen = (c, r) => {
+  grass(c, r);
+  const cols = [PAL.red, PAL.goldL, PAL.white, PAL.purple];
+  for (let i = 0; i < 4; i++) {
+    const x = r.int(2, 13), y = r.int(2, 13);
+    const col = r.pick(cols);
+    px(c, x, y, col);
+    px(c, x - 1, y, col);
+    px(c, x + 1, y, col);
+    px(c, x, y - 1, col);
+    px(c, x, y + 1, PAL.grassLL);
+    px(c, x, y, PAL.gold);
+  }
+};
+
+const dirt: Gen = (c, r) => {
+  px(c, 0, 0, PAL.dirt, TILE, TILE);
+  speckle(c, r, 26, [PAL.dirtD, PAL.dirtL]);
+  for (let i = 0; i < 2; i++) {
+    const x = r.int(1, 13), y = r.int(1, 13);
+    px(c, x, y, PAL.stoneL, 2, 1);
+    px(c, x, y + 1, PAL.dirtD, 2, 1);
+  }
+};
+
+const cobble: Gen = (c, r) => {
+  px(c, 0, 0, '#3a3640', TILE, TILE);
+  for (let row = 0; row < 4; row++) {
+    const off = row % 2 === 0 ? 0 : -3;
+    for (let col = 0; col < 4; col++) {
+      const x = off + col * 6, y = row * 4;
+      const base = r.pick(['#6a6470', '#5d5866', '#74695c']);
+      px(c, x + 1, y + 1, base, 4, 2);
+      px(c, x + 1, y + 1, PAL.stoneLL, 2, 1);
+      px(c, x + 1, y + 3, '#2e2b33', 4, 1);
+    }
+  }
+};
+
+const stoneFloor: Gen = (c, r) => {
+  px(c, 0, 0, PAL.stone, TILE, TILE);
+  speckle(c, r, 14, [PAL.stoneD, PAL.stoneL]);
+  // Juntas de losas
+  px(c, 0, 0, PAL.stoneD, TILE, 1);
+  px(c, 0, 0, PAL.stoneD, 1, TILE);
+  const mid = r.int(6, 9);
+  px(c, 0, mid, PAL.stoneD, TILE, 1);
+  px(c, r.int(4, 11), 0, PAL.stoneD, 1, mid);
+  if (r.chance(0.3)) {
+    let x = r.int(3, 12), y = r.int(mid + 2, 14);
+    for (let i = 0; i < 4; i++) {
+      px(c, x, y, PAL.shadow);
+      x += r.int(-1, 1);
+      y -= 1;
+    }
+  }
+};
+
+const stoneWall: Gen = (c, r) => {
+  px(c, 0, 0, PAL.shadow, TILE, TILE);
+  for (let row = 0; row < 4; row++) {
+    const off = row % 2 === 0 ? 0 : -4;
+    for (let col = 0; col < 3; col++) {
+      const x = off + col * 8, y = row * 4;
+      const base = r.pick([PAL.stoneD, PAL.stone, PAL.stone]);
+      px(c, x + 1, y, base, 7, 3);
+      px(c, x + 1, y, PAL.stoneL, 7, 1);
+    }
+  }
+  px(c, 0, 15, PAL.black, TILE, 1);
+};
+
+const water: Gen = (c, r) => {
+  px(c, 0, 0, PAL.water, TILE, TILE);
+  speckle(c, r, 10, [PAL.waterD]);
+  for (let i = 0; i < 3; i++) {
+    const x = r.int(0, 11), y = r.int(1, 14);
+    px(c, x, y, PAL.waterL, 3, 1);
+    px(c, x + 1, y - 1, PAL.waterL, 2, 1);
+  }
+};
+
+const tree: Gen = (c, r) => {
+  grass(c, r);
+  // Sombra
+  px(c, 3, 13, PAL.grassD, 10, 2);
+  // Tronco
+  px(c, 7, 10, PAL.woodD, 2, 5);
+  px(c, 7, 10, PAL.wood, 1, 4);
+  // Copa redonda
+  for (let y = 0; y < 12; y++) {
+    for (let x = 0; x < 16; x++) {
+      const dx = x - 7.5, dy = y - 5.5;
+      const d = dx * dx + dy * dy * 1.1;
+      if (d < 40) {
+        let col: string = PAL.leaf;
+        if (dx + dy > 3) col = PAL.leafD;
+        else if (dx + dy < -4) col = PAL.leafL;
+        if (d > 32) col = PAL.leafD;
+        px(c, x, y, col);
+      }
+    }
+  }
+  for (let i = 0; i < 6; i++) px(c, r.int(3, 11), r.int(1, 8), r.pick([PAL.leafL, PAL.leafD, PAL.grassL]));
+};
+
+const pine: Gen = (c, r) => {
+  px(c, 0, 0, PAL.grassD, TILE, TILE);
+  speckle(c, r, 12, [PAL.grass, PAL.leafD]);
+  px(c, 3, 14, PAL.black, 10, 2);
+  px(c, 7, 13, PAL.woodD, 2, 3);
+  // Capas de ramas de arriba a abajo, con contorno oscuro y luz a la izquierda.
+  const layers: Array<[number, number]> = [[1, 2], [4, 4], [7, 6], [10, 7]];
+  for (const [y0, half] of layers) {
+    for (let y = 0; y < 4; y++) {
+      const w = Math.max(1, Math.round((half * (y + 1)) / 4));
+      for (let x = 8 - w; x < 8 + w; x++) {
+        const edge = x === 8 - w || x === 8 + w - 1 || y === 3;
+        px(c, x, y0 + y - 1, edge ? PAL.leafD : x < 7 ? PAL.grassL : PAL.leafL);
+      }
+    }
+  }
+  px(c, 7, 0, PAL.grassLL);
+  for (let i = 0; i < 4; i++) px(c, r.int(5, 7), r.int(3, 12), PAL.grassLL);
+};
+
+const bush: Gen = (c, r) => {
+  grass(c, r);
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const dx = x - 7.5, dy = y - 9;
+      const d = dx * dx + dy * dy * 1.4;
+      if (d < 30) px(c, x, y, d > 22 || dx + dy > 3 ? PAL.leafD : PAL.leafL);
+    }
+  }
+  for (let i = 0; i < 3; i++) px(c, r.int(4, 11), r.int(6, 12), PAL.red);
+};
+
+const rock: Gen = (c, r) => {
+  grass(c, r);
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const dx = x - 7.5, dy = y - 9;
+      const d = dx * dx * 0.8 + dy * dy * 1.3;
+      if (d < 36) {
+        let col: string = PAL.stone;
+        if (dx + dy > 2) col = PAL.stoneD;
+        if (dx + dy < -5) col = PAL.stoneL;
+        if (d > 28) col = PAL.shadow;
+        px(c, x, y, col);
+      }
+    }
+  }
+  px(c, r.int(5, 9), r.int(7, 10), PAL.stoneLL);
+};
+
+const roofGen = (d: string, m: string, l: string): Gen => (c, r) => {
+  px(c, 0, 0, m, TILE, TILE);
+  for (let row = 0; row < 4; row++) {
+    const y = row * 4;
+    px(c, 0, y + 3, d, TILE, 1);
+    const off = row % 2 === 0 ? 0 : 2;
+    for (let x = off; x < 16; x += 4) {
+      px(c, x, y, d, 1, 3);
+      px(c, x + 1, y, l, 2, 1);
+    }
+  }
+  speckle(c, r, 4, [d]);
+};
+
+const woodWall: Gen = (c, r) => {
+  px(c, 0, 0, PAL.wood, TILE, TILE);
+  for (let x = 0; x < 16; x += 4) {
+    px(c, x, 0, PAL.woodD, 1, TILE);
+    px(c, x + 1, 0, PAL.woodL, 1, TILE);
+  }
+  px(c, 0, 0, PAL.woodD, TILE, 2);
+  px(c, 0, 14, PAL.shadow, TILE, 2);
+  speckle(c, r, 6, [PAL.woodD]);
+  // Ventanita a veces
+  if (r.chance(0.35)) {
+    px(c, 5, 4, PAL.woodD, 6, 6);
+    px(c, 6, 5, PAL.gold, 4, 4);
+    px(c, 7, 5, PAL.woodD, 1, 4);
+    px(c, 6, 7, PAL.woodD, 4, 1);
+  }
+};
+
+const door: Gen = (c, r) => {
+  woodWall(c, new Rng(1));
+  px(c, 3, 2, PAL.black, 10, 14);
+  px(c, 4, 3, PAL.woodD, 8, 13);
+  for (let x = 4; x < 12; x += 2) px(c, x, 3, PAL.woodL, 1, 13);
+  px(c, 4, 6, PAL.woodD, 8, 1);
+  px(c, 4, 11, PAL.woodD, 8, 1);
+  px(c, 10, 9, PAL.gold, 1, 1);
+  void r;
+};
+
+const fence: Gen = (c, r) => {
+  grass(c, r);
+  px(c, 0, 6, PAL.woodL, TILE, 1);
+  px(c, 0, 7, PAL.woodD, TILE, 1);
+  px(c, 0, 10, PAL.woodL, TILE, 1);
+  px(c, 0, 11, PAL.woodD, TILE, 1);
+  for (const x of [2, 13]) {
+    px(c, x, 3, PAL.woodL, 1, 11);
+    px(c, x + 1, 3, PAL.woodD, 1, 11);
+  }
+};
+
+const bridge: Gen = (c, r) => {
+  water(c, r);
+  px(c, 1, 0, PAL.woodD, 14, TILE);
+  for (let y = 0; y < 16; y += 3) {
+    px(c, 2, y, PAL.wood, 12, 2);
+    px(c, 2, y, PAL.woodL, 12, 1);
+  }
+  px(c, 1, 0, PAL.black, 1, TILE);
+  px(c, 14, 0, PAL.black, 1, TILE);
+};
+
+const well: Gen = (c, r) => {
+  cobble(c, r);
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const d = (x - 7.5) ** 2 + (y - 8) ** 2;
+      if (d < 44) px(c, x, y, d > 26 ? PAL.stoneL : d > 18 ? PAL.stoneD : PAL.waterD);
+    }
+  }
+  px(c, 6, 6, PAL.waterL, 2, 1);
+};
+
+const sign: Gen = (c, r) => {
+  grass(c, r);
+  px(c, 7, 8, PAL.woodD, 2, 7);
+  px(c, 2, 3, PAL.woodD, 12, 6);
+  px(c, 3, 4, PAL.woodL, 10, 4);
+  px(c, 4, 5, PAL.woodD, 6, 1);
+  px(c, 4, 7, PAL.woodD, 4, 1);
+};
+
+const lamp: Gen = (c, r) => {
+  grass(c, r);
+  px(c, 7, 6, PAL.black, 2, 9);
+  px(c, 6, 14, PAL.black, 4, 1);
+  px(c, 5, 1, PAL.black, 6, 6);
+  px(c, 6, 2, PAL.goldL, 4, 4);
+  px(c, 7, 3, PAL.white, 2, 2);
+};
+
+const grave: Gen = (c, r) => {
+  grass(c, r);
+  px(c, 4, 13, PAL.grassD, 8, 2);
+  px(c, 5, 4, PAL.stoneL, 6, 10);
+  px(c, 6, 3, PAL.stoneL, 4, 1);
+  px(c, 10, 4, PAL.stoneD, 1, 10);
+  px(c, 7, 6, PAL.stoneD, 2, 1);
+  px(c, 7, 5, PAL.stoneD, 1, 4);
+};
+
+const cave: Gen = (c, r) => {
+  px(c, 0, 0, PAL.stoneD, TILE, TILE);
+  speckle(c, r, 12, [PAL.stone, PAL.shadow]);
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const dx = x - 7.5, dy = y - 15;
+      if (dx * dx + dy * dy * 0.7 < 48) px(c, x, y, y < 6 ? PAL.shadow : PAL.black);
+    }
+  }
+};
+
+export const TILE_GENERATORS: Readonly<Record<string, Gen>> = {
+  grass, flowers, dirt, cobble, stoneFloor, stoneWall, water, tree, pine, bush, rock,
+  roof: roofGen(PAL.roofD, PAL.roof, PAL.roofL),
+  roofSlate: roofGen(PAL.slateD, PAL.slate, PAL.slateL),
+  woodWall, door, fence, bridge, well, sign, lamp, grave, cave,
+};
+
+/** Número de variantes por tile. */
+export const TILE_VARIANTS = 4;
+
+const cache = new Map<string, HTMLCanvasElement>();
+
+/** Devuelve (y cachea) el canvas 16x16 de un sprite de tile y variante. */
+export function getTileSprite(spriteId: string, variant: number): HTMLCanvasElement {
+  const key = `${spriteId}#${variant}`;
+  let canvas = cache.get(key);
+  if (!canvas) {
+    canvas = makeCanvas(TILE, TILE);
+    const gen = TILE_GENERATORS[spriteId];
+    const c = ctx2d(canvas);
+    if (gen) gen(c, new Rng(hashString(key)));
+    else {
+      // Tile desconocido: cuadro magenta para detectarlo fácilmente.
+      px(c, 0, 0, '#ff00ff', TILE, TILE);
+      console.warn(`[gfx] sprite de tile desconocido: ${spriteId}`);
+    }
+    cache.set(key, canvas);
+  }
+  return canvas;
+}
+
+/** Variante estable para una casilla (para que el mapa no "parpadee"). */
+export function variantFor(x: number, y: number): number {
+  return ((Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0) % TILE_VARIANTS;
+}
