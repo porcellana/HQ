@@ -12,6 +12,7 @@ import { Minimap } from './minimap';
 
 export interface HudActions {
   onWait(): void;
+  onSheet(): void;
   onMenu(): void;
   onInventory(): void;
   onJoystick(dir: { dx: number; dy: number } | null): void;
@@ -38,6 +39,7 @@ export class Hud {
   private readonly log: HTMLDivElement;
   private readonly actionBar: HTMLDivElement;
   private bannerTimer = 0;
+  private resourceShort = 'PM';
   /** Última firma de datos mostrada, para no tocar el DOM si no cambia nada. */
   private lastSig = '';
 
@@ -45,6 +47,7 @@ export class Hud {
     this.portrait = h('canvas', { class: 'hud-portrait' });
     this.portrait.width = 16;
     this.portrait.height = 16;
+    this.portrait.addEventListener('click', () => actions.onSheet());
     this.nameEl = h('b');
     this.goldEl = h('span', { class: 'hud-gold' });
     const panel = h('div', { class: 'hud-panel' }, [
@@ -62,6 +65,7 @@ export class Hud {
       h('button', { onClick: fn, attrs: { 'aria-label': label } }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
     this.actionBar = h('div', { class: 'action-bar' }, [
       btn('⏳', 'Esperar', actions.onWait),
+      btn('📜', 'Ficha', actions.onSheet),
       btn('🎒', 'Mochila', actions.onInventory),
       btn('☰', 'Menú', actions.onMenu),
     ]);
@@ -91,7 +95,8 @@ export class Hud {
   setPortrait(colors: HumanoidColors): void {
     const c = this.portrait.getContext('2d')!;
     c.imageSmoothingEnabled = false;
-    c.clearRect(0, 0, 16, 16);
+    c.fillStyle = '#000';
+    c.fillRect(0, 0, 16, 16);
     c.drawImage(humanoidSprite(colors).right, 0, 0);
   }
 
@@ -109,18 +114,28 @@ export class Hud {
     window.setTimeout(() => el.remove(), 5200);
   }
 
+  /** Nombre corto y color del recurso de la clase (PM, VIG, ENE, FE). */
+  setResource(short: string, color: string): void {
+    this.resourceShort = short;
+    this.mp.fill.style.background = `linear-gradient(${color}, ${color}cc)`;
+    this.lastSig = '';
+  }
+
   update(game: Game, dt: number): void {
     const p = game.state.player;
     const prog = levelProgress(p.xp);
-    const sig = `${p.name}|${prog.level}|${p.gold}|${p.hp}/${p.maxHp}|${p.mp}/${p.maxMp}|${p.xp}`;
+    const sig = `${p.name}|${p.level}|${p.gold}|${p.hp}/${p.maxHp}|${p.mp}/${p.maxMp}|${p.xp}|${p.attributePoints}`;
     if (sig !== this.lastSig) {
       this.lastSig = sig;
-      this.nameEl.textContent = `${p.name} · Nv ${prog.level}`;
+      this.nameEl.replaceChildren(
+        `${p.name} · Nv ${p.level}`,
+        ...(p.attributePoints > 0 ? [h('span', { class: 'hud-points', text: ' ✚' })] : []),
+      );
       this.goldEl.textContent = `● ${p.gold} oro`;
       this.hp.fill.style.width = `${(100 * p.hp) / Math.max(1, p.maxHp)}%`;
       this.hp.label.textContent = `PV ${p.hp}/${p.maxHp}`;
       this.mp.fill.style.width = `${(100 * p.mp) / Math.max(1, p.maxMp)}%`;
-      this.mp.label.textContent = `PM ${p.mp}/${p.maxMp}`;
+      this.mp.label.textContent = `${this.resourceShort} ${p.mp}/${p.maxMp}`;
       this.xp.fill.style.width = `${prog.ratio * 100}%`;
       this.xp.el.title = prog.needed ? `XP ${prog.current}/${prog.needed}` : 'Nivel máximo';
     }

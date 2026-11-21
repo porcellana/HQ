@@ -13,7 +13,7 @@ Android en vertical (se juega con una mano) y probable en el navegador como PWA.
 | Hito | Contenido | Estado |
 |------|-----------|--------|
 | 1 | Motor base, mapa, movimiento, HUD y guardado | ✅ v0.0.1 |
-| 2 | Creación de personaje, 4 clases y características | ⏳ |
+| 2 | Creación de personaje, 4 clases y características | ✅ v0.0.2 |
 | 3 | Combate por turnos, enemigos, XP y niveles | ⏳ |
 | 4 | Inventario, equipo y botín | ⏳ |
 | 5 | Pueblos, tiendas, comercio y misiones | ⏳ |
@@ -199,7 +199,22 @@ Edita `src/data/config/progression.json`:
 XP para pasar del nivel N al N+1 = `round(xpBase × N^xpExponent)`.
 Con los valores por defecto (100 y 1,6): nivel 2 → 100 XP, nivel 3 → 303 más, etc.
 
-*(Las secciones para clases, objetos, enemigos, botín, misiones y mazmorras se
+### Añadir o modificar una clase
+
+Cada clase es un archivo en `src/data/classes/` (mira `guerrero.ts`). Campos clave:
+
+- `baseStats`: características iniciales; el jugador reparte 3 puntos más (máx. 17).
+- `hitDie`: dado de golpe (PV = dado + CON al nivel 1, luego dado/2+1+CON por nivel).
+- `resource`: nombre, abreviatura y crecimiento del recurso (maná, vigor…).
+- `armorBonus`, `weapon`, `critRange`, `startingGold`, `traits`.
+- `look.overlay`: plantilla de sprite de `src/gfx/sprites.ts` (`OVERLAYS`) y colores.
+- `skills`: habilidades con `unlockLevel`, `cost`, `cooldown`, `range` y `effects`
+  (`attack`, `spell`, `heal`, `buff`, `stealth`, `cleanse`; ver `schema.ts`).
+
+Cambiar los números de una clase también afecta a las partidas guardadas (los PV y
+el recurso máximos se recalculan al cargar).
+
+*(Las secciones para objetos, enemigos, botín, misiones y mazmorras se
 añadirán a medida que lleguen sus hitos.)*
 
 ---

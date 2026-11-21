@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '@/game/game';
-import { createNewGame } from '@/game/state';
+import { testState } from './helpers';
 
-const newGame = () => new Game(createNewGame({ name: 'T', classId: 'aventurero', portrait: 0, seed: 1 }));
+const newGame = () => new Game(testState());
 const run = (g: Game, seconds: number) => {
   for (let t = 0; t < seconds; t += 0.05) g.update(0.05);
 };
@@ -45,7 +45,7 @@ describe('movimiento por turnos', () => {
   });
 
   it('una posición guardada inválida se corrige', () => {
-    const s = createNewGame({ name: 'T', classId: 'aventurero', portrait: 0, seed: 1 });
+    const s = testState();
     s.player.pos = { zone: 'zona_borrada', x: 0, y: 0 };
     const g = new Game(s);
     expect(g.zone.id).toBe('aldea_brumaroja');

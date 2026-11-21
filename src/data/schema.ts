@@ -67,3 +67,100 @@ export interface ZoneDef {
   /** Oscuridad ambiental 0 (pleno día) .. 1 (negro). */
   darkness?: number;
 }
+
+// ===========================================================================
+// PERSONAJES Y HABILIDADES
+// ===========================================================================
+
+/** Características D&D: Fuerza, Destreza, Constitución, Inteligencia, Sabiduría, Carisma. */
+export type AbilityKey = 'FUE' | 'DES' | 'CON' | 'INT' | 'SAB' | 'CAR';
+export const ABILITY_KEYS: readonly AbilityKey[] = ['FUE', 'DES', 'CON', 'INT', 'SAB', 'CAR'];
+export type StatBlock = Record<AbilityKey, number>;
+
+export type DamageType =
+  | 'cortante' | 'perforante' | 'contundente'
+  | 'fuego' | 'frio' | 'rayo' | 'veneno' | 'sagrado' | 'necrotico' | 'arcano';
+
+/** Estados alterados. */
+export type StatusId = 'veneno' | 'aturdido' | 'sangrado' | 'quemado' | 'ralentizado';
+
+/** Aplicar un estado con cierta probabilidad durante N turnos. */
+export interface StatusApply {
+  id: StatusId;
+  /** Probabilidad 0..1 (por defecto 1). */
+  chance?: number;
+  turns: number;
+}
+
+/**
+ * Efecto de una habilidad. El motor de combate (Hito 3) interpreta cada tipo:
+ *  - attack: ataque con arma (tirada d20 contra CA) con daño extra.
+ *  - spell:  daño mágico; con `save` el objetivo tira salvación (mitad si la supera),
+ *            sin `save` impacta automáticamente; con `radius` afecta a un área.
+ *  - heal:   curación.
+ *  - buff:   bonificación temporal.
+ *  - stealth: el lanzador se oculta (ventaja en el siguiente ataque, los enemigos lo pierden).
+ *  - cleanse: elimina estados alterados.
+ */
+export type SkillEffect =
+  | { type: 'attack'; extraDice?: string; toHitBonus?: number; critRange?: number; hits?: number; allAdjacent?: boolean; applyStatus?: StatusApply }
+  | { type: 'spell'; dice: string; stat: AbilityKey; damageType: DamageType; save?: AbilityKey; radius?: number; hits?: number; applyStatus?: StatusApply }
+  | { type: 'heal'; dice: string; stat?: AbilityKey; perLevel?: number }
+  | { type: 'buff'; stat: 'ataque' | 'daño' | 'ca'; amount: number; turns: number }
+  | { type: 'stealth'; turns: number }
+  | { type: 'cleanse' };
+
+export interface SkillDef {
+  id: string;
+  name: string;
+  /** Emoji o símbolo para el botón. */
+  icon: string;
+  description: string;
+  /** Nivel al que se desbloquea. */
+  unlockLevel: number;
+  /** Coste de recurso (maná/vigor/fe...). */
+  cost: number;
+  /** Turnos de espera tras usarla. */
+  cooldown: number;
+  target: 'self' | 'enemy' | 'area';
+  /** Alcance en casillas (1 = cuerpo a cuerpo). */
+  range: number;
+  effects: SkillEffect[];
+}
+
+/** Aspecto del personaje: plantilla de sprite + colores de ropa. */
+export interface ClassLook {
+  /** Plantilla de src/gfx/sprites.ts (guerrero, picaro, mago, clerigo...). */
+  overlay: string;
+  cloth: string;
+  clothDark: string;
+  pants: string;
+  /** Color del casco/capucha/sombrero. */
+  hat: string;
+}
+
+export interface ClassDef {
+  id: string;
+  name: string;
+  /** Lema corto, p. ej. "Muro de acero". */
+  role: string;
+  description: string;
+  baseStats: StatBlock;
+  /** Características principales (se resaltan y se sugieren al subir de nivel). */
+  primary: AbilityKey[];
+  /** Dado de golpe: 10 guerrero, 8 pícaro/clérigo, 6 mago. */
+  hitDie: number;
+  /** Recurso para habilidades. */
+  resource: { name: string; short: string; base: number; perLevel: number; stat: AbilityKey | null; color: string };
+  /** Bonificador a la CA sin armadura (se sumará a la del equipo en el Hito 4). */
+  armorBonus: number;
+  /** Arma inicial (dados de daño y característica de ataque) hasta tener inventario. */
+  weapon: { name: string; dice: string; stat: AbilityKey; damageType: DamageType; range: number };
+  /** Rango de crítico natural (20 = sólo 20; 19 = 19-20). */
+  critRange: number;
+  startingGold: number;
+  /** Rasgos pasivos descritos al jugador. */
+  traits: string[];
+  look: ClassLook;
+  skills: SkillDef[];
+}

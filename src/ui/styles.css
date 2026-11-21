@@ -153,3 +153,56 @@ button.danger { border-color: var(--danger); color: #f0b0a8; }
 .modal h3 { margin: 0; color: var(--gold-l); text-align: center; }
 .modal p { margin: 0; color: var(--text); line-height: 1.4; }
 .modal .buttons { display: flex; flex-direction: column; gap: 10px; }
+
+/* ------------------------ Creación de personaje / ficha ------------------ */
+.screen.creation, .screen.sheet { justify-content: flex-start; gap: 12px; }
+.class-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(460px, 100%); }
+.class-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; height: auto; min-height: 210px;
+  text-align: center;
+}
+.class-card strong { color: var(--gold-l); font-size: 1.1em; font-weight: normal; }
+.class-card em { color: var(--muted); font-size: 0.85em; }
+.class-card small { font-size: 0.72em; color: var(--text); opacity: 0.85; line-height: 1.25; }
+.class-sprite { width: 72px; height: 72px; image-rendering: pixelated; }
+.portrait-row { display: flex; align-items: center; gap: 14px; }
+.portrait-big { width: 120px; height: 120px; background: radial-gradient(circle, #3a2a3a, #0b0a10); border: 2px solid var(--border-l); border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+.portrait-canvas { width: 100px; height: 100px; image-rendering: pixelated; }
+.name-row { display: flex; gap: 8px; width: min(420px, 100%); }
+.name-row input {
+  flex: 1; min-height: var(--tap); font: inherit; font-size: 1.1em; color: var(--text); background: #000;
+  border: 2px solid var(--border-l); border-radius: var(--radius); padding: 0 12px; user-select: text; -webkit-user-select: text;
+}
+button.mini { min-height: 44px; min-width: 44px; padding: 0 10px; font-size: 1.2em; }
+button.mini.big { min-height: var(--tap); min-width: var(--tap); }
+.class-desc { margin: 0; text-align: center; color: var(--muted); font-style: italic; width: min(420px, 100%); }
+.panel { width: min(460px, 100%); background: var(--panel); border: 2px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.panel h3 { margin: 6px 0; color: var(--gold-l); font-size: 1em; font-weight: normal; letter-spacing: 0.05em; }
+.points-left { color: var(--gold); margin-bottom: 6px; }
+.points-left.done { color: var(--muted); }
+.stat-list { display: flex; flex-direction: column; gap: 6px; }
+.stat-row { display: flex; align-items: center; gap: 8px; }
+.stat-row .stat-name { flex: 1; display: flex; flex-direction: column; line-height: 1.1; }
+.stat-row .stat-name small { font-size: 0.68em; color: var(--muted); }
+.stat-row.primary .stat-name b { color: var(--gold-l); }
+.stat-val { width: 2ch; text-align: right; font-size: 1.15em; }
+.stat-mod { width: 3ch; color: var(--muted); font-size: 0.9em; }
+.derived { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 6px; width: min(460px, 100%); }
+.derived-item { background: #000; border: 1px solid var(--border); border-radius: 8px; padding: 6px; text-align: center; }
+.derived-item small { display: block; color: var(--muted); font-size: 0.7em; }
+.derived-item b { color: var(--gold-l); font-weight: normal; }
+.traits { margin: 0; padding-left: 20px; font-size: 0.85em; }
+.skills { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.skills li { display: flex; gap: 10px; align-items: flex-start; }
+.skills li.locked { opacity: 0.5; }
+.skills .skill-icon { font-size: 1.4em; width: 1.6em; text-align: center; }
+.skills b { font-weight: normal; color: var(--gold-l); }
+.skills small { color: var(--muted); font-size: 0.75em; }
+.skills p { margin: 2px 0 0; font-size: 0.8em; line-height: 1.3; }
+.sheet-head { display: flex; gap: 14px; align-items: center; width: min(460px, 100%); }
+.sheet-head h2 { text-align: left; }
+.sheet-head .subtitle { text-align: left; margin: 0; }
+.muted { color: var(--muted); }
+.hud-portrait { cursor: pointer; }
+.hud-points { color: var(--gold); animation: pulse 1.2s infinite alternate; }
+@keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }

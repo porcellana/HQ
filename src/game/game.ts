@@ -8,7 +8,7 @@
 import { Emitter } from '@/engine/events';
 import { findPath, type Point } from '@/engine/pathfinding';
 import { getZoneDef } from '@/data/registry';
-import type { GameState } from './state';
+import { recalcPlayer, type GameState } from './state';
 import { buildZone, type Zone, type ZoneExit } from './world/zone';
 
 export interface GameEvents extends Record<string, unknown> {
@@ -45,6 +45,7 @@ export class Game {
   stepDuration = 0.14;
 
   constructor(public state: GameState) {
+    recalcPlayer(state.player);
     this.zone = this.loadZoneOrFallback(state.player.pos.zone);
     const p = state.player.pos;
     if (!this.zone.isWalkable(p.x, p.y)) {

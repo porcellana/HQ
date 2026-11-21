@@ -13,14 +13,26 @@
  * Nunca borres migraciones antiguas.
  */
 
-export const CURRENT_SAVE_VERSION = 1;
+export const CURRENT_SAVE_VERSION = 2;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
 export type Migration = (data: RawSave) => RawSave;
 
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
-  // 1: (s) => ({ ...s, inventory: [] }),
+  /**
+   * v1 → v2 (Hito 2): aparecen las clases y las características.
+   * Los personajes "aventurero" del Hito 1 pasan a ser guerreros.
+   * (Los números se escriben aquí a mano a propósito: una migración no debe
+   * depender de datos de contenido que pueden cambiar en el futuro.)
+   */
+  1: (s) => {
+    const player = { ...(s['player'] as Record<string, unknown>) };
+    if (!player['classId'] || player['classId'] === 'aventurero') player['classId'] = 'guerrero';
+    player['stats'] ??= { FUE: 15, DES: 12, CON: 14, INT: 8, SAB: 10, CAR: 11 };
+    player['attributePoints'] ??= 0;
+    return { ...s, player };
+  },
 };
 
 export class SaveMigrationError extends Error {}

@@ -6,7 +6,7 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { TileDef, ZoneDef } from './schema';
+import type { ClassDef, TileDef, ZoneDef } from './schema';
 import tileList from './config/tiles';
 
 type Module = { default: unknown };
@@ -47,4 +47,26 @@ export const START_ZONE_ID = 'aldea_brumaroja';
 
 export function getZoneDef(id: string): ZoneDef | undefined {
   return ZONES.get(id);
+}
+
+// --- Clases jugables --------------------------------------------------------
+export const CLASSES: ReadonlyMap<string, ClassDef> = collect<ClassDef>(
+  import.meta.glob('./classes/*.{ts,json}', { eager: true }),
+  'clase',
+);
+
+/** Orden en la pantalla de creación (las que no estén aquí van al final). */
+const CLASS_ORDER = ['guerrero', 'picaro', 'mago', 'clerigo'];
+export function classList(): ClassDef[] {
+  const rank = (id: string) => {
+    const i = CLASS_ORDER.indexOf(id);
+    return i < 0 ? 99 : i;
+  };
+  return [...CLASSES.values()].sort((a, b) => rank(a.id) - rank(b.id));
+}
+
+export function getClass(id: string): ClassDef {
+  const c = CLASSES.get(id) ?? CLASSES.get('guerrero') ?? [...CLASSES.values()][0];
+  if (!c) throw new Error('No hay ninguna clase definida en src/data/classes');
+  return c;
 }

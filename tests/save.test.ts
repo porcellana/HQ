@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { CURRENT_SAVE_VERSION, SaveMigrationError, migrate, type Migration } from '@/game/save/migrations';
 import { BACKUP_KEY, SAVE_KEY, SaveManager } from '@/game/save/saveManager';
 import { MemoryStore } from '@/game/save/storage';
-import { createNewGame } from '@/game/state';
+import { testState } from './helpers';
 
-const newState = () => createNewGame({ name: 'Prueba', classId: 'aventurero', portrait: 0, seed: 123 });
+const newState = () => testState();
 
 describe('guardado', () => {
   it('guarda y carga sin pérdidas', async () => {

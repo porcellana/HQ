@@ -6,7 +6,7 @@
  */
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { getZoneDef } from '@/data/registry';
+import { getClass, getZoneDef } from '@/data/registry';
 import { GameLoop } from '@/engine/loop';
 import { Input } from '@/engine/input';
 import { randomSeed } from '@/engine/rng';
@@ -16,7 +16,9 @@ import { defaultStores } from '@/game/save/storage';
 import { loadSettings, saveSettings, type Settings } from '@/game/settings';
 import { createNewGame, type GameState } from '@/game/state';
 import { Renderer } from '@/gfx/renderer';
-import { DEFAULT_HERO_COLORS } from '@/gfx/sprites';
+import { heroColors } from '@/gfx/sprites';
+import { creationScreen } from '@/ui/creation';
+import { characterSheet } from '@/ui/sheet';
 import { confirmDialog, showDialog } from '@/ui/dialogs';
 import { buzz } from '@/ui/dom';
 import { Hud } from '@/ui/hud';
@@ -49,6 +51,7 @@ export class App {
       onKey: (code) => {
         if (code === 'Space' || code === 'Period') this.game?.waitTurn();
         if (code === 'Escape') this.togglePause();
+        if (code === 'KeyC') this.showSheet();
       },
     });
     window.addEventListener('resize', () => this.layout());
@@ -129,10 +132,17 @@ export class App {
       const ok = await confirmDialog(this.ui, 'Nueva partida', 'Ya tienes una partida guardada. Si empiezas otra, se sobrescribirá al guardar.', 'Empezar', true);
       if (!ok) return;
     }
-    // Hito 2 sustituirá esto por la pantalla de creación de personaje.
-    const state = createNewGame({ name: 'Aventurero', classId: 'aventurero', portrait: 0, seed: randomSeed() });
-    this.startGame(state);
-    void this.autosave('nueva partida');
+    this.setScreen(
+      creationScreen(
+        (r) => {
+          const state = createNewGame({ ...r, seed: randomSeed() });
+          this.startGame(state);
+          void this.autosave('nueva partida');
+          this.hud?.pushMessage(`¡Que empiece la aventura, ${r.name}! Toca el mapa para moverte.`, 'good');
+        },
+        () => void this.showMainMenu(),
+      ),
+    );
   }
 
   private async continueGame(): Promise<void> {
@@ -155,13 +165,14 @@ export class App {
 
     const hud = new Hud({
       onWait: () => game.waitTurn(),
+      onSheet: () => this.showSheet(),
       onMenu: () => this.togglePause(),
       onInventory: () => hud.pushMessage('La mochila llegará en el Hito 4.'),
       onJoystick: (d) => this.setHeldDir(d),
     });
     this.hud = hud;
     this.ui.prepend(hud.root);
-    hud.setPortrait(DEFAULT_HERO_COLORS);
+    this.applyLook();
     this.applySettings();
 
     game.events.on('message', (m) => hud.pushMessage(m.text, m.kind));
@@ -178,6 +189,30 @@ export class App {
     hud.showBanner(def?.name ?? '', undefined);
     this.layout();
     this.loop.start();
+  }
+
+  /** Aplica aspecto de clase y retrato al mapa y al HUD. */
+  private applyLook(): void {
+    const p = this.game?.state.player;
+    if (!p || !this.hud) return;
+    const cls = getClass(p.classId);
+    const colors = heroColors(cls.look, p.portrait);
+    this.renderer.heroColors = colors;
+    this.hud.setPortrait(colors);
+    this.hud.setResource(cls.resource.short, cls.resource.color);
+  }
+
+  private showSheet(): void {
+    const game = this.game;
+    if (!game || this.pauseClose || this.screen) return;
+    game.heldDir = null;
+    this.setScreen(
+      characterSheet(
+        game.state.player,
+        () => this.setScreen(null),
+        () => void this.autosave('ficha'),
+      ),
+    );
   }
 
   private tick(dt: number): void {

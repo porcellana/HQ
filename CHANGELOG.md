@@ -2,6 +2,20 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.0.2 · 2026-11-21 — Hito 2: personajes
+
+- Pantalla de creación: elige clase (Guerrero, Pícaro, Mago, Clérigo), nombre
+  (con botón 🎲), aspecto (20 combinaciones de piel y pelo) y reparte 3 puntos.
+- Características FUE, DES, CON, INT, SAB y CAR con modificadores 5e; PV por dado
+  de golpe, CA, bonificador de ataque y de competencia.
+- Cada clase con su recurso (Vigor, Energía, Maná, Fe), arma inicial, rasgos y
+  5 habilidades que se desbloquean en los niveles 1, 3, 6, 10 y 15.
+- Sprites propios por clase (casco y espada, capucha y daga, sombrero y bastón,
+  diadema y maza).
+- Ficha de personaje (botón «Ficha» o tocar el retrato) con reparto de puntos.
+- Guardado v2 con migración: las partidas del Hito 1 pasan a ser guerreros.
+- Versión web en GitHub Pages y APK publicado como Release (enlace fijo / Obtainium).
+
 ## v0.0.1 · 2026-11-21 — Hito 1: motor base
 
 - Proyecto TypeScript + Vite + Capacitor 8 (Android) y PWA instalable sin conexión.
