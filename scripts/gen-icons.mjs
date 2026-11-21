@@ -91,4 +91,14 @@ writeFileSync('public/icons/icon-maskable-512.png', icon(512, 0.28, false));
 const densities = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
 mkdirSync('resources/android', { recursive: true });
 for (const [d, s] of Object.entries(densities)) writeFileSync(`resources/android/ic_launcher-${d}.png`, icon(s, 0.18));
+// Pantalla de inicio de Android: el héroe sobre fondo transparente (el fondo
+// oscuro lo pone splash.xml), centrado por prepare-android.mjs.
+const splash = (size) => {
+  const cell = Math.floor(size / 16);
+  return png(size, (x, y) => {
+    const ch = ART[Math.floor(y / cell)]?.[Math.floor(x / cell)];
+    return ch && ch !== '.' ? [...COLORS[ch], 255] : [0, 0, 0, 0];
+  });
+};
+writeFileSync('resources/android/splash_icon.png', splash(192));
 console.log('Iconos generados.');

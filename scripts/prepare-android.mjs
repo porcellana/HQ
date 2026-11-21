@@ -8,7 +8,7 @@
  * Uso: npm run android:prepare   (requiere haber hecho `npm run build`)
  */
 import { execSync } from 'node:child_process';
-import { copyFileSync, existsSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
 
 const run = (cmd) => execSync(cmd, { stdio: 'inherit' });
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -46,5 +46,31 @@ for (const d of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
 // Quitamos el icono adaptativo por defecto (logo de Capacitor) para que use nuestros PNG.
 const anyDpi = `${resDir}/mipmap-anydpi-v26`;
 if (existsSync(anyDpi)) for (const f of readdirSync(anyDpi)) rmSync(`${anyDpi}/${f}`);
+
+// --- Pantalla de inicio oscura (en vez del logo de Capacitor) -------------
+// Fondo #0b0a10 con el héroe centrado; en Android 12+ se usa el color de fondo.
+for (const dir of readdirSync(resDir)) {
+  if (dir.startsWith('drawable') && existsSync(`${resDir}/${dir}/splash.png`)) rmSync(`${resDir}/${dir}/splash.png`);
+}
+mkdirSync(`${resDir}/drawable-nodpi`, { recursive: true });
+if (existsSync('resources/android/splash_icon.png')) copyFileSync('resources/android/splash_icon.png', `${resDir}/drawable-nodpi/splash_icon.png`);
+writeFileSync(
+  `${resDir}/drawable/splash.xml`,
+  `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><color android:color="#0b0a10" /></item>
+    <item><bitmap android:gravity="center" android:src="@drawable/splash_icon" /></item>
+</layer-list>
+`,
+);
+const stylesPath = `${resDir}/values/styles.xml`;
+let styles = readFileSync(stylesPath, 'utf8');
+if (!styles.includes('windowSplashScreenBackground')) {
+  styles = styles.replace(
+    '<item name="android:background">@drawable/splash</item>',
+    '<item name="android:background">@drawable/splash</item>\n        <item name="windowSplashScreenBackground">#0b0a10</item>\n        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>',
+  );
+  writeFileSync(stylesPath, styles);
+}
 
 run('npx cap sync android');

@@ -500,6 +500,9 @@ export class App {
         this.setScreen(null);
       } else if (this.game) {
         this.togglePause();
+      } else if (this.screen && !this.screen.classList.contains('main-menu')) {
+        // Ajustes o creación de personaje: Atrás vuelve al menú principal.
+        void this.showMainMenu();
       } else {
         void CapApp.exitApp();
       }
