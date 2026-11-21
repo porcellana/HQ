@@ -1,0 +1,70 @@
+# Compila un APK de depuración en cada push y lo publica como artefacto
+# descargable (pestaña Actions → la ejecución → "Artifacts").
+# No necesita Android SDK local: lo trae el runner de GitHub.
+name: APK Android (debug)
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Tests de lógica
+        run: npm test
+
+      - name: Compilar web (TypeScript + Vite)
+        run: npm run build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Preparar proyecto Android (Capacitor)
+        run: node scripts/prepare-android.mjs
+
+      # Keystore de depuración fijo: así cada APK nuevo se instala ENCIMA del
+      # anterior sin desinstalar (y sin perder la partida guardada).
+      - name: Usar keystore de depuración del repositorio
+        run: |
+          mkdir -p ~/.android
+          cp android-keystore/debug.keystore ~/.android/debug.keystore
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Nombrar APK
+        id: apk
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          NAME="ecos-del-abismo-v${VERSION}-build${GITHUB_RUN_NUMBER}.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.name }}
+          retention-days: 30
