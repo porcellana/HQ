@@ -18,6 +18,7 @@ import type { Zone } from '@/game/world/zone';
 import { TILE, ctx2d, makeCanvas } from './canvas';
 import { PAL } from './palette';
 import { DEFAULT_HERO_COLORS, humanoidSprite, type HumanoidColors } from './sprites';
+import type { NpcDef } from '@/data/schema';
 import { getTileSprite, variantFor } from './tiles';
 
 /** Casillas visibles aproximadas de ancho (en vertical). */
@@ -151,6 +152,8 @@ export class Renderer {
         this.labelAt(label, sx, sy - TILE * zoom * 0.8, fontPx, pulse);
         continue;
       }
+      // Las puertas de edificios sólo se rotulan cuando se ven (sin flecha).
+      if (e.door) continue;
       // Punto del borde en dirección a la salida
       const dx = sx - cx;
       const dy = sy - cy;
@@ -241,9 +244,39 @@ export class Renderer {
   /** Enemigos y jugador ordenados por fila (los de abajo tapan a los de arriba). */
   private drawEntities(game: Game): void {
     const list: Array<{ y: number; draw: () => void }> = game.enemies.map((e) => ({ y: e.ry, draw: () => this.drawEnemy(game, e) }));
+    for (const n of game.npcs) list.push({ y: n.y, draw: () => this.drawNpc(game, n) });
     list.push({ y: game.view.ry, draw: () => this.drawPlayer(game) });
     list.sort((a, b) => a.y - b.y);
     for (const it of list) it.draw();
+  }
+
+  private drawNpc(game: Game, n: NpcDef): void {
+    const { ctx } = this;
+    const x = n.x * TILE;
+    const y = n.y * TILE;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x + 8, y + 15, 5, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const l = n.look;
+    const spr = humanoidSprite({
+      hair: l.hair ?? PAL.hair, skin: l.skin ?? PAL.skin, cloth: l.cloth, clothDark: l.clothDark, pants: l.pants,
+      ...(l.hat ? { hat: l.hat } : {}), ...(l.overlay ? { overlay: l.overlay } : {}),
+    });
+    // Respiración: sube y baja un píxel de vez en cuando.
+    const breathe = Math.sin(this.time * 2 + n.x * 1.7) > 0.6 ? -1 : 0;
+    ctx.drawImage(n.facingLeft ? spr.left : spr.right, x, y - 1 + breathe);
+    const mark = game.npcMarker(n.id);
+    if (mark) {
+      const bob = Math.sin(this.time * 4) * 1.5;
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = PAL.black;
+      ctx.strokeText(mark, x + 8, y - 3 + bob);
+      ctx.fillStyle = mark === '?' ? '#7fe07f' : PAL.goldL;
+      ctx.fillText(mark, x + 8, y - 3 + bob);
+    }
   }
 
   private drawEnemy(game: Game, e: Enemy): void {

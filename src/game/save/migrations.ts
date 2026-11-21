@@ -13,7 +13,7 @@
  * Nunca borres migraciones antiguas.
  */
 
-export const CURRENT_SAVE_VERSION = 3;
+export const CURRENT_SAVE_VERSION = 4;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
@@ -44,6 +44,8 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     player['needsStarterKit'] = true;
     return { ...s, player };
   },
+  /** v3 → v4 (Hito 5): misiones y tiendas. */
+  3: (s) => ({ ...s, quests: s['quests'] ?? {}, shops: s['shops'] ?? {} }),
 };
 
 export class SaveMigrationError extends Error {}

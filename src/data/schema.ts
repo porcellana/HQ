@@ -39,6 +39,8 @@ export interface ZoneExitDef {
   label?: string;
   /** Tile que se dibuja en la salida (por defecto `exitTile` de la zona). */
   tile?: string;
+  /** Puerta de un edificio: no muestra flecha en el borde, sólo su nombre al verla. */
+  door?: boolean;
 }
 
 /**
@@ -399,4 +401,117 @@ export interface StartingItem {
   item: string;
   qty?: number;
   equip?: boolean;
+}
+
+// ===========================================================================
+// PNJ, DIÁLOGOS, TIENDAS Y MISIONES
+// ===========================================================================
+
+/** Acción de una opción de diálogo. */
+export type DialogAction =
+  /** Abre una tienda (data/shops). */
+  | { type: 'shop'; shop: string }
+  /** Posada: descansar (cura todo, pasa la noche y guarda) por `price` de oro. */
+  | { type: 'inn'; price: number }
+  /** Templo: curación y purificación por un donativo de `pricePerLevel` × nivel. Fija el punto de reaparición. */
+  | { type: 'temple'; pricePerLevel: number }
+  /** Muestra las misiones que da o recoge este PNJ. */
+  | { type: 'quests' }
+  /** Pone una bandera de historia. */
+  | { type: 'flag'; flag: string }
+  /** Cierra el diálogo. */
+  | { type: 'end' };
+
+export interface DialogOption {
+  label: string;
+  /** Nodo al que salta (en el mismo PNJ). */
+  goto?: string;
+  action?: DialogAction;
+  /** Sólo aparece si esta bandera de historia está puesta (o no, con `!bandera`). */
+  ifFlag?: string;
+  /** Sólo aparece si la misión está en ese estado. */
+  ifQuest?: { quest: string; state: 'disponible' | 'activa' | 'completada' };
+}
+
+export interface DialogNode {
+  /** Texto del PNJ. Si es una lista, se elige uno al azar (rumores). */
+  text: string | string[];
+  options: DialogOption[];
+}
+
+/** Aspecto de un PNJ (cuerpo humanoide con colores y capa opcional). */
+export interface NpcLook {
+  overlay?: string;
+  cloth: string;
+  clothDark: string;
+  pants: string;
+  hat?: string;
+  skin?: string;
+  hair?: string;
+}
+
+export interface NpcDef {
+  id: string;
+  name: string;
+  /** Profesión o título corto ("Herrera", "Tabernero"). */
+  title?: string;
+  zone: string;
+  x: number;
+  y: number;
+  look: NpcLook;
+  /** Diálogo: nodos por id; empieza en "inicio". */
+  dialog: Record<string, DialogNode>;
+  /** Mira hacia la izquierda. */
+  facingLeft?: boolean;
+}
+
+/** Entrada del stock de una tienda. */
+export type ShopStockEntry =
+  /** Objeto concreto (consumibles, picos...). `chance` 0..1 de que esté a la venta. */
+  | { item: string; qty?: [number, number]; chance?: number }
+  /** Equipo aleatorio (con rareza) de un grupo, de nivel = nivel de la tienda (+/- 1). */
+  | { pool: 'equipo' | 'armas' | 'armaduras' | 'accesorios'; count: [number, number] };
+
+export interface ShopDef {
+  id: string;
+  name: string;
+  /** Multiplicador de precio (cada ciudad/tienda tiene el suyo). */
+  priceMult: number;
+  /** Turnos hasta renovar el stock. */
+  restockTurns: number;
+  /** Nivel del equipo que vende. */
+  level: number;
+  stock: ShopStockEntry[];
+  /** Tipos de objeto que compra (por defecto, todos). */
+  buys?: ItemKind[];
+}
+
+export type QuestObjective =
+  /** Matar `count` enemigos de un id concreto o de una familia. */
+  | { type: 'kill'; enemy?: string; family?: EnemyFamily; count: number; label: string }
+  /** Llevar `count` unidades de un objeto al entregar (se consumen). */
+  | { type: 'collect'; item: string; count: number; label: string }
+  /** Visitar una zona. */
+  | { type: 'visit'; zone: string; label: string }
+  /** Hablar con un PNJ. */
+  | { type: 'talk'; npc: string; label: string };
+
+export interface QuestDef {
+  id: string;
+  name: string;
+  kind: 'principal' | 'secundaria' | 'repetible';
+  /** PNJ que la ofrece. */
+  giver: string;
+  /** PNJ al que se entrega (por defecto el que la da). */
+  turnIn?: string;
+  description: string;
+  /** Texto del PNJ al entregarla. */
+  completeText?: string;
+  objectives: QuestObjective[];
+  rewards: { xp: number; gold: number; items?: Array<{ item: string; qty?: number }>; flag?: string };
+  /** Misiones que hay que haber completado antes. */
+  requires?: string[];
+  minLevel?: number;
+  /** Repetibles: turnos hasta que se puede volver a coger. */
+  cooldownTurns?: number;
 }

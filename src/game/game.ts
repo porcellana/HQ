@@ -7,8 +7,8 @@
  *     → inicio del turno del jugador (estados, regeneración, encuentros)
  * El combate ocurre en el mismo mapa, sin cambiar de pantalla.
  */
-import { getClass, getEnemy, getZoneDef } from '@/data/registry';
-import type { DamageType, EnemySpell, SkillDef, SkillEffect, StatusApply } from '@/data/schema';
+import { getClass, getEnemy, getZoneDef, npcsInZone } from '@/data/registry';
+import type { DamageType, EnemySpell, NpcDef, SkillDef, SkillEffect, StatusApply } from '@/data/schema';
 import { Emitter } from '@/engine/events';
 import { findPath, type Point } from '@/engine/pathfinding';
 import { Rng, hashString } from '@/engine/rng';
@@ -33,6 +33,9 @@ import { recalcPlayer, type GameState } from './state';
 import { addItem, equip, removeQty, unequip } from './items/inventory';
 import { itemDef, rarityOf, type ItemInstance } from './items/items';
 import { rollLoot } from './items/loot';
+import { createItem } from './items/items';
+import * as Quests from './quests/quests';
+import * as Shop from './economy/shop';
 import type { EquipSlot } from '@/data/schema';
 import { buildZone, type Zone, type ZoneExit } from './world/zone';
 
@@ -67,6 +70,10 @@ export interface GameEvents extends Record<string, unknown> {
   playerDied: { cause: string };
   /** Recibió daño (para vibración). */
   playerHurt: { amount: number };
+  /** El jugador habla con un PNJ (la interfaz abre el diálogo). */
+  npcTalk: { npc: NpcDef };
+  /** Cambió algo de las misiones (para refrescar el HUD). */
+  questsChanged: Record<string, never>;
 }
 
 /** Efectos visuales efímeros (el renderizador los dibuja). */
@@ -118,6 +125,10 @@ export class Game {
   readonly view: PlayerView;
   readonly combat: PlayerCombat = { statuses: [], buffs: [], cooldowns: {}, stealth: 0, skipNext: false };
   enemies: Enemy[] = [];
+  /** PNJ de la zona actual (fijos en su casilla). */
+  npcs: NpcDef[] = [];
+  /** PNJ al que vamos caminando para hablar. */
+  private pendingTalk: string | null = null;
   ground: GroundLoot[] = [];
   fx: Fx[] = [];
   /** Habilidad elegida esperando objetivo. */
@@ -132,6 +143,8 @@ export class Game {
   private interrupt = false;
 
   constructor(public state: GameState) {
+    state.quests ??= {};
+    state.shops ??= {};
     recalcPlayer(state.player);
     if (state.player.hp <= 0) state.player.hp = Math.ceil(state.player.maxHp / 2);
     this.rng = new Rng(hashString(`${state.seed}:${state.turn}:${Date.now()}:${gameCounter++}`));
@@ -182,13 +195,17 @@ export class Game {
     return this.enemies.some((e) => e.alerted && dist(e.x, e.y, p.x, p.y) <= e.def.sight + 2);
   }
 
+  npcAt(x: number, y: number): NpcDef | undefined {
+    return this.npcs.find((n) => n.x === x && n.y === y);
+  }
+
   enemyAt(x: number, y: number): Enemy | undefined {
     return this.enemies.find((e) => e.x === x && e.y === y && e.hp > 0);
   }
 
   /** Casilla libre para el jugador (terreno + sin enemigos). */
   playerCanWalk(x: number, y: number): boolean {
-    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y);
+    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y);
   }
 
   private blocksSight = (x: number, y: number) => this.zone.tileAt(x, y)?.blocksSight ?? true;
@@ -237,6 +254,14 @@ export class Game {
       return;
     }
     const from = this.isMoving ? this.view.to : this.playerPos;
+    this.pendingTalk = null;
+    const npc = this.npcAt(x, y);
+    if (npc && this.canAct && this.canTalk(npc)) {
+      this.cancelPath();
+      this.talkTo(npc);
+      return;
+    }
+    if (npc) this.pendingTalk = npc.id;
     const enemy = this.enemyAt(x, y);
     if (enemy && this.canAct) {
       const p = this.playerPos;
@@ -259,7 +284,7 @@ export class Game {
     });
     if (!path || path.length === 0) {
       const tile = this.zone.tileAt(x, y);
-      if (!enemy) {
+      if (!enemy && !npc) {
         if (tile && !tile.walkable && dist(from.x, from.y, x, y) <= 1) this.msg(`${tile.name}.`);
         else this.msg('No puedes llegar ahí.', 'warn');
       }
@@ -422,6 +447,15 @@ export class Game {
     v.stepT = -1;
     if (v.path.length === 0) v.target = null;
     this.pickupHere();
+    if (this.pendingTalk && v.path.length === 0) {
+      const npc = this.npcs.find((n) => n.id === this.pendingTalk);
+      this.pendingTalk = null;
+      if (npc && this.canTalk(npc)) {
+        this.endPlayerTurn();
+        this.talkTo(npc);
+        return;
+      }
+    }
     const exit = this.zone.exitAt(v.to.x, v.to.y);
     if (exit && !prevExit) {
       this.state.turn++;
@@ -533,7 +567,9 @@ export class Game {
     const firstVisit = !this.state.visitedZones.includes(this.zone.id);
     if (firstVisit) this.state.visitedZones.push(this.zone.id);
     this.events.emit('zoneChanged', { zone: this.zone, firstVisit });
-    if (firstVisit && this.zone.def.kind !== 'town') {
+    for (const m of Quests.onVisit(this.state, this.zone.id)) this.msg(m, 'good');
+    this.events.emit('questsChanged', {});
+    if (firstVisit && (this.zone.def.kind === 'wild' || this.zone.def.kind === 'dungeon')) {
       this.gainXp(this.zone.def.discoverXp ?? 20 * this.zone.def.level, `descubres ${this.zone.def.name}`);
     }
   }
@@ -541,6 +577,8 @@ export class Game {
   // =============================================================== encuentros
   /** Coloca los grupos iniciales de la zona (los enemigos no se guardan). */
   private populateZone(): void {
+    this.npcs = npcsInZone(this.zone.id);
+    this.pendingTalk = null;
     this.enemies = [];
     this.ground = [];
     this.fx = [];
@@ -599,7 +637,7 @@ export class Game {
 
   freeForEnemy(x: number, y: number): boolean {
     const p = this.playerPos;
-    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !(p.x === x && p.y === y);
+    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(p.x === x && p.y === y);
   }
 
   private freeSpotNear(c: Point, r: number): Point | null {
@@ -682,6 +720,9 @@ export class Game {
     const xp = xpForKill(enemy.def.xp, enemy.def.level, this.state.player.level);
     this.msg(`${enemy.def.name} cae derrotado.`, 'good');
     this.gainXp(xp, enemy.def.name);
+    const qm = Quests.onKill(this.state, enemy.def);
+    for (const m of qm) this.msg(m, 'good');
+    if (qm.length) this.events.emit('questsChanged', {});
     const loot = rollLoot(this.rng, enemy.def.lootTable, enemy.def.level);
     if (loot.items.length || loot.gold) this.dropLoot(enemy.x, enemy.y, loot.items, loot.gold);
   }
@@ -716,6 +757,7 @@ export class Game {
         this.msg(`Recoges: ${def.name}${qty - rest > 1 ? ` ×${qty - rest}` : ''}${r.id !== 'comun' ? ` (${r.name})` : ''}.`, r.id === 'comun' ? 'info' : 'good');
       }
       if (rest > 0) left.push({ ...it, qty: rest });
+      if (rest < qty) for (const m of Quests.collectNotes(this.state, it.id)) this.msg(m, 'good');
     }
     g.items = left;
     if (left.length) this.msg('¡La mochila está llena! Parte del botín se queda en el suelo.', 'warn');
@@ -1211,10 +1253,117 @@ export class Game {
     this.combat.statuses = [];
     this.combat.buffs = [];
     this.combat.stealth = 0;
-    this.enterZone('aldea_brumaroja', null);
+    const where = p.respawnZone && getZoneDef(p.respawnZone) ? p.respawnZone : getZoneDef('aldea_capilla') ? 'aldea_capilla' : 'aldea_brumaroja';
+    this.enterZone(where, null);
     p.hp = Math.max(1, Math.ceil(p.maxHp / 2));
     p.mp = Math.ceil(p.maxMp / 2);
-    this.msg(`Despiertas en la aldea, magullado. Has perdido ${lost} de oro.`, 'warn');
+    this.msg(`Despiertas en ${this.zone.def.name}, magullado. Has perdido ${lost} de oro.`, 'warn');
+  }
+
+  // ======================================================== PNJ y servicios
+  /** ¿Está el PNJ al alcance para hablar? (pegado, o a 2 casillas con un mostrador en medio). */
+  canTalk(npc: NpcDef): boolean {
+    const p = this.playerPos;
+    const d = dist(p.x, p.y, npc.x, npc.y);
+    return d <= 1 || (d === 2 && this.los(p, npc));
+  }
+
+  /** Habla con un PNJ: cuenta objetivos de "hablar" y avisa a la interfaz. */
+  talkTo(npc: NpcDef): void {
+    const p = this.playerPos;
+    if (npc.x !== p.x) this.view.facing = npc.x > p.x ? 'right' : 'left';
+    const qm = Quests.onTalk(this.state, npc.id);
+    for (const m of qm) this.msg(m, 'good');
+    if (qm.length) this.events.emit('questsChanged', {});
+    this.events.emit('npcTalk', { npc });
+  }
+
+  acceptQuest(id: string): string | null {
+    const err = Quests.accept(this.state, id);
+    if (!err) {
+      this.msg(`Nueva misión: ${Quests.getQuest(id).name}`, 'good');
+      // Los objetivos de "visitar" la zona donde ya estás cuentan al momento.
+      for (const m of Quests.onVisit(this.state, this.zone.id)) this.msg(m, 'good');
+      this.events.emit('questsChanged', {});
+    }
+    return err;
+  }
+
+  /** Entrega una misión y aplica sus recompensas. */
+  turnInQuest(id: string, npcId: string): string | null {
+    const res = Quests.turnIn(this.state, id, npcId);
+    if ('error' in res) return res.error;
+    const q = res.quest;
+    const p = this.state.player;
+    this.msg(`¡Misión completada: ${q.name}!`, 'good');
+    if (q.rewards.gold) {
+      p.gold += q.rewards.gold;
+      this.msg(`+${q.rewards.gold} de oro.`, 'good');
+    }
+    for (const r of q.rewards.items ?? []) {
+      const it = createItem(r.item, 'comun', this.rng, { qty: r.qty ?? 1, level: p.level });
+      const left = addItem(p, it);
+      if (left > 0) this.dropLoot(this.playerPos.x, this.playerPos.y, [{ ...it, qty: left }], 0);
+      this.msg(`Recibes: ${itemDef(it).name}${(r.qty ?? 1) > 1 ? ` ×${r.qty}` : ''}${left > 0 ? ' (en el suelo: mochila llena)' : ''}.`, 'good');
+    }
+    if (q.rewards.xp) this.gainXp(q.rewards.xp, q.name);
+    this.events.emit('questsChanged', {});
+    return null;
+  }
+
+  /** Stock actual de una tienda (se renueva si ha pasado el tiempo). */
+  shopStock(shopId: string): Shop.ShopState {
+    return Shop.ensureStock(this.state, shopId);
+  }
+
+  buyFromShop(shopId: string, uid: string, qty = 1): string | null {
+    const err = Shop.buy(this.state, shopId, this.state.player, this.derived.stats.CAR, uid, qty);
+    if (!err) recalcPlayer(this.state.player);
+    return err;
+  }
+
+  /** Vende y devuelve el oro ganado (número) o un error (texto). */
+  sellToShop(shopId: string, uid: string, qty = 1): number | string {
+    return Shop.sell(this.state, shopId, this.state.player, this.derived.stats.CAR, uid, qty);
+  }
+
+  /** Posada: cura todo, limpia estados y pasa la noche. */
+  rest(price: number): string | null {
+    const p = this.state.player;
+    if (this.inCombat) return 'No puedes descansar con enemigos cerca.';
+    if (p.gold < price) return `No tienes suficiente oro (cuesta ${price}).`;
+    p.gold -= price;
+    p.hp = p.maxHp;
+    p.mp = p.maxMp;
+    this.combat.statuses = [];
+    this.combat.buffs = [];
+    this.state.turn += 100; // pasa la noche: las tiendas pueden renovar su stock
+    this.msg('Duermes de un tirón. Te levantas como nuevo.', 'good');
+    return null;
+  }
+
+  /** Templo: sanación completa por un donativo y punto de reaparición. */
+  templeHeal(pricePerLevel: number): string | null {
+    const p = this.state.player;
+    const price = pricePerLevel * p.level;
+    const hurt = p.hp < p.maxHp || this.combat.statuses.length > 0;
+    p.respawnZone = this.zone.id;
+    if (!hurt) {
+      this.msg('No necesitas sanación. Si caes, despertarás en este templo.', 'info');
+      return null;
+    }
+    if (p.gold < price) return `El donativo es de ${price} de oro y no te llega.`;
+    p.gold -= price;
+    p.hp = p.maxHp;
+    this.combat.statuses = [];
+    this.fx.push({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 1.2, color: '#fff0a0', t: 0, life: 0.7 });
+    this.msg(`Donas ${price} de oro. La Llama Blanca cierra tus heridas. Si caes, despertarás aquí.`, 'good');
+    return null;
+  }
+
+  /** Marca de misión sobre un PNJ. */
+  npcMarker(npcId: string): '!' | '?' | null {
+    return Quests.npcMarker(this.state, npcId);
   }
 }
 

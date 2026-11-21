@@ -298,7 +298,120 @@ const cave: Gen = (c, r) => {
   }
 };
 
+// ------------------------------------------------------------ interiores
+const woodFloor: Gen = (c, r) => {
+  px(c, 0, 0, PAL.wood, TILE, TILE);
+  for (let y = 0; y < 16; y += 4) {
+    px(c, 0, y, PAL.woodD, TILE, 1);
+    const seam = r.int(2, 13);
+    px(c, seam, y + 1, PAL.woodD, 1, 3);
+    px(c, 0, y + 1, PAL.woodL, TILE, 1);
+  }
+  speckle(c, r, 6, [PAL.woodD]);
+};
+
+const carpet: Gen = (c, r) => {
+  woodFloor(c, r);
+  px(c, 1, 1, PAL.roofD, 14, 14);
+  px(c, 2, 2, PAL.roof, 12, 12);
+  px(c, 3, 3, PAL.gold, 10, 1);
+  px(c, 3, 12, PAL.gold, 10, 1);
+  px(c, 7, 6, PAL.goldL, 2, 4);
+};
+
+const counter: Gen = (c, r) => {
+  woodFloor(c, r);
+  px(c, 0, 3, PAL.black, TILE, 12);
+  px(c, 0, 4, PAL.woodL, TILE, 3);
+  px(c, 0, 7, PAL.wood, TILE, 7);
+  for (let x = 1; x < 16; x += 5) px(c, x, 8, PAL.woodD, 1, 6);
+  if (r.chance(0.5)) px(c, r.int(2, 11), 2, PAL.gold, 3, 2);
+};
+
+const table: Gen = (c, r) => {
+  woodFloor(c, r);
+  px(c, 2, 4, PAL.black, 12, 9);
+  px(c, 3, 5, PAL.woodL, 10, 5);
+  px(c, 3, 10, PAL.woodD, 10, 2);
+  if (r.chance(0.6)) {
+    px(c, 6, 5, PAL.bone, 3, 3);
+    px(c, 7, 6, PAL.dirtD, 1, 1);
+  }
+};
+
+const barrel: Gen = (c, r) => {
+  woodFloor(c, r);
+  px(c, 3, 2, PAL.black, 10, 13);
+  px(c, 4, 3, PAL.wood, 8, 11);
+  px(c, 4, 3, PAL.woodL, 3, 11);
+  px(c, 3, 5, PAL.steelD, 10, 1);
+  px(c, 3, 11, PAL.steelD, 10, 1);
+};
+
+const shelf: Gen = (c, r) => {
+  px(c, 0, 0, PAL.woodD, TILE, TILE);
+  for (let y = 4; y < 16; y += 5) {
+    px(c, 0, y, PAL.woodL, TILE, 1);
+    for (let x = 1; x < 15; x += 3) {
+      if (!r.chance(0.7)) continue;
+      const col = r.pick([PAL.red, PAL.blue, '#7ac040', PAL.gold, PAL.purple]);
+      px(c, x, y - 3, col, 2, 3);
+      px(c, x, y - 3, PAL.white, 1, 1);
+    }
+  }
+};
+
+const altar: Gen = (c, r) => {
+  px(c, 0, 0, PAL.stone, TILE, TILE);
+  speckle(c, r, 8, [PAL.stoneD, PAL.stoneL]);
+  px(c, 1, 5, PAL.black, 14, 10);
+  px(c, 2, 6, PAL.white, 12, 3);
+  px(c, 2, 9, PAL.stoneL, 12, 5);
+  px(c, 7, 0, PAL.gold, 2, 6);
+  px(c, 5, 2, PAL.gold, 6, 2);
+  px(c, 3, 4, PAL.goldL, 1, 2);
+  px(c, 12, 4, PAL.goldL, 1, 2);
+};
+
+const hearth: Gen = (c, r) => {
+  stoneWall(c, r);
+  px(c, 3, 6, PAL.black, 10, 10);
+  px(c, 5, 10, PAL.fire, 6, 5);
+  px(c, 6, 8, PAL.gold, 4, 4);
+  px(c, 7, 7, PAL.goldL, 2, 3);
+  px(c, 4, 14, PAL.woodD, 8, 2);
+};
+
+const bed: Gen = (c, r) => {
+  woodFloor(c, r);
+  px(c, 2, 1, PAL.black, 12, 14);
+  px(c, 3, 2, PAL.woodL, 10, 12);
+  px(c, 4, 3, PAL.white, 8, 3);
+  px(c, 3, 7, PAL.red, 10, 7);
+  px(c, 3, 7, PAL.roofL, 10, 1);
+};
+
+const anvil: Gen = (c, r) => {
+  stoneFloor(c, r);
+  px(c, 2, 5, PAL.black, 12, 5);
+  px(c, 3, 6, PAL.steel, 10, 3);
+  px(c, 6, 9, PAL.black, 4, 5);
+  px(c, 7, 9, PAL.steelD, 2, 4);
+  px(c, 4, 13, PAL.steelD, 8, 2);
+};
+
+const dock: Gen = (c, r) => {
+  water(c, r);
+  for (let x = 0; x < 16; x += 4) {
+    px(c, x, 0, PAL.wood, 3, TILE);
+    px(c, x, 0, PAL.woodL, 1, TILE);
+    px(c, x + 3, 0, PAL.woodD, 1, TILE);
+  }
+  px(c, 0, 7, PAL.woodD, TILE, 1);
+};
+
 export const TILE_GENERATORS: Readonly<Record<string, Gen>> = {
+  woodFloor, carpet, counter, table, barrel, shelf, altar, hearth, bed, anvil, dock,
   grass, flowers, dirt, cobble, stoneFloor, stoneWall, water, tree, pine, bush, rock,
   roof: roofGen(PAL.roofD, PAL.roof, PAL.roofL),
   roofSlate: roofGen(PAL.slateD, PAL.slate, PAL.slateL),

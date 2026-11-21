@@ -201,7 +201,7 @@ describe('combate en partida', () => {
     expect(g.state.turn).toBe(turn + 1);
   });
 
-  it('morir y despertar en la aldea perdiendo el 10 % del oro', () => {
+  it('morir y despertar en la capilla de la aldea perdiendo el 10 % del oro', () => {
     const g = gameIn('mago', 'bosque_sombrio');
     g.state.player.gold = 100;
     let died = false;
@@ -210,7 +210,7 @@ describe('combate en partida', () => {
     expect(died).toBe(true);
     expect(g.isDead).toBe(true);
     g.respawn();
-    expect(g.zone.id).toBe('aldea_brumaroja');
+    expect(g.zone.id).toBe('aldea_capilla');
     expect(g.state.player.gold).toBe(90);
     expect(g.state.player.hp).toBeGreaterThan(0);
     expect(g.isDead).toBe(false);

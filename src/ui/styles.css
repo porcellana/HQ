@@ -278,3 +278,45 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .transfer { display: flex; flex-direction: column; gap: 8px; }
 .code-area { width: 100%; font: 12px monospace; background: #000; color: var(--text); border: 1px solid var(--border-l); border-radius: 8px; padding: 8px; user-select: text; -webkit-user-select: text; word-break: break-all; }
 .warn-text { color: #f0a0a0; }
+
+/* ------------------------------- Diálogos PNJ ----------------------------- */
+.dialog-back { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,0.25); }
+.dialog-sheet {
+  width: min(520px, 100%); max-height: 78%; overflow-y: auto; background: var(--panel-solid); border: 2px solid var(--border-l);
+  border-bottom: none; border-radius: 16px 16px 0 0; padding: 14px 14px calc(14px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 -8px 30px #000;
+}
+.dialog-head { display: flex; gap: 12px; align-items: flex-start; }
+.dialog-head b { color: var(--gold-l); font-weight: normal; font-size: 1.1em; }
+.dialog-head p { margin: 4px 0 0; line-height: 1.4; }
+.dialog-portrait { width: 64px; height: 64px; flex: none; image-rendering: pixelated; background: radial-gradient(circle, #3a2a3a, #0b0a10); border: 2px solid var(--border-l); border-radius: 10px; }
+.dialog-options { display: flex; flex-direction: column; gap: 8px; }
+.dialog-options button { text-align: left; }
+.quest-list { display: flex; flex-direction: column; gap: 10px; }
+.quest-card { background: #0e0c14; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
+.quest-card.ready { border-color: var(--ok); }
+.quest-card p { margin: 0; color: var(--muted); line-height: 1.35; }
+.quest-card ul { margin: 0; padding-left: 4px; list-style: none; }
+.quest-card li.done { color: #8ae08a; }
+.quest-title { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.quest-title b { color: var(--gold-l); font-weight: normal; }
+.tag { font-size: 0.7em; border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; color: var(--muted); white-space: nowrap; }
+.tag.principal { color: var(--gold-l); border-color: var(--gold); }
+.reward { color: var(--gold); }
+
+/* --------------------------------- Tienda --------------------------------- */
+.screen.shop, .screen.journal { justify-content: flex-start; gap: 10px; }
+.shop-gold { color: var(--muted); }
+.shop-gold b { color: var(--gold-l); font-weight: normal; }
+.tabs { display: flex; gap: 8px; width: min(460px, 100%); }
+.tabs button { flex: 1; }
+.shop-note { color: var(--gold-l); text-align: center; }
+.shop-list { display: flex; flex-direction: column; gap: 6px; }
+.shop-row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 4px 10px; text-align: left; }
+.shop-row .item-icon { width: 36px; height: 36px; flex: none; }
+.shop-row .name { flex: 1; }
+.shop-row .price { color: var(--gold); white-space: nowrap; }
+.shop-row.sel { border-color: var(--gold-l); box-shadow: 0 0 10px rgba(242,216,136,0.4); }
+.shop-row.dim { opacity: 0.55; }
+.chip.quest { border-color: var(--gold); color: var(--gold-l); }
+.chip.quest.ready { border-color: var(--ok); color: #8ae08a; }

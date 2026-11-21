@@ -21,6 +21,10 @@ import { heroColors } from '@/gfx/sprites';
 import { creationScreen } from '@/ui/creation';
 import { characterSheet } from '@/ui/sheet';
 import { inventoryScreen } from '@/ui/inventory';
+import { npcDialog } from '@/ui/npcDialog';
+import { shopScreen } from '@/ui/shop';
+import { journalScreen } from '@/ui/journal';
+import type { NpcDef } from '@/data/schema';
 import { confirmDialog, showDialog } from '@/ui/dialogs';
 import { buzz, h } from '@/ui/dom';
 import { Hud } from '@/ui/hud';
@@ -55,6 +59,7 @@ export class App {
         if (code === 'Escape') this.togglePause();
         if (code === 'KeyC') this.showSheet();
         if (code === 'KeyI') this.showInventory();
+        if (code === 'KeyJ') this.showJournal();
         if (code === 'KeyQ') this.game?.quickPotion();
         if (code === 'KeyF') this.game?.flee();
         const n = Number(code.replace('Digit', ''));
@@ -235,6 +240,7 @@ export class App {
     game.events.on('playerHurt', ({ amount }) => buzz(this.settings.vibration, Math.min(80, 15 + amount * 4)));
     game.events.on('levelUp', (ev) => this.showLevelUp(ev));
     game.events.on('playerDied', () => this.showDeath());
+    game.events.on('npcTalk', ({ npc }) => this.showNpcDialog(npc));
     game.events.on('zoneChanged', ({ zone, firstVisit }) => {
       hud.showBanner(zone.def.name, firstVisit ? zone.def.description : undefined);
       buzz(this.settings.vibration, 20);
@@ -326,20 +332,46 @@ export class App {
         game.state.player,
         () => this.setScreen(null),
         () => void this.autosave('ficha'),
+        () => this.showJournal(),
       ),
+    );
+  }
+
+  private showJournal(): void {
+    const game = this.game;
+    if (!game || this.pauseClose) return;
+    game.heldDir = null;
+    this.setScreen(journalScreen(game, () => this.setScreen(null)));
+  }
+
+  private showNpcDialog(npc: NpcDef): void {
+    const game = this.game;
+    if (!game) return;
+    game.heldDir = null;
+    this.ui.querySelector('.dialog-back')?.remove();
+    this.ui.append(
+      npcDialog(game, npc, {
+        openShop: (shopId) => {
+          this.setScreen(
+            shopScreen(game, shopId, () => this.setScreen(null), () => void this.autosave('tienda')),
+          );
+        },
+        afterService: () => void this.autosave('servicio'),
+        close: () => void 0,
+      }),
     );
   }
 
   private tick(dt: number): void {
     const game = this.game;
     if (!game) return;
-    if (!this.pauseClose && !this.screen && !this.ui.querySelector('.modal-back')) game.update(dt);
+    if (!this.pauseClose && !this.screen && !this.ui.querySelector('.modal-back, .dialog-back')) game.update(dt);
     this.renderer.render(game, dt, { grid: this.settings.grid });
     this.hud?.update(game, dt);
   }
 
   private onTap(sx: number, sy: number): void {
-    if (!this.game || this.pauseClose || this.screen || this.ui.querySelector('.modal-back')) return;
+    if (!this.game || this.pauseClose || this.screen || this.ui.querySelector('.modal-back, .dialog-back')) return;
     const t = this.renderer.screenToTile(sx, sy);
     this.game.tapTile(t.x, t.y);
   }
@@ -422,7 +454,7 @@ export class App {
     if (!Capacitor.isNativePlatform()) return;
     void CapApp.addListener('pause', () => void this.autosave('app en pausa'));
     void CapApp.addListener('backButton', () => {
-      const modal = this.ui.querySelector('.modal-back');
+      const modal = this.ui.querySelector('.modal-back, .dialog-back');
       if (this.pauseClose) {
         this.togglePause();
       } else if (modal) {

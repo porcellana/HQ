@@ -13,6 +13,7 @@ import { averageDice } from '@/game/rules/dice';
 import { derive, type Derived } from '@/game/rules/derived';
 import { itemIconElement } from '@/gfx/items';
 import { h } from './dom';
+import type { PlayerState } from '@/game/state';
 
 const SLOT_LABEL: Record<EquipSlot, { name: string; icon: string }> = {
   cabeza: { name: 'Cabeza', icon: 'casco' },
@@ -87,9 +88,11 @@ function stat(label: string, value: string): HTMLElement {
   return h('div', { class: 'derived-item' }, [h('small', { text: label }), h('b', { text: value })]);
 }
 
-/** Ficha de un objeto con comparación y acciones. */
-function detail(game: Game, it: ItemInstance, equippedSlot: EquipSlot | null, current: Derived, done: (err: string | null) => void): HTMLElement {
-  const p = game.state.player;
+/**
+ * Información de un objeto: cabecera, estadísticas y (si `compare`) la
+ * comparación con lo que llevas en esa ranura. La usan la mochila y las tiendas.
+ */
+export function itemInfo(p: PlayerState, it: ItemInstance, compare: boolean, current: Derived = derive(p)): HTMLElement[] {
   const def = itemDef(it);
   const r = rarityOf(it);
   const lines: HTMLElement[] = [];
@@ -106,9 +109,9 @@ function detail(game: Game, it: ItemInstance, equippedSlot: EquipSlot | null, cu
   lines.push(h('div', { class: 'muted', text: `Nivel ${def.level} · Valor ${itemValue(it)} oro${it.qty > 1 ? ` · ×${it.qty}` : ''}` }));
 
   // Comparación: simula equiparlo y compara valores derivados
-  let compare: HTMLElement | null = null;
+  let cmp: HTMLElement | null = null;
   const slots = slotsFor(def);
-  if (!equippedSlot && slots.length) {
+  if (compare && slots.length) {
     const target = slots.find((s) => !p.equipment[s]) ?? slots[0]!;
     const sim = { ...p, equipment: { ...p.equipment, [target]: it } as typeof p.equipment };
     if (target === 'arma' && def.weapon?.twoHanded) delete sim.equipment.secundaria;
@@ -124,7 +127,7 @@ function detail(game: Game, it: ItemInstance, equippedSlot: EquipSlot | null, cu
     ];
     const changes = rows.filter(([, a, b]) => a !== b);
     const worn = p.equipment[target];
-    compare = h('div', { class: 'compare' }, [
+    cmp = h('div', { class: 'compare' }, [
       h('small', { class: 'muted', text: worn ? `Comparado con ${itemDef(worn).name}:` : 'Ranura vacía:' }),
       ...(changes.length
         ? changes.map(([k, a, b]) => h('div', { class: b > a ? 'up' : 'down', text: `${k}: ${fmt(a)} → ${fmt(b)} (${b > a ? '▲' : '▼'} ${fmt(Math.abs(b - a))})` }))
@@ -132,6 +135,21 @@ function detail(game: Game, it: ItemInstance, equippedSlot: EquipSlot | null, cu
     ]);
   }
 
+  const head = h('div', { class: 'item-head' }, [
+    itemIconElement(def.icon, 'item-icon big'),
+    h('div', {}, [
+      h('b', { text: def.name, attrs: { style: `color:${r.color}` } }),
+      h('small', { class: 'muted', text: ` ${KIND_LABEL[def.kind] ?? def.kind} · ${r.name}` }),
+    ]),
+  ]);
+  return [head, ...lines, ...(cmp ? [cmp] : [])];
+}
+
+/** Ficha de un objeto de la mochila con acciones. */
+function detail(game: Game, it: ItemInstance, equippedSlot: EquipSlot | null, current: Derived, done: (err: string | null) => void): HTMLElement {
+  const def = itemDef(it);
+  const r = rarityOf(it);
+  const slots = slotsFor(def);
   const buttons: HTMLElement[] = [];
   if (equippedSlot) {
     buttons.push(h('button', { text: 'Quitar', onClick: () => done(game.unequipSlot(equippedSlot)) }));
@@ -141,15 +159,7 @@ function detail(game: Game, it: ItemInstance, equippedSlot: EquipSlot | null, cu
     buttons.push(h('button', { class: 'danger', text: 'Soltar', onClick: () => { game.dropItem(it.uid); done(null); } }));
   }
   return h('div', { class: 'panel item-detail', attrs: { style: `border-color:${r.color}` } }, [
-    h('div', { class: 'item-head' }, [
-      itemIconElement(def.icon, 'item-icon big'),
-      h('div', {}, [
-        h('b', { text: def.name, attrs: { style: `color:${r.color}` } }),
-        h('small', { class: 'muted', text: ` ${KIND_LABEL[def.kind] ?? def.kind} · ${r.name}` }),
-      ]),
-    ]),
-    ...lines,
-    compare,
+    ...itemInfo(game.state.player, it, !equippedSlot, current),
     h('div', { class: 'item-buttons' }, buttons),
   ]);
 }

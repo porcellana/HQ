@@ -10,7 +10,7 @@ import { heroColors, spriteCanvas } from '@/gfx/sprites';
 import { skillList } from './creation';
 import { h } from './dom';
 
-export function characterSheet(p: PlayerState, onClose: () => void, onChanged: () => void): HTMLElement {
+export function characterSheet(p: PlayerState, onClose: () => void, onChanged: () => void, onJournal?: () => void): HTMLElement {
   const root = h('div', { class: 'screen sheet' });
   const render = () => {
     const cls = getClass(p.classId);
@@ -69,7 +69,10 @@ export function characterSheet(p: PlayerState, onClose: () => void, onChanged: (
         h('h3', { text: 'Habilidades' }),
         skillList(cls, p.level),
       ]),
-      h('div', { class: 'menu-buttons' }, [h('button', { class: 'primary', text: 'Cerrar', onClick: onClose })]),
+      h('div', { class: 'menu-buttons' }, [
+        onJournal ? h('button', { text: '📖 Diario de misiones', onClick: onJournal }) : null,
+        h('button', { class: 'primary', text: 'Cerrar', onClick: onClose }),
+      ]),
     );
   };
   render();

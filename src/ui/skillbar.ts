@@ -4,6 +4,7 @@ import type { Game } from '@/game/game';
 import { unlockedSkills } from '@/game/rules/character';
 import { STATUS_INFO } from '@/game/combat/status';
 import { itemDef } from '@/game/items/items';
+import { trackedQuest } from '@/game/quests/quests';
 import { h } from './dom';
 
 export class SkillBar {
@@ -31,7 +32,9 @@ export class SkillBar {
     const combat = game.inCombat;
     const c = game.combat;
     const potions = p.inventory.filter((x) => { const u = itemDef(x).use; return !!u?.heal && !u.outOfCombatOnly; }).reduce((a, x) => a + x.qty, 0);
+    const tq = trackedQuest(game.state);
     const sig = [
+      tq ? `${tq.name}${tq.text}` : '',
       potions,
       skills.map((s) => s.id).join(','), p.mp, JSON.stringify(c.cooldowns), game.targeting?.id ?? '', combat, game.canAct,
       c.statuses.map((s) => `${s.id}${s.turns}`).join(), c.buffs.map((b) => `${b.stat}${b.amount}${b.turns}`).join(), c.stealth,
@@ -62,6 +65,7 @@ export class SkillBar {
     for (const b of c.buffs) chips.push(h('span', { class: 'chip good', text: `▲${b.stat} +${b.amount} (${b.turns})` }));
     if (c.stealth > 0) chips.push(h('span', { class: 'chip good', text: `🌑 oculto ${c.stealth}` }));
     if (combat) chips.push(h('span', { class: 'chip warn', text: '⚔ En combate' }));
+    if (tq && !combat) chips.push(h('span', { class: `chip quest${tq.ready ? ' ready' : ''}`, text: `📜 ${tq.text}` }));
     this.statusEl.replaceChildren(...chips);
   }
 }

@@ -11,6 +11,8 @@ import { addItem, equip, type Equipment } from './items/inventory';
 import { createItem, type ItemInstance } from './items/items';
 import { Rng } from '@/engine/rng';
 import { derive } from './rules/derived';
+import type { QuestProgress } from './quests/quests';
+import type { ShopState } from './economy/shop';
 import { buildZone } from './world/zone';
 
 export interface Position {
@@ -35,6 +37,8 @@ export interface PlayerState {
   equipment: Equipment;
   /** Pendiente de recibir el equipo inicial de su clase (partidas migradas). */
   needsStarterKit?: boolean;
+  /** Zona (templo) donde reapareces al caer. Por defecto, la capilla de la aldea. */
+  respawnZone?: string;
   level: number;
   /** XP acumulada total. */
   xp: number;
@@ -58,6 +62,10 @@ export interface GameState {
   visitedZones: string[];
   /** Banderas libres para historia y misiones. */
   flags: Record<string, boolean | number | string>;
+  /** Estado de las misiones por id. */
+  quests: Record<string, QuestProgress>;
+  /** Stock de las tiendas visitadas (se renueva con el tiempo). */
+  shops: Record<string, ShopState>;
   playTimeSec: number;
   createdAt: string;
 }
@@ -101,6 +109,8 @@ export function createNewGame(opts: NewGameOptions): GameState {
     },
     visitedZones: [zone.id],
     flags: {},
+    quests: {},
+    shops: {},
     playTimeSec: 0,
     createdAt: new Date().toISOString(),
   };

@@ -6,7 +6,7 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { ClassDef, EnemyDef, ItemDef, LootTableDef, Rarity, RarityDef, TileDef, ZoneDef } from './schema';
+import type { ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef } from './schema';
 import rarityList from './config/rarities';
 import tileList from './config/tiles';
 
@@ -98,3 +98,13 @@ export const LOOT_TABLES: ReadonlyMap<string, LootTableDef> = collect<LootTableD
   import.meta.glob('./loot_tables/*.{ts,json}', { eager: true }),
   'tabla de botín',
 );
+
+// --- PNJ, tiendas y misiones ------------------------------------------------------
+export const NPCS: ReadonlyMap<string, NpcDef> = collect<NpcDef>(import.meta.glob('./npcs/*.{ts,json}', { eager: true }), 'PNJ');
+export const SHOPS: ReadonlyMap<string, ShopDef> = collect<ShopDef>(import.meta.glob('./shops/*.{ts,json}', { eager: true }), 'tienda');
+export const QUESTS: ReadonlyMap<string, QuestDef> = collect<QuestDef>(import.meta.glob('./quests/*.{ts,json}', { eager: true }), 'misión');
+
+/** PNJ de una zona. */
+export function npcsInZone(zoneId: string): NpcDef[] {
+  return [...NPCS.values()].filter((n) => n.zone === zoneId);
+}

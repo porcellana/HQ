@@ -1,0 +1,58 @@
+/** Interiores de Puerto Ceniza (ver leyenda en aldea_interiores.ts). */
+import { interior } from '../helpers';
+
+export default [
+  interior('ciudad_gremio', 'Gremio de Aventureros', 'puerto_ceniza', '2', [
+    '#############',
+    '#EEEEE:HHH:E#',
+    '#:::::::::::#',
+    '#KKKKKKK::::#',
+    '#:::::::::OO#',
+    '#:OO::OO::OO#',
+    '#:OO::OO::::#',
+    '#:::rrrrr:::#',
+    '######1######',
+  ]),
+  interior('ciudad_alquimista', 'Alquimista Vela Verde', 'puerto_ceniza', '3', [
+    '###########',
+    '#EEEEEEEEE#',
+    '#:::::::::#',
+    '#KKKKK::XX#',
+    '#:::::::::#',
+    '#E:::::::E#',
+    '#:::rrr:::#',
+    '#####1#####',
+  ]),
+  interior('ciudad_herreria', 'Forja del Ancla', 'puerto_ceniza', '4', [
+    '###########',
+    '#HHH:::EEE#',
+    '#::::U::U:#',
+    '#KKKKKK:::#',
+    '#::::::::X#',
+    '#X:::::::X#',
+    '#:::::::::#',
+    '#####1#####',
+  ], { exitTile: 'suelo', spawnTile: 'suelo' }),
+  interior('ciudad_posada', 'Posada El Faro', 'puerto_ceniza', '5', [
+    '#############',
+    '#ZZ:ZZ:ZZ:HH#',
+    '#:::::::::::#',
+    '#KKKK:::::::#',
+    '#:::::OO::OO#',
+    '#X::::OO::OO#',
+    '#X:::::::r::#',
+    '#::::rrrrr::#',
+    '######1######',
+  ]),
+  interior('ciudad_templo', 'Templo de la Llama Blanca', 'puerto_ceniza', '6', [
+    '#############',
+    '#E:::::A:::E#',
+    '#:::::::::::#',
+    '#:::::@:::::#',
+    '#:OO::r::OO:#',
+    '#:OO::r::OO:#',
+    '#:OO::r::OO:#',
+    '#:::::r:::::#',
+    '######1######',
+  ], { spawnTile: 'alfombra' }),
+];

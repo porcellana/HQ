@@ -28,6 +28,18 @@ const tiles: TileDef[] = [
   { id: 'farol', char: 'l', name: 'Farol', walkable: false, blocksSight: false, sprite: 'lamp', minimap: '#d8b050' },
   { id: 'tumba', char: 't', name: 'Lápida', walkable: false, blocksSight: false, sprite: 'grave', minimap: '#55525e' },
   { id: 'cueva', char: 'C', name: 'Entrada de cueva', walkable: true, blocksSight: false, sprite: 'cave', minimap: '#000000' },
+  // --- Interiores (Hito 5) ---
+  { id: 'madera', char: ':', name: 'Suelo de madera', walkable: true, blocksSight: false, sprite: 'woodFloor', minimap: '#5c4430' },
+  { id: 'alfombra', char: 'r', name: 'Alfombra', walkable: true, blocksSight: false, sprite: 'carpet', minimap: '#6e2c2c' },
+  { id: 'mostrador', char: 'K', name: 'Mostrador', walkable: false, blocksSight: false, sprite: 'counter', minimap: '#7d5634' },
+  { id: 'mesa', char: 'O', name: 'Mesa', walkable: false, blocksSight: false, sprite: 'table', minimap: '#6a4a2a' },
+  { id: 'barril', char: 'X', name: 'Barril', walkable: false, blocksSight: false, sprite: 'barrel', minimap: '#5a3a24' },
+  { id: 'estanteria', char: 'E', name: 'Estantería', walkable: false, blocksSight: true, sprite: 'shelf', minimap: '#3a2618' },
+  { id: 'altar', char: 'A', name: 'Altar', walkable: false, blocksSight: false, sprite: 'altar', minimap: '#d8b050' },
+  { id: 'chimenea', char: 'H', name: 'Chimenea', walkable: false, blocksSight: true, sprite: 'hearth', minimap: '#e0742c' },
+  { id: 'cama', char: 'Z', name: 'Cama', walkable: false, blocksSight: false, sprite: 'bed', minimap: '#8a3a3a' },
+  { id: 'yunque', char: 'U', name: 'Yunque', walkable: false, blocksSight: false, sprite: 'anvil', minimap: '#5e6470' },
+  { id: 'muelle', char: 'D', name: 'Muelle', walkable: true, blocksSight: false, sprite: 'dock', minimap: '#7a5a38' },
 ];
 
 export default tiles;
