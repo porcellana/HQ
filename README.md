@@ -18,10 +18,32 @@ Android en vertical (se juega con una mano) y probable en el navegador como PWA.
 | 4 | Inventario, equipo y botín | ✅ v0.0.4 |
 | 5 | Pueblos, tiendas, comercio y misiones | ✅ v0.0.5 |
 | 6 | Mazmorras procedurales, minería y jefes | ✅ v0.0.6 |
-| 7 | Historia principal, pulido y APK final (v0.1.0) | ⏳ |
+| 7 | Historia principal, pulido y APK final | ✅ **v0.1.0** |
 
-El workflow de GitHub Actions que compila el APK ya funciona desde el Hito 1, para
-que puedas instalar el juego en el móvil desde el principio.
+**La v0.1.0 es la primera versión completa**: la historia se puede jugar de principio a
+fin y después se sigue jugando (misiones del gremio, mazmorras rejugables, nivel 20).
+
+### La historia (sin destripes)
+
+Una niebla rojiza cubre la Aldea de Brumaroja y los goblins del Bosque Sombrío se han
+vuelto demasiado audaces. Alguien los guía: en sus armas aparece la marca de un ojo
+dentro de un abismo. Siete capítulos te llevan de la aldea a Puerto Ceniza, a través de
+la Cueva de los Colmillos y las Galerías de Seda, hasta la cripta del responsable.
+
+| Capítulo | Dónde | Nivel orientativo |
+|---|---|---|
+| 1. Sombras sobre Brumaroja | Aldea → Bosque Sombrío | 1-2 |
+| 2. El rastro del Abismo | Paso Gris → Puerto Ceniza | 2-3 |
+| 3. La Cueva de los Colmillos | Norte del bosque | 3-4 |
+| 4. Hilos en la oscuridad | Galerías de Seda (este del Paso Gris) | 5-7 |
+| 5. La reja de las runas | Puerto Ceniza y alrededores | 7 |
+| 6. El corazón del Abismo | Cripta (suroeste de Puerto Ceniza) | 8-10 |
+| 7. Amanecer en Brumaroja | Vuelta a la aldea | — |
+
+El objetivo actual aparece bajo el panel de vida («📜 Objetivo: …» y la zona donde
+cumplirlo) y la **flecha verde con ★** señala la salida que te acerca a él.
+
+El workflow de GitHub Actions compila el APK en cada push (ver más abajo).
 
 ---
 
@@ -227,7 +249,9 @@ contenido detectan mapas rotos, ids duplicados, salidas sin destino, etc.
 
 Edita `src/data/config/progression.json`:
 XP para pasar del nivel N al N+1 = `round(xpBase × N^xpExponent)`.
-Con los valores por defecto (100 y 1,6): nivel 2 → 100 XP, nivel 3 → 303 más, etc.
+Con los valores actuales (200 y 1,6): nivel 2 → 200 XP, nivel 3 → 606 más, etc.
+`tests/balance.test.ts` simula la historia completa y avisa si la progresión se sale
+de lo previsto (Cueva 3-5, Galerías 5-7, Cripta 7+, final 8-11).
 
 ### Añadir o modificar una clase
 
@@ -491,6 +515,33 @@ Las zonas de cada piso se llaman `<id>` (piso 1), `<id>__p2`, `<id>__p3`… y `<
    ```
 3. `npm test` falla si falta algún paso de migración.
 
+## Cómo seguir ampliando el juego
+
+Pasos clave (cada uno es editar datos; el motor no se toca):
+
+1. **Contenido nuevo**: añade archivos en `src/data/` (zonas, PNJ, misiones, objetos,
+   enemigos, tablas de botín, mazmorras). Las secciones de arriba explican cada tipo.
+2. **Ejecuta `npm test`**: los tests de contenido detectan mapas rotos, ids repetidos,
+   salidas sin destino, misiones que apuntan a PNJ u objetos inexistentes y saltos en
+   la progresión.
+3. **Si cambias la forma de la partida guardada**, sube `CURRENT_SAVE_VERSION` y añade una
+   migración (ver «Guardado y actualizaciones»).
+4. **Prueba en el navegador** (`npm run dev`; en desarrollo `window.__game` y
+   `window.__app` permiten saltar a una zona o dar XP desde la consola) y haz push: la web
+   y el APK se actualizan solos.
+
+Ideas pendientes para próximas versiones:
+
+- **Mapa del mundo** con viaje rápido entre pueblos visitados.
+- **Más ciudades y regiones** (montañas, pantano, desierto) con sus mazmorras.
+- **Artesanía**: usar los materiales (mineral, seda, pieles, gemas) en el herrero y el
+  alquimista.
+- **Durabilidad** y reparación de equipo (opcional según el diseño original).
+- **Más habilidades** por clase a niveles 12-20 y subclases.
+- Enemigos que se muevan en grupo, emboscadas y PNJ con rutinas.
+- Música (ahora sólo hay efectos de sonido generados por código).
+- Logros y estadísticas más detalladas.
+
 ## Publicar una versión nueva
 
 1. Sube `version` en `package.json` (aparece en el menú principal y en el APK).
@@ -517,8 +568,8 @@ Las zonas de cada piso se llaman `<id>` (piso 1), `<id>__p2`, `<id>__p3`… y `<
   y con varias variantes por tile para que el suelo no se vea repetido.
 - **Proyecto Android generado en CI** con un keystore de depuración fijo, para que
   las actualizaciones del APK se instalen encima sin perder la partida.
-- **Nombres de la versión:** cada hito sube el parche (0.0.1 … 0.0.7) y el
-  Hito 7 completo será la **v0.1.0**.
+- **Nombres de la versión:** cada hito subió el parche (0.0.1 … 0.0.6) y el Hito 7
+  completo es la **v0.1.0**.
 - La interfaz deja libre el centro: la cámara centra al héroe en el hueco entre el
   HUD superior y la barra de botones inferior.
 - **Mundo del Hito 5**: Aldea de Brumaroja (alcalde, capilla, herrería, tienda y
@@ -541,4 +592,23 @@ Las zonas de cada piso se llaman `<id>` (piso 1), `<id>__p2`, `<id>__p3`… y `<
   ya está abierta (comodidad).
 - Equilibrio: limpiar una mazmorra a su nivel da ~1 nivel (hay un test que lo vigila).
 - Ajustes: joystick, mano dominante (lado del joystick y los botones), velocidad,
-  tamaño de interfaz, cuadrícula y vibración.
+  tamaño de interfaz, cuadrícula, vibración, sonido, volumen y día/noche.
+- **Historia (Hito 7)**: 7 capítulos. Las misiones no bloquean por nivel (la
+  descripción recomienda uno); el capítulo 5 pone la bandera `cripta_abierta` y el 7, la
+  bandera `victoria`, que muestra la pantalla final con estadísticas (guardado v6). Tras
+  el final se puede seguir jugando con el mismo personaje.
+- **Equilibrio v0.1.0**: curva base 220 → 200 (exponente 1,6 sin tocar); más XP en los
+  capítulos 4-7 (2000, 2500, 3000 y 500); jefes más justos: Gruñaz con un escolta menos
+  y menos daño en cólera, Mórgala con menos vida y una tejedora en lugar de dos, y Velkar
+  con 14d8+14 PV, CA 14, rayo 3d8 cada 2 turnos, menos invocaciones y menos curación (su
+  guarida ya no tiene caballero esqueleto). Simulado con un bot: Velkar es muy difícil a
+  nivel 8 y asumible a 9-10 con pociones.
+- **Sonido**: efectos generados con WebAudio (golpe, crítico, fallo, herida, moneda,
+  cofre, misión, nivel, muerte y victoria), sin archivos. Sin música todavía.
+- **Día y noche**: un día dura 600 turnos; de noche los exteriores se oscurecen con un
+  tinte azul (se puede desactivar en Ajustes). Interiores y mazmorras no cambian.
+- **Guía al objetivo**: la zona del siguiente paso se calcula con una búsqueda en el
+  grafo de salidas (`src/game/quests/guide.ts`); dentro de una mazmorra la flecha verde
+  baja hacia el jefe o sube hacia la salida.
+- **APK**: pantalla de inicio oscura con el héroe (generada en `prepare-android.mjs`, sin
+  plugins) y el botón Atrás cierra cualquier pantalla abierta o vuelve al menú principal.

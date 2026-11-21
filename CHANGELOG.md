@@ -2,6 +2,26 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.1.0 · 2026-11-21 — Hito 7: historia completa y primera versión completa
+
+- Trama principal de 7 capítulos: tras Gruñaz llegan las Galerías de Seda y Mórgala,
+  la reja de las runas que abre la Cripta, el combate final contra Velkar el Nigromante
+  y un epílogo en Brumaroja.
+- Pantalla final con epílogo y estadísticas (nivel, tiempo, turnos, enemigos, jefes,
+  caídas y oro). Después puedes seguir jugando con el mismo personaje.
+- Objetivo de la misión siempre visible bajo el panel de vida, con la zona donde
+  cumplirlo, y flecha verde con ★ hacia la salida que te acerca al objetivo.
+- Pantalla «Cómo se juega» en el menú de pausa.
+- Efectos de sonido generados por código (golpes, críticos, monedas, cofres, misiones,
+  subida de nivel, muerte y victoria) con ajustes de sonido y volumen.
+- Ciclo de día y noche en exteriores (desactivable).
+- Equilibrio: curva de XP base 200, más XP en la segunda mitad de la historia y jefes
+  más justos; test que simula la progresión completa.
+- Interfaz: el HUD ya no tapa al personaje (márgenes que incluyen la barra de
+  habilidades y el objetivo) y las salidas no se rotulan en combate.
+- APK: pantalla de inicio oscura propia y botón Atrás que vuelve al menú principal.
+- Guardado v6 (estadísticas de la partida) con migración.
+
 ## v0.0.6 · 2026-11-21 — Hito 6: mazmorras, minería y jefes
 
 - 3 mazmorras procedurales con semilla: Cueva de los Colmillos (entrada al norte del
