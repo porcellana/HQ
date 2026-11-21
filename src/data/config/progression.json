@@ -1,6 +1,6 @@
 {
-  "_comentario": "Curva de experiencia. XP para pasar del nivel N al N+1 = round(base * N^exponent). Subido de 100 a 220 en v0.0.6 porque se subía demasiado rápido. Edita y recompila.",
+  "_comentario": "Curva de experiencia. XP para pasar del nivel N al N+1 = round(base * N^exponent). v0.0.6: base 100→220 (se subía muy rápido). v0.1.0: 200, ajustada con la simulación de la trama completa (Cueva 2-4, Galerías 5-7, Cripta 8-10).",
   "maxLevel": 20,
-  "xpBase": 220,
+  "xpBase": 200,
   "xpExponent": 1.6
 }

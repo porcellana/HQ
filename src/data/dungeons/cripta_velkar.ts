@@ -58,7 +58,7 @@ export default {
   ores: ['plata', 'gema'],
   boss: {
     enemy: 'nigromante',
-    guards: [{ enemy: 'cultista', x: 6, y: 8 }, { enemy: 'cultista', x: 15, y: 8 }, { enemy: 'caballero_esqueleto', x: 10, y: 11 }],
+    guards: [{ enemy: 'cultista', x: 6, y: 8 }, { enemy: 'cultista', x: 15, y: 8 }],
     map: [
       '######################',
       '##########11##########',

@@ -52,7 +52,7 @@ export default {
   ores: ['hierro', 'plata', 'plata', 'gema'],
   boss: {
     enemy: 'reina_arana',
-    guards: [{ enemy: 'arana_tejedora', x: 5, y: 7 }, { enemy: 'arana_tejedora', x: 16, y: 7 }],
+    guards: [{ enemy: 'arana_tejedora', x: 5, y: 7 }],
     map: [
       '######################',
       '##########11##########',
