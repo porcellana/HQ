@@ -13,7 +13,7 @@
  * Nunca borres migraciones antiguas.
  */
 
-export const CURRENT_SAVE_VERSION = 5;
+export const CURRENT_SAVE_VERSION = 6;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
@@ -48,6 +48,8 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   3: (s) => ({ ...s, quests: s['quests'] ?? {}, shops: s['shops'] ?? {} }),
   /** v4 → v5 (Hito 6): mazmorras, cofres abiertos, trampas y vetas usadas. */
   4: (s) => ({ ...s, world: s['world'] ?? { dungeons: {}, features: {} } }),
+  /** v5 → v6 (Hito 7): estadísticas de la partida para la pantalla final. */
+  5: (s) => ({ ...s, record: s['record'] ?? { kills: 0, bosses: 0, deaths: 0, victoryTurn: 0, victoryTime: 0 } }),
 };
 
 export class SaveMigrationError extends Error {}

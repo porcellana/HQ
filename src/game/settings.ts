@@ -16,6 +16,12 @@ export interface Settings {
   grid: boolean;
   /** Tamaño de la interfaz. */
   uiScale: 'normal' | 'grande';
+  /** Efectos de sonido (generados por código). */
+  sound: boolean;
+  /** Volumen de los efectos. */
+  volume: 'bajo' | 'medio' | 'alto';
+  /** Ciclo de día y noche en exteriores. */
+  dayNight: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -25,6 +31,9 @@ export const DEFAULT_SETTINGS: Settings = {
   vibration: true,
   grid: false,
   uiScale: 'normal',
+  sound: true,
+  volume: 'medio',
+  dayNight: true,
 };
 
 const KEY = 'ecos.settings';

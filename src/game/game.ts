@@ -29,7 +29,8 @@ import { attributePointsAtLevel, proficiencyBonus, unlockedSkills } from './rule
 import { derive, type Derived } from './rules/derived';
 import { abilityModifier, roll, rollD20 } from './rules/dice';
 import { levelForXp } from './rules/progression';
-import { recalcPlayer, type GameState } from './state';
+import { emptyRecord, recalcPlayer, type GameState } from './state';
+import { nextHop, questGoalZone, zoneName } from './quests/guide';
 import { addItem, equip, removeQty, unequip } from './items/inventory';
 import { itemDef, rarityOf, type ItemInstance } from './items/items';
 import { rollLoot } from './items/loot';
@@ -78,7 +79,22 @@ export interface GameEvents extends Record<string, unknown> {
   npcTalk: { npc: NpcDef };
   /** Cambió algo de las misiones (para refrescar el HUD). */
   questsChanged: Record<string, never>;
+  /** Se ha completado la historia principal (pantalla final). */
+  victory: Record<string, never>;
+  /** Sonido sugerido para la interfaz (el juego no reproduce audio). */
+  sfx: { id: SfxId };
 }
+
+export interface QuestGoal {
+  text: string;
+  ready: boolean;
+  zone: string | null;
+  zoneName: string;
+  /** Destino de la salida que acerca al objetivo (null si ya estás en la zona). */
+  exitTo: string | null;
+}
+
+export type SfxId = 'golpe' | 'critico' | 'fallo' | 'herido' | 'nivel' | 'moneda' | 'cofre' | 'muerte' | 'victoria' | 'mision';
 
 /** Efectos visuales efímeros (el renderizador los dibuja). */
 export type Fx =
@@ -762,6 +778,7 @@ export class Game {
       label: weapon.name, natural: r.natural, bonus: toHit, total: r.total, target: enemy.def.ac, targetLabel: 'CA',
       outcome: r.fumble ? 'fumble' : r.crit ? 'crit' : r.hit ? 'hit' : 'miss',
     });
+    this.sfx(r.crit ? 'critico' : r.hit ? 'golpe' : 'fallo');
     enemy.alerted = true;
     if (!r.hit) {
       this.floatText(enemy.x, enemy.y, r.fumble ? '¡Pifia!' : 'Fallo', '#a49c8a');
@@ -805,7 +822,10 @@ export class Game {
     this.fx.push({ kind: 'burst', x: enemy.x, y: enemy.y, radius: 0.8, color: '#e05050', t: 0, life: 0.4 });
     const xp = xpForKill(enemy.def.xp, enemy.def.level, this.state.player.level);
     this.msg(`${enemy.def.name} cae derrotado.`, 'good');
+    const rec = (this.state.record ??= emptyRecord());
+    rec.kills++;
     if (enemy.def.boss) {
+      rec.bosses++;
       this.state.flags[`boss_${enemy.def.id}`] = true;
       const dz = this.zone.def.dungeon;
       if (dz) {
@@ -840,6 +860,7 @@ export class Game {
       pl.gold += g.gold;
       this.floatText(p.x, p.y - 0.3, `+${g.gold} oro`, '#f2d888');
       this.msg(`Recoges ${g.gold} de oro.`, 'good');
+      this.sfx('moneda');
       g.gold = 0;
     }
     const left: ItemInstance[] = [];
@@ -1260,12 +1281,15 @@ export class Game {
     this.interrupt = true;
     this.floatText(this.playerPos.x, this.playerPos.y, `-${amount}`, crit ? '#ff4040' : '#ff8080');
     this.events.emit('playerHurt', { amount });
+    this.sfx('herido');
     if (p.hp <= 0) {
       this.phase = 'dead';
       this.enemyQueue = [];
       this.cancelPath();
       this.heldDir = null;
       this.msg('Has caído...', 'warn');
+      (this.state.record ??= emptyRecord()).deaths++;
+      this.sfx('muerte');
       this.events.emit('playerDied', { cause });
     }
   }
@@ -1335,6 +1359,7 @@ export class Game {
       p.mp = p.maxMp;
       const skills = unlockedSkills(this.cls, p.level).filter((s) => s.unlockLevel === p.level);
       this.fx.push({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 1.5, color: '#f2d888', t: 0, life: 0.8 });
+      this.sfx('nivel');
       this.events.emit('levelUp', { level: p.level, hpGain: p.maxHp - hpBefore, mpGain: p.maxMp - mpBefore, points, skills });
     }
   }
@@ -1508,6 +1533,7 @@ export class Game {
       return;
     }
     this.msg('Abres el cofre...', 'good');
+    this.sfx('cofre');
     this.dropLoot(this.playerPos.x, this.playerPos.y, loot.items, loot.gold);
     this.pickupHere();
   }
@@ -1610,7 +1636,40 @@ export class Game {
     }
     if (q.rewards.xp) this.gainXp(q.rewards.xp, q.name);
     this.events.emit('questsChanged', {});
+    this.sfx('mision');
+    if (q.rewards.flag === 'victoria') {
+      const rec = (this.state.record ??= emptyRecord());
+      if (!rec.victoryTurn) {
+        rec.victoryTurn = this.state.turn;
+        rec.victoryTime = Math.round(this.state.playTimeSec);
+      }
+      this.sfx('victoria');
+      this.events.emit('victory', {});
+    }
     return null;
+  }
+
+  private goalCache: { key: string; goal: QuestGoal | null } = { key: '', goal: null };
+
+  /**
+   * Objetivo de la misión seguida: texto, zona donde se cumple y salida de la
+   * zona actual que lleva hacia allí (para destacar su flecha).
+   */
+  get questGoal(): QuestGoal | null {
+    const tq = Quests.trackedQuest(this.state);
+    const key = `${this.zone.id}|${tq?.quest.id ?? ''}|${tq?.text ?? ''}`;
+    if (key === this.goalCache.key) return this.goalCache.goal;
+    let goal: QuestGoal | null = null;
+    if (tq) {
+      const zone = questGoalZone(this.state, tq.quest);
+      goal = { text: tq.text, ready: tq.ready, zone, zoneName: zone ? zoneName(zone) : '', exitTo: zone ? nextHop(this.zone, zone) : null };
+    }
+    this.goalCache = { key, goal };
+    return goal;
+  }
+
+  private sfx(id: SfxId): void {
+    this.events.emit('sfx', { id });
   }
 
   /** Stock actual de una tienda (se renueva si ha pasado el tiempo). */

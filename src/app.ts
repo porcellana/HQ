@@ -29,6 +29,9 @@ import { confirmDialog, showDialog } from '@/ui/dialogs';
 import { buzz, h } from '@/ui/dom';
 import { Hud } from '@/ui/hud';
 import { mainMenu, settingsScreen } from '@/ui/menus';
+import { helpScreen } from '@/ui/help';
+import { victoryScreen } from '@/ui/victory';
+import { Sfx } from '@/audio/sfx';
 
 /** Cada cuántos turnos se autoguarda además de al cambiar de zona. */
 const AUTOSAVE_EVERY_TURNS = 40;
@@ -44,6 +47,9 @@ export class App {
   private pauseClose: (() => void) | null = null;
   private saving: Promise<void> = Promise.resolve();
   private lastSavedTurn = 0;
+  private readonly sfx = new Sfx();
+  /** La pantalla final espera a que se cierre el diálogo de la misión. */
+  private pendingVictory = false;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -70,6 +76,8 @@ export class App {
       },
     });
     window.addEventListener('resize', () => this.layout());
+    // El audio sólo puede arrancar tras un gesto del usuario.
+    window.addEventListener('pointerdown', () => this.sfx.unlock(), { once: true });
     this.applySettings();
     this.setupLifecycle();
   }
@@ -156,6 +164,8 @@ export class App {
     document.documentElement.classList.toggle('ui-grande', this.settings.uiScale === 'grande');
     this.hud?.applySettings(this.settings);
     if (this.game) this.game.stepDuration = this.settings.moveSpeed === 'rapida' ? 0.08 : 0.14;
+    this.sfx.enabled = this.settings.sound;
+    this.sfx.volume = this.settings.volume;
     // El tamaño de interfaz cambia el layout: recalculamos el canvas.
     requestAnimationFrame(() => this.layout());
   }
@@ -240,6 +250,11 @@ export class App {
     game.events.on('playerHurt', ({ amount }) => buzz(this.settings.vibration, Math.min(80, 15 + amount * 4)));
     game.events.on('levelUp', (ev) => this.showLevelUp(ev));
     game.events.on('playerDied', () => this.showDeath());
+    game.events.on('sfx', ({ id }) => this.sfx.play(id));
+    game.events.on('victory', () => {
+      this.pendingVictory = true;
+      void this.autosave('victoria');
+    });
     game.events.on('npcTalk', ({ npc }) => this.showNpcDialog(npc));
     game.events.on('zoneChanged', ({ zone, firstVisit }) => {
       hud.showBanner(zone.def.name, firstVisit ? zone.def.description : undefined);
@@ -291,7 +306,7 @@ export class App {
     window.setTimeout(() => {
       showDialog(this.ui, 'Has caído', 'La oscuridad te envuelve... pero tu historia no termina aquí.', [
         {
-          label: 'Despertar en la aldea (−10 % de oro)',
+          label: 'Despertar en el templo (−10 % de oro)',
           kind: 'primary',
           action: () => {
             this.game?.respawn();
@@ -365,8 +380,13 @@ export class App {
   private tick(dt: number): void {
     const game = this.game;
     if (!game) return;
-    if (!this.pauseClose && !this.screen && !this.ui.querySelector('.modal-back, .dialog-back')) game.update(dt);
-    this.renderer.render(game, dt, { grid: this.settings.grid });
+    const blocked = !!this.ui.querySelector('.modal-back, .dialog-back');
+    if (!this.pauseClose && !this.screen && !blocked) game.update(dt);
+    if (this.pendingVictory && !this.pauseClose && !this.screen && !blocked) {
+      this.pendingVictory = false;
+      this.setScreen(victoryScreen(game.state, () => this.setScreen(null), () => void this.quitToMenu()));
+    }
+    this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight });
     this.hud?.update(game, dt);
   }
 
@@ -413,6 +433,13 @@ export class App {
         action: () => {
           void this.autosave('manual').then(() => this.hud?.pushMessage('Partida guardada.', 'good'));
           this.pauseClose = null;
+        },
+      },
+      {
+        label: '❓ Cómo se juega',
+        action: () => {
+          this.pauseClose = null;
+          this.setScreen(helpScreen(() => this.setScreen(null)));
         },
       },
       {

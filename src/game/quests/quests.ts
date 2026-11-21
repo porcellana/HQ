@@ -166,7 +166,7 @@ export function turnIn(h: QuestHolder, id: string, npcId: string): { error: stri
 }
 
 /** Texto corto para el HUD: la misión activa más importante. */
-export function trackedQuest(h: QuestHolder): { name: string; text: string; ready: boolean } | null {
+export function trackedQuest(h: QuestHolder): { quest: QuestDef; name: string; text: string; ready: boolean } | null {
   const order = { principal: 0, secundaria: 1, repetible: 2 };
   const active = Object.entries(h.quests)
     .filter(([, s]) => s.status === 'activa')
@@ -177,7 +177,7 @@ export function trackedQuest(h: QuestHolder): { name: string; text: string; read
   if (!q) return null;
   if (isReady(h, q)) {
     const who = NPCS.get(q.turnIn ?? q.giver)?.name ?? '';
-    return { name: q.name, text: `Entrégala a ${who}`, ready: true };
+    return { quest: q, name: q.name, text: `Entrégala a ${who}`, ready: true };
   }
   const i = q.objectives.findIndex((_, k) => {
     const p = objectiveProgress(h, q, k);
@@ -185,7 +185,7 @@ export function trackedQuest(h: QuestHolder): { name: string; text: string; read
   });
   const p = objectiveProgress(h, q, i);
   const o = q.objectives[i]!;
-  return { name: q.name, text: p.need > 1 ? `${o.label} ${p.have}/${p.need}` : o.label, ready: false };
+  return { quest: q, name: q.name, text: p.need > 1 ? `${o.label} ${p.have}/${p.need}` : o.label, ready: false };
 }
 
 /** Comprueba que una misión es coherente con el resto del contenido (para tests). */

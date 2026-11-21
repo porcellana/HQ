@@ -34,7 +34,7 @@ export class SkillBar {
     const potions = p.inventory.filter((x) => { const u = itemDef(x).use; return !!u?.heal && !u.outOfCombatOnly; }).reduce((a, x) => a + x.qty, 0);
     const tq = trackedQuest(game.state);
     const sig = [
-      tq ? `${tq.name}${tq.text}` : '',
+      tq ? `${tq.name}${tq.text}${game.zone.id}` : '',
       potions,
       skills.map((s) => s.id).join(','), p.mp, JSON.stringify(c.cooldowns), game.targeting?.id ?? '', combat, game.canAct,
       c.statuses.map((s) => `${s.id}${s.turns}`).join(), c.buffs.map((b) => `${b.stat}${b.amount}${b.turns}`).join(), c.stealth,
@@ -65,7 +65,11 @@ export class SkillBar {
     for (const b of c.buffs) chips.push(h('span', { class: 'chip good', text: `▲${b.stat} +${b.amount} (${b.turns})` }));
     if (c.stealth > 0) chips.push(h('span', { class: 'chip good', text: `🌑 oculto ${c.stealth}` }));
     if (combat) chips.push(h('span', { class: 'chip warn', text: '⚔ En combate' }));
-    if (tq && !combat) chips.push(h('span', { class: `chip quest${tq.ready ? ' ready' : ''}`, text: `📜 ${tq.text}` }));
+    if (tq && !combat) {
+      const goal = game.questGoal;
+      const where = goal?.zone && goal.zone !== game.zone.id ? ` · ${goal.zoneName}` : '';
+      chips.push(h('span', { class: `chip quest${tq.ready ? ' ready' : ''}`, text: `📜 Objetivo: ${tq.text}${where}` }));
+    }
     this.statusEl.replaceChildren(...chips);
   }
 }

@@ -26,6 +26,22 @@ const TARGET_TILES_ACROSS = 12;
 
 export interface RenderOptions {
   grid: boolean;
+  /** Ciclo de día y noche en exteriores. */
+  dayNight?: boolean;
+}
+
+/** Duración de un día completo en turnos. */
+export const DAY_LENGTH_TURNS = 600;
+
+/**
+ * Oscuridad nocturna 0..1 según el turno: día claro, atardecer, noche y
+ * amanecer (curva suave).
+ */
+export function nightAmount(turn: number): number {
+  const t = (turn % DAY_LENGTH_TURNS) / DAY_LENGTH_TURNS; // 0 = amanecer
+  // Día entre 0 y 0,55; noche alrededor de 0,8.
+  const c = Math.cos((t - 0.8) * Math.PI * 2); // 1 en plena noche
+  return Math.max(0, Math.min(1, (c - 0.2) / 0.8));
 }
 
 export class Renderer {
@@ -113,7 +129,7 @@ export class Renderer {
     this.drawTargeting(game);
     this.drawExits(zone);
     this.drawPath(game);
-    this.drawDarkness(game, camX, camY);
+    this.drawDarkness(game, camX, camY, opts.dayNight ?? false);
     this.drawFeatures(game);
     this.drawLoot(game);
     this.drawEntities(game);
@@ -139,22 +155,26 @@ export class Renderer {
     const fontPx = Math.round(13 * dpr);
     ctx.font = `bold ${fontPx}px Georgia, serif`;
     ctx.textAlign = 'center';
+    // La salida hacia el objetivo de la misión seguida se destaca en verde con ★.
+    const goalTo = game.questGoal?.exitTo ?? null;
     for (const e of game.zone.exits) {
       if (seen.has(e.digit)) continue;
       seen.add(e.digit);
+      const isGoal = goalTo !== null && e.to === goalTo;
+      const color = isGoal ? '#a8f08a' : PAL.goldL;
       const marks = game.zone.exitMarkers.get(e.digit) ?? [{ x: e.x, y: e.y }];
       const mx = marks.reduce((a, m) => a + m.x, 0) / marks.length;
       const my = marks.reduce((a, m) => a + m.y, 0) / marks.length;
       const sx = ((mx + 0.5) * TILE - camX) * zoom;
       const sy = ((my + 0.5) * TILE - camY) * zoom;
-      const label = e.label ?? e.to;
-      const pulse = 0.75 + 0.25 * Math.sin(this.time * 4);
+      const label = isGoal ? `★ ${e.label ?? e.to}` : (e.label ?? e.to);
+      const pulse = (0.75 + 0.25 * Math.sin(this.time * 4)) * (goalTo && !isGoal ? 0.7 : 1);
       if (sx >= left && sx <= right && sy >= top && sy <= bottom) {
-        this.labelAt(label, sx, sy - TILE * zoom * 0.8, fontPx, pulse);
+        this.labelAt(label, sx, sy - TILE * zoom * 0.8, fontPx, pulse, color);
         continue;
       }
-      // Las puertas de edificios sólo se rotulan cuando se ven (sin flecha).
-      if (e.door) continue;
+      // Las puertas de edificios sólo se rotulan cuando se ven (salvo la del objetivo).
+      if (e.door && !isGoal) continue;
       // Punto del borde en dirección a la salida
       const dx = sx - cx;
       const dy = sy - cy;
@@ -166,10 +186,10 @@ export class Renderer {
       ctx.translate(px, py);
       ctx.rotate(ang);
       ctx.globalAlpha = pulse;
-      ctx.fillStyle = PAL.goldL;
+      ctx.fillStyle = color;
       ctx.strokeStyle = PAL.black;
       ctx.lineWidth = 2 * dpr;
-      const a = 14 * dpr;
+      const a = (isGoal ? 18 : 14) * dpr;
       ctx.beginPath();
       ctx.moveTo(a, 0);
       ctx.lineTo(-a * 0.7, -a * 0.75);
@@ -182,19 +202,19 @@ export class Renderer {
       // Etiqueta hacia dentro de la pantalla
       const lx = Math.max(left + 50 * dpr, Math.min(right - 50 * dpr, px - Math.cos(ang) * 40 * dpr));
       const ly = Math.max(top + 8 * dpr, Math.min(bottom - 4 * dpr, py - Math.sin(ang) * 28 * dpr));
-      this.labelAt(label, lx, ly, fontPx, pulse);
+      this.labelAt(label, lx, ly, fontPx, pulse, color);
     }
     ctx.globalAlpha = 1;
   }
 
-  private labelAt(text: string, x: number, y: number, fontPx: number, alpha: number): void {
+  private labelAt(text: string, x: number, y: number, fontPx: number, alpha: number, color: string = PAL.goldL): void {
     const { ctx } = this;
     const w = ctx.measureText(text).width + fontPx;
     ctx.globalAlpha = 0.85 * alpha;
     ctx.fillStyle = 'rgba(11,10,16,0.85)';
     ctx.fillRect(x - w / 2, y - fontPx, w, fontPx * 1.4);
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = PAL.goldL;
+    ctx.fillStyle = color;
     ctx.fillText(text, x, y);
     ctx.globalAlpha = 1;
   }
@@ -448,10 +468,18 @@ export class Renderer {
   }
 
   /** Oscuridad ambiental con un halo de luz alrededor del jugador. */
-  private drawDarkness(game: Game, camX: number, camY: number): void {
-    const dark = game.zone.def.darkness ?? 0;
-    if (dark <= 0) return;
+  private drawDarkness(game: Game, camX: number, camY: number, dayNight: boolean): void {
     const { ctx, camera } = this;
+    const kind = game.zone.def.kind;
+    const outdoor = kind === 'town' || kind === 'wild' || kind === 'world';
+    const night = dayNight && outdoor ? nightAmount(game.state.turn) : 0;
+    if (night > 0) {
+      // Tinte azulado nocturno (sólo exteriores).
+      ctx.fillStyle = `rgba(20,30,80,${(night * 0.28).toFixed(3)})`;
+      ctx.fillRect(camX, camY, camera.viewW, camera.viewH);
+    }
+    const dark = Math.max(game.zone.def.darkness ?? 0, night * 0.42);
+    if (dark <= 0) return;
     const v = game.view;
     const cx = (v.rx + 0.5) * TILE;
     const cy = (v.ry + 0.5) * TILE;

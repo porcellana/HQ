@@ -322,3 +322,10 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .chip.quest.ready { border-color: var(--ok); color: #8ae08a; }
 .qty-stepper { display: flex; align-items: center; gap: 8px; }
 .qty-stepper b { min-width: 2.5ch; text-align: center; font-size: 1.2em; color: var(--gold-l); font-weight: normal; }
+
+/* ---------------------------- Ayuda y final ------------------------------ */
+.screen.help, .screen.victory { justify-content: flex-start; gap: 10px; }
+.help-list { margin: 0; padding-left: 18px; font-size: 0.85em; line-height: 1.45; }
+.screen.victory h1 { font-size: 2.4em; }
+.epilogue p { margin: 4px 0; font-style: italic; line-height: 1.45; }
+.chip.quest { font-size: 0.78em; max-width: 100%; }

@@ -90,6 +90,13 @@ export function settingsScreen(
       ]),
       row('Cuadrícula del mapa', 'grid', onOff),
       row('Vibración', 'vibration', onOff),
+      row('Sonido', 'sound', onOff),
+      row('Volumen', 'volume', [
+        { value: 'bajo', label: 'Bajo' },
+        { value: 'medio', label: 'Medio' },
+        { value: 'alto', label: 'Alto' },
+      ]),
+      row('Día y noche', 'dayNight', onOff),
       transfer ? h('button', { text: '📤 Exportar partida', onClick: transfer.onExport }) : null,
       transfer ? h('button', { text: '📥 Importar partida', onClick: transfer.onImport }) : null,
       onDeleteSave ? h('button', { class: 'danger', text: 'Borrar partida guardada', onClick: onDeleteSave }) : null,

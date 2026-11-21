@@ -69,8 +69,24 @@ export interface GameState {
   shops: Record<string, ShopState>;
   /** Mazmorras (reinicios, jefes) y elementos usados (cofres, trampas, vetas). */
   world: WorldState;
+  /** Estadísticas de la partida (pantalla final). */
+  record: GameRecord;
   playTimeSec: number;
   createdAt: string;
+}
+
+export interface GameRecord {
+  kills: number;
+  bosses: number;
+  deaths: number;
+  /** Turno en que se terminó la historia (0 = aún no). */
+  victoryTurn: number;
+  /** Tiempo de juego al terminar la historia (segundos). */
+  victoryTime: number;
+}
+
+export function emptyRecord(): GameRecord {
+  return { kills: 0, bosses: 0, deaths: 0, victoryTurn: 0, victoryTime: 0 };
 }
 
 export interface NewGameOptions {
@@ -115,6 +131,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
     quests: {},
     shops: {},
     world: emptyWorld(),
+    record: emptyRecord(),
     playTimeSec: 0,
     createdAt: new Date().toISOString(),
   };
