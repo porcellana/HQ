@@ -255,7 +255,7 @@ export class App {
     this.layout();
     this.loop.start();
     // Sólo en desarrollo (npm run dev): acceso desde la consola del navegador para depurar.
-    if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
+    if (import.meta.env.DEV) Object.assign(window, { __game: game, __app: this });
   }
 
   /** Aplica aspecto de clase y retrato al mapa y al HUD. */

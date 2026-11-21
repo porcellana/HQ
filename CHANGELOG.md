@@ -4,6 +4,9 @@ Formato: versión · fecha · cambios. La versión también aparece en el menú 
 
 ## v0.0.5 · 2026-11-21 — Hito 5: pueblos, comercio y misiones
 
+- Tiendas: comprar y vender por cantidades (−, +, +5, Máx) en una sola operación.
+- Subida de nivel más lenta: la curva de XP pasa de base 100 a 220 (exponente 1,6).
+
 - Interiores: las puertas de la aldea llevan a la casa del alcalde, la capilla, la
   herrería, la tienda y la taberna-posada La Jarra Roja.
 - Nueva ciudad, Puerto Ceniza (gremio de aventureros, templo, Forja del Ancla,

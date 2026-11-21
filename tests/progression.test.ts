@@ -3,8 +3,9 @@ import { PROGRESSION, levelForXp, levelProgress, totalXpForLevel, xpToNext } fro
 
 describe('curva de experiencia', () => {
   it('usa base * nivel^exponente', () => {
-    expect(xpToNext(1)).toBe(100);
-    expect(xpToNext(2)).toBe(Math.round(100 * Math.pow(2, 1.6)));
+    const { xpBase, xpExponent } = PROGRESSION;
+    expect(xpToNext(1)).toBe(xpBase);
+    expect(xpToNext(2)).toBe(Math.round(xpBase * Math.pow(2, xpExponent)));
     expect(xpToNext(PROGRESSION.maxLevel)).toBe(Infinity);
   });
 
@@ -19,7 +20,7 @@ describe('curva de experiencia', () => {
   });
 
   it('progreso dentro del nivel para la barra del HUD', () => {
-    const p = levelProgress(150);
+    const p = levelProgress(xpToNext(1) + 50);
     expect(p.level).toBe(2);
     expect(p.current).toBe(50);
     expect(p.ratio).toBeCloseTo(50 / xpToNext(2));

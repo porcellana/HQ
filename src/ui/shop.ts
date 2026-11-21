@@ -15,6 +15,8 @@ export function shopScreen(game: Game, shopId: string, onClose: () => void, onCh
   let tab: 'comprar' | 'vender' = 'comprar';
   let selected: string | null = null;
   let note = '';
+  /** Cantidad elegida para comprar/vender la pila seleccionada. */
+  let amount = 1;
 
   const render = () => {
     const p = game.state.player;
@@ -31,7 +33,7 @@ export function shopScreen(game: Game, shopId: string, onClose: () => void, onCh
       const tooExpensive = tab === 'comprar' && priceOf(it) > p.gold;
       return h('button', {
         class: `shop-row${it.uid === selected ? ' sel' : ''}${blocked || tooExpensive ? ' dim' : ''}`,
-        onClick: () => { selected = it.uid; note = ''; render(); },
+        onClick: () => { selected = it.uid; amount = 1; note = ''; render(); },
       }, [
         itemIconElement(def.icon, 'item-icon'),
         h('span', { class: 'name', text: `${def.name}${it.qty > 1 ? ` ×${it.qty}` : ''}`, attrs: { style: `color:${r.color}` } }),
@@ -42,31 +44,41 @@ export function shopScreen(game: Game, shopId: string, onClose: () => void, onCh
     let detail: HTMLElement | null = null;
     if (sel) {
       const price = priceOf(sel);
+      // Máximo: lo que hay en la pila (y, al comprar, lo que te puedes permitir).
+      const max = Math.max(1, tab === 'comprar' ? Math.min(sel.qty, Math.floor(p.gold / Math.max(1, price))) : sel.qty);
+      amount = Math.min(Math.max(1, amount), max);
+      const name = itemDef(sel).name;
       const actions: HTMLElement[] = [];
+      const stepper = sel.qty > 1
+        ? h('div', { class: 'qty-stepper' }, [
+            h('button', { class: 'mini', text: '−', disabled: amount <= 1, onClick: () => { amount--; render(); } }),
+            h('b', { text: `${amount}` }),
+            h('button', { class: 'mini', text: '+', disabled: amount >= max, onClick: () => { amount++; render(); } }),
+            h('button', { class: 'mini', text: '+5', disabled: amount >= max, onClick: () => { amount = Math.min(max, amount + 5); render(); } }),
+            h('button', { class: 'mini', text: 'Máx', disabled: amount >= max, onClick: () => { amount = max; render(); } }),
+          ])
+        : null;
       if (tab === 'comprar') {
-        actions.push(h('button', { class: 'primary', text: `Comprar (${price} oro)`, disabled: price > p.gold, onClick: () => {
-          const err = game.buyFromShop(shopId, sel.uid, 1);
-          note = err ?? `Compras ${itemDef(sel).name}.`;
+        actions.push(h('button', { class: 'primary', text: `Comprar ${amount > 1 ? `${amount} ` : ''}(${price * amount} oro)`, disabled: price * amount > p.gold, onClick: () => {
+          const err = game.buyFromShop(shopId, sel.uid, amount);
+          note = err ?? `Compras ${amount > 1 ? `${amount} × ` : ''}${name}.`;
           if (!err) onChanged();
+          amount = 1;
           render();
         } }));
       } else if (shopBuys(shop, sel)) {
-        actions.push(h('button', { class: 'primary', text: `Vender (${price} oro)`, onClick: () => {
-          const res = game.sellToShop(shopId, sel.uid, 1);
-          note = typeof res === 'string' ? res : `Vendes ${itemDef(sel).name} por ${res} de oro.`;
+        actions.push(h('button', { class: 'primary', text: `Vender ${amount > 1 ? `${amount} ` : ''}(${price * amount} oro)`, onClick: () => {
+          const res = game.sellToShop(shopId, sel.uid, amount);
+          note = typeof res === 'string' ? res : `Vendes ${amount > 1 ? `${amount} × ` : ''}${name} por ${res} de oro.`;
           if (typeof res !== 'string') onChanged();
-          render();
-        } }));
-        if (sel.qty > 1) actions.push(h('button', { text: `Vender todo (${price * sel.qty})`, onClick: () => {
-          const res = game.sellToShop(shopId, sel.uid, sel.qty);
-          note = typeof res === 'string' ? res : `Vendes ${sel.qty} × ${itemDef(sel).name} por ${res} de oro.`;
-          if (typeof res !== 'string') onChanged();
-          selected = null;
+          if (amount >= sel.qty) selected = null;
+          amount = 1;
           render();
         } }));
       }
       detail = h('div', { class: 'panel item-detail', attrs: { style: `border-color:${rarityOf(sel).color}` } }, [
         ...itemInfo(p, sel, tab === 'comprar'),
+        ...(stepper ? [h('small', { class: 'muted', text: 'Cantidad:' }), stepper] : []),
         h('div', { class: 'item-buttons' }, actions),
       ]);
     }
