@@ -41,6 +41,10 @@ export interface ZoneExitDef {
   tile?: string;
   /** Puerta de un edificio: no muestra flecha en el borde, sólo su nombre al verla. */
   door?: boolean;
+  /** Sólo se puede cruzar con esta bandera de historia puesta. */
+  requiresFlag?: string;
+  /** Mensaje si está cerrada. */
+  lockedText?: string;
 }
 
 /**
@@ -72,6 +76,100 @@ export interface ZoneDef {
   encounters?: EncounterTable;
   /** XP por descubrir la zona la primera vez (por defecto 20 × nivel). */
   discoverXp?: number;
+  /** Cofres, trampas y nodos de mineral colocados en el mapa. */
+  features?: ZoneFeature[];
+  /** Jefe que aparece en esta zona (salas de jefe de mazmorra). */
+  bossSpawn?: { enemy: string; x: number; y: number; guards?: Array<{ enemy: string; x: number; y: number }> };
+  /** Rellenado por el generador: a qué mazmorra y piso pertenece la zona. */
+  dungeon?: { id: string; floor: number | 'jefe'; run: number };
+}
+
+// ===========================================================================
+// MAZMORRAS, COFRES, TRAMPAS Y MINERÍA
+// ===========================================================================
+
+export type TrapType = 'pinchos' | 'dardos' | 'fuego';
+export type OreType = 'hierro' | 'plata' | 'gema';
+
+/** Elemento interactivo de una zona. */
+export type ZoneFeature =
+  /** Cofre: se abre tocándolo desde una casilla adyacente. `locked`: hay que forzarlo. */
+  | { kind: 'cofre'; x: number; y: number; locked?: boolean; loot?: string; level?: number }
+  /** Trampa oculta: se detecta con SAB al acercarse y se desactiva con DES. */
+  | { kind: 'trampa'; x: number; y: number; trap: TrapType; level?: number }
+  /** Nodo de mineral: hace falta un pico de nivel suficiente. */
+  | { kind: 'mineral'; x: number; y: number; ore: OreType };
+
+/** Definición de un tipo de trampa (data/config/traps.ts). */
+export interface TrapDef {
+  id: TrapType;
+  name: string;
+  /** CD base para detectar (SAB) y desactivar (DES); se suma la mitad del nivel. */
+  dc: number;
+  damage: string;
+  damageType: DamageType;
+  /** Salvación para recibir la mitad al pisarla. */
+  save: AbilityKey;
+  applyStatus?: StatusApply;
+  sprite: string;
+}
+
+/** Definición de un mineral (data/config/ores.ts). */
+export interface OreDef {
+  id: OreType;
+  name: string;
+  /** Objeto que da (data/items). */
+  item: string;
+  /** Nivel de pico necesario. */
+  tier: number;
+  /** Golpes (turnos) para agotarlo. */
+  hits: number;
+  qty: [number, number];
+  xp: number;
+  sprite: string;
+}
+
+/**
+ * Mazmorra procedural. Cada piso se genera con una semilla (partida + id + piso
+ * + reinicio) y el último enlaza con la sala del jefe, que es un mapa fijo.
+ */
+export interface DungeonDef {
+  id: string;
+  name: string;
+  description: string;
+  /** Nivel del primer piso; cada piso suma `levelPerFloor` (por defecto 1). */
+  level: number;
+  levelPerFloor?: number;
+  floors: number;
+  width: number;
+  height: number;
+  /** Número de salas por piso [mín, máx]. */
+  rooms: [number, number];
+  wallTile: string;
+  floorTile: string;
+  darkness: number;
+  /** Salida a la superficie desde el primer piso (y desde la sala del jefe). */
+  surface: { zone: string; arrive: string };
+  /** Encuentros por piso (si hay menos que pisos, se repite el último). */
+  floorEncounters: EncounterTable[];
+  chestLoot: string;
+  chestsPerFloor: [number, number];
+  /** Probabilidad 0..1 de que un cofre esté cerrado con llave. */
+  lockedChance: number;
+  trapsPerFloor: [number, number];
+  traps: TrapType[];
+  oresPerFloor: [number, number];
+  ores: OreType[];
+  boss: {
+    enemy: string;
+    /** Mapa fijo: '1' escaleras de subida, '3' salida a la superficie, 'X' posición del jefe. */
+    map: string[];
+    /** Encuentros extra en la sala del jefe (opcional). */
+    guards?: Array<{ enemy: string; x: number; y: number }>;
+  };
+  /** Bandera necesaria para entrar (si no, muestra `lockedText`). */
+  requiresFlag?: string;
+  lockedText?: string;
 }
 
 // ===========================================================================

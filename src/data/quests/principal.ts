@@ -1,6 +1,6 @@
 /**
  * Trama principal (ligera). El villano es Velkar el Nigromante (enemies/jefes.ts).
- * El Hito 7 completará la historia; aquí están los dos primeros capítulos.
+ * El Hito 7 completará la historia; aquí están los primeros capítulos.
  */
 import type { QuestDef } from '../schema';
 
@@ -20,7 +20,18 @@ export default [
       { type: 'visit', zone: 'puerto_ceniza', label: 'Llega a Puerto Ceniza' },
       { type: 'talk', npc: 'hermana_lysa', label: 'Habla con la Hermana Lysa en el templo' },
     ],
-    completeText: 'Este símbolo... es la marca de Velkar el Nigromante. Despertó algo antiguo bajo la tierra: el Abismo. Sus cultistas reclutan goblins y alzan a los muertos. Tendremos que detenerlo antes de que sea tarde. (Continuará...)',
+    completeText: 'Este símbolo... es la marca de Velkar el Nigromante. Despertó algo antiguo bajo la tierra: el Abismo. Sus cultistas reclutan goblins y alzan a los muertos. Sus goblins se esconden en la Cueva de los Colmillos, al norte del Bosque Sombrío. Empieza por ahí: corta la mano antes que la cabeza.',
     rewards: { xp: 250, gold: 60, items: [{ item: 'amuleto_hueso' }], flag: 'mq2' },
+  },
+  {
+    id: 'mq3_colmillos', name: 'La Cueva de los Colmillos', kind: 'principal', giver: 'hermana_lysa', turnIn: 'alcalde_ortun',
+    requires: ['mq2_rastro'],
+    description: 'Los goblins de Velkar se esconden en la Cueva de los Colmillos (salida norte del Bosque Sombrío). Baja hasta el fondo y derrota a su jefe, Gruñaz. Luego avisa al alcalde Ortun.',
+    objectives: [
+      { type: 'visit', zone: 'cueva_goblin', label: 'Entra en la Cueva de los Colmillos' },
+      { type: 'kill', enemy: 'rey_goblin', count: 1, label: 'Derrota a Gruñaz, el Rey Goblin' },
+    ],
+    completeText: '¡Gruñaz derrotado! La aldea por fin respira. Pero tu informe me inquieta: los goblins guardaban mapas de las Galerías de Seda y de unas criptas bajo Puerto Ceniza... Velkar sigue moviendo sus piezas. (Continuará...)',
+    rewards: { xp: 400, gold: 120, items: [{ item: 'pocion_curacion_mayor', qty: 2 }], flag: 'mq3' },
   },
 ] satisfies QuestDef[];

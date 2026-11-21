@@ -6,8 +6,10 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef } from './schema';
+import type { DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef } from './schema';
 import rarityList from './config/rarities';
+import trapList from './config/traps';
+import oreList from './config/ores';
 import tileList from './config/tiles';
 
 type Module = { default: unknown };
@@ -46,8 +48,17 @@ export const ZONES: ReadonlyMap<string, ZoneDef> = collect<ZoneDef>(
 /** Zona donde empieza una partida nueva. */
 export const START_ZONE_ID = 'aldea_brumaroja';
 
+/**
+ * Zonas generadas en tiempo de ejecución (pisos de mazmorra). El juego registra
+ * aquí un "resolutor" que las crea a partir de la semilla de la partida.
+ */
+let dynamicZones: ((id: string) => ZoneDef | undefined) | null = null;
+export function setDynamicZoneResolver(fn: ((id: string) => ZoneDef | undefined) | null): void {
+  dynamicZones = fn;
+}
+
 export function getZoneDef(id: string): ZoneDef | undefined {
-  return ZONES.get(id);
+  return ZONES.get(id) ?? dynamicZones?.(id);
 }
 
 // --- Clases jugables --------------------------------------------------------
@@ -108,3 +119,11 @@ export const QUESTS: ReadonlyMap<string, QuestDef> = collect<QuestDef>(import.me
 export function npcsInZone(zoneId: string): NpcDef[] {
   return [...NPCS.values()].filter((n) => n.zone === zoneId);
 }
+
+// --- Mazmorras, trampas y minerales -----------------------------------------
+export const DUNGEONS: ReadonlyMap<string, DungeonDef> = collect<DungeonDef>(
+  import.meta.glob('./dungeons/*.{ts,json}', { eager: true }),
+  'mazmorra',
+);
+export const TRAPS: ReadonlyMap<string, TrapDef> = new Map(trapList.map((t) => [t.id, t]));
+export const ORES: ReadonlyMap<string, OreDef> = new Map(oreList.map((o) => [o.id, o]));

@@ -13,7 +13,7 @@
  * Nunca borres migraciones antiguas.
  */
 
-export const CURRENT_SAVE_VERSION = 4;
+export const CURRENT_SAVE_VERSION = 5;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
@@ -46,6 +46,8 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   },
   /** v3 → v4 (Hito 5): misiones y tiendas. */
   3: (s) => ({ ...s, quests: s['quests'] ?? {}, shops: s['shops'] ?? {} }),
+  /** v4 → v5 (Hito 6): mazmorras, cofres abiertos, trampas y vetas usadas. */
+  4: (s) => ({ ...s, world: s['world'] ?? { dungeons: {}, features: {} } }),
 };
 
 export class SaveMigrationError extends Error {}

@@ -39,7 +39,7 @@ describe('movimiento por turnos', () => {
     const cave = g.zone.exits.find((e) => e.to === 'cueva_goblin')!;
     const msgs: string[] = [];
     g.events.on('message', (m) => msgs.push(m.text));
-    g.useExit(cave);
+    g.useExit({ ...cave, to: 'zona_que_no_existe' });
     expect(g.zone.id).toBe('bosque_sombrio');
     expect(msgs[0]).toMatch(/bloqueado/);
   });

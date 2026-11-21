@@ -14,6 +14,7 @@ export default {
   exits: {
     '1': { to: 'aldea_brumaroja', arrive: '2', label: 'A la Aldea de Brumaroja' },
     '2': { to: 'puerto_ceniza', arrive: '1', label: 'A Puerto Ceniza' },
+    '3': { to: 'galerias_seda', arrive: '1', label: 'Galerías de Seda', tile: 'cueva' },
   },
   encounters: {
     initial: 4,
@@ -29,6 +30,12 @@ export default {
       { enemy: 'cultista', weight: 1, min: 1, max: 1 },
     ],
   },
+  // Vetas de mineral al aire libre (vuelven a crecer con el tiempo).
+  features: [
+    { kind: 'mineral', x: 7, y: 5, ore: 'hierro' },
+    { kind: 'mineral', x: 26, y: 14, ore: 'hierro' },
+    { kind: 'mineral', x: 7, y: 16, ore: 'plata' },
+  ],
   map: [
     'RRRRRRRRRRRRR11RRRRRRRRRRRRRRR',
     'R,,,,,,,,,,,,==,,,,,,,,,,,,,,R',
@@ -44,7 +51,7 @@ export default {
     'R,,,,Y,,,,,,~~~~,,,,,==,,,,,,R',
     'R,,,YYY,,,,~~~~~~,,,,==,,,,,,R',
     'R,,,,Y,,,,,,~~~~,,,,==,,,,,,,R',
-    'R,,,,,,,,,,,,,,,,,,==,,,,R,,,R',
+    'R,,,,,,,,,,,,,,,,,,==,,,,3,,,R',
     'R,,,,,,,,,,,,,,,,,==,,,,RRR,,R',
     'R,,,,,,R,,,,,,,,,==,,,,,,R,,,R',
     'R,,,,,,,,,,,,,,,==,,,,,,,,,,,R',

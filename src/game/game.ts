@@ -7,8 +7,8 @@
  *     → inicio del turno del jugador (estados, regeneración, encuentros)
  * El combate ocurre en el mismo mapa, sin cambiar de pantalla.
  */
-import { getClass, getEnemy, getZoneDef, npcsInZone } from '@/data/registry';
-import type { DamageType, EnemySpell, NpcDef, SkillDef, SkillEffect, StatusApply } from '@/data/schema';
+import { ORES, TRAPS, getClass, getEnemy, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
+import type { DamageType, EnemySpell, NpcDef, SkillDef, SkillEffect, StatusApply, ZoneFeature } from '@/data/schema';
 import { Emitter } from '@/engine/events';
 import { findPath, type Point } from '@/engine/pathfinding';
 import { Rng, hashString } from '@/engine/rng';
@@ -27,7 +27,7 @@ import {
 import { STATUS_INFO, consumeStun, hasStatus, tickStatuses, tryApplyStatus, type StatusInstance } from './combat/status';
 import { attributePointsAtLevel, proficiencyBonus, unlockedSkills } from './rules/character';
 import { derive, type Derived } from './rules/derived';
-import { abilityModifier, roll } from './rules/dice';
+import { abilityModifier, roll, rollD20 } from './rules/dice';
 import { levelForXp } from './rules/progression';
 import { recalcPlayer, type GameState } from './state';
 import { addItem, equip, removeQty, unequip } from './items/inventory';
@@ -38,6 +38,10 @@ import * as Quests from './quests/quests';
 import * as Shop from './economy/shop';
 import type { EquipSlot } from '@/data/schema';
 import { buildZone, type Zone, type ZoneExit } from './world/zone';
+import { dungeonZoneDef, emptyWorld, featureKey, parseDungeonZone, progressOf } from './world/dungeons';
+
+/** Turnos que tarda en volver a crecer una veta de mineral fuera de las mazmorras. */
+const ORE_REGROW_TURNS = 400;
 
 export type MsgKind = 'info' | 'warn' | 'good' | 'combat';
 
@@ -129,6 +133,14 @@ export class Game {
   npcs: NpcDef[] = [];
   /** PNJ al que vamos caminando para hablar. */
   private pendingTalk: string | null = null;
+  /** Elemento (cofre, veta, trampa) hacia el que caminamos para usarlo. */
+  private pendingFeature: string | null = null;
+  /** Trampas descubiertas en esta visita a la zona (claves de casilla). */
+  readonly detectedTraps = new Set<string>();
+  /** Trampas que ya intentaste detectar en esta visita. */
+  private checkedTraps = new Set<string>();
+  /** Golpes de pico dados a cada veta (se pierde al salir de la zona). */
+  private mineHits = new Map<string, number>();
   ground: GroundLoot[] = [];
   fx: Fx[] = [];
   /** Habilidad elegida esperando objetivo. */
@@ -145,6 +157,9 @@ export class Game {
   constructor(public state: GameState) {
     state.quests ??= {};
     state.shops ??= {};
+    state.world ??= emptyWorld();
+    // Los pisos de mazmorra se generan bajo demanda con la semilla de esta partida.
+    setDynamicZoneResolver((id) => dungeonZoneDef(state.seed, state.world, id));
     recalcPlayer(state.player);
     if (state.player.hp <= 0) state.player.hp = Math.ceil(state.player.maxHp / 2);
     this.rng = new Rng(hashString(`${state.seed}:${state.turn}:${Date.now()}:${gameCounter++}`));
@@ -205,7 +220,7 @@ export class Game {
 
   /** Casilla libre para el jugador (terreno + sin enemigos). */
   playerCanWalk(x: number, y: number): boolean {
-    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y);
+    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !this.isKnownTrap(x, y);
   }
 
   private blocksSight = (x: number, y: number) => this.zone.tileAt(x, y)?.blocksSight ?? true;
@@ -262,6 +277,17 @@ export class Game {
       return;
     }
     if (npc) this.pendingTalk = npc.id;
+    this.pendingFeature = null;
+    const feat = this.interactiveFeatureAt(x, y);
+    if (feat && !this.enemyAt(x, y)) {
+      const p0 = this.playerPos;
+      if (dist(p0.x, p0.y, x, y) <= 1 && this.canAct) {
+        this.cancelPath();
+        this.interact(feat);
+        return;
+      }
+      this.pendingFeature = featureKey(this.zone.def, x, y);
+    }
     const enemy = this.enemyAt(x, y);
     if (enemy && this.canAct) {
       const p = this.playerPos;
@@ -284,7 +310,7 @@ export class Game {
     });
     if (!path || path.length === 0) {
       const tile = this.zone.tileAt(x, y);
-      if (!enemy && !npc) {
+      if (!enemy && !npc && !feat) {
         if (tile && !tile.walkable && dist(from.x, from.y, x, y) <= 1) this.msg(`${tile.name}.`);
         else this.msg('No puedes llegar ahí.', 'warn');
       }
@@ -446,7 +472,20 @@ export class Game {
     v.ry = v.to.y;
     v.stepT = -1;
     if (v.path.length === 0) v.target = null;
+    if (this.stepOnTrap(v.to.x, v.to.y)) {
+      if (this.isDead) return;
+      this.cancelPath();
+    }
     this.pickupHere();
+    if (this.pendingFeature && v.path.length === 0) {
+      const key = this.pendingFeature;
+      this.pendingFeature = null;
+      const f = this.zone.def.features?.find((ff) => featureKey(this.zone.def, ff.x, ff.y) === key);
+      if (f && dist(v.to.x, v.to.y, f.x, f.y) <= 1 && this.interactiveFeatureAt(f.x, f.y)) {
+        this.interact(f);
+        return;
+      }
+    }
     if (this.pendingTalk && v.path.length === 0) {
       const npc = this.npcs.find((n) => n.id === this.pendingTalk);
       this.pendingTalk = null;
@@ -516,6 +555,7 @@ export class Game {
       if (this.state.turn % 3 === 0 && p.mp < p.maxMp) p.mp++;
       this.maybeSpawnEncounter();
     }
+    this.scanTraps();
     // Aturdido o ralentizado: se pierde este turno
     if (consumeStun(c.statuses)) {
       this.msg('¡Estás aturdido y pierdes el turno!', 'warn');
@@ -535,6 +575,31 @@ export class Game {
 
   // ==================================================================== zonas
   useExit(exit: ZoneExit): void {
+    if (exit.requiresFlag && !this.state.flags[exit.requiresFlag]) {
+      this.cancelPath();
+      this.heldDir = null;
+      this.msg(exit.lockedText ?? 'Está cerrado.', 'warn');
+      return;
+    }
+    const ref = parseDungeonZone(exit.to);
+    if (ref) {
+      const d = ref.dungeon;
+      if (d.requiresFlag && !this.state.flags[d.requiresFlag]) {
+        this.cancelPath();
+        this.heldDir = null;
+        this.msg(d.lockedText ?? `${d.name}: la entrada está sellada.`, 'warn');
+        return;
+      }
+      // Entrar desde la superficie en una mazmorra ya completada: ¡una nueva!
+      if (ref.floor === 1 && this.zone.def.dungeon?.id !== d.id) {
+        const prog = progressOf(this.state.world, d.id);
+        if (prog.cleared) {
+          prog.run++;
+          prog.cleared = false;
+          this.msg(`${d.name} ha cambiado desde tu última visita... Nuevos pasadizos, nuevos peligros.`, 'warn');
+        }
+      }
+    }
     const def = getZoneDef(exit.to);
     if (!def) {
       this.cancelPath();
@@ -564,6 +629,13 @@ export class Game {
     this.phase = 'player';
     this.combat.stealth = 0;
     this.populateZone();
+    const dz = this.zone.def.dungeon;
+    if (dz) {
+      const prog = progressOf(this.state.world, dz.id);
+      const depth = dz.floor === 'jefe' ? 99 : dz.floor;
+      prog.deepest = Math.max(prog.deepest, depth);
+      if (dz.floor === 'jefe' && !prog.cleared) this.msg('Sientes una presencia poderosa. Prepárate.', 'warn');
+    }
     const firstVisit = !this.state.visitedZones.includes(this.zone.id);
     if (firstVisit) this.state.visitedZones.push(this.zone.id);
     this.events.emit('zoneChanged', { zone: this.zone, firstVisit });
@@ -582,6 +654,20 @@ export class Game {
     this.enemies = [];
     this.ground = [];
     this.fx = [];
+    this.detectedTraps.clear();
+    this.checkedTraps = new Set();
+    this.mineHits.clear();
+    this.pendingFeature = null;
+    // Vetas: agotadas = se pueden pisar; fuera de mazmorras vuelven a crecer.
+    for (const f of this.zone.def.features ?? []) {
+      if (f.kind === 'mineral') this.zone.setBlocked(f.x, f.y, !this.featureUsed(f));
+    }
+    const boss = this.zone.def.bossSpawn;
+    const dz = this.zone.def.dungeon;
+    if (boss && !(dz && progressOf(this.state.world, dz.id).cleared)) {
+      this.spawnEnemy(boss.enemy, boss.x, boss.y);
+      for (const g of boss.guards ?? []) this.spawnEnemy(g.enemy, g.x, g.y);
+    }
     const enc = this.zone.def.encounters;
     if (!enc) return;
     for (let i = 0; i < enc.initial; i++) this.spawnGroup();
@@ -719,6 +805,15 @@ export class Game {
     this.fx.push({ kind: 'burst', x: enemy.x, y: enemy.y, radius: 0.8, color: '#e05050', t: 0, life: 0.4 });
     const xp = xpForKill(enemy.def.xp, enemy.def.level, this.state.player.level);
     this.msg(`${enemy.def.name} cae derrotado.`, 'good');
+    if (enemy.def.boss) {
+      this.state.flags[`boss_${enemy.def.id}`] = true;
+      const dz = this.zone.def.dungeon;
+      if (dz) {
+        progressOf(this.state.world, dz.id).cleared = true;
+        this.msg(`¡Has vencido a ${enemy.def.name}! El pasadizo a la superficie se abre.`, 'good');
+        this.msg('Si vuelves a entrar desde fuera, la mazmorra será distinta (rejugable).', 'info');
+      }
+    }
     this.gainXp(xp, enemy.def.name);
     const qm = Quests.onKill(this.state, enemy.def);
     for (const m of qm) this.msg(m, 'good');
@@ -1258,6 +1353,213 @@ export class Game {
     p.hp = Math.max(1, Math.ceil(p.maxHp / 2));
     p.mp = Math.ceil(p.maxMp / 2);
     this.msg(`Despiertas en ${this.zone.def.name}, magullado. Has perdido ${lost} de oro.`, 'warn');
+  }
+
+  // ============================================= cofres, trampas y minería
+  /** ¿Se usó ya este elemento? (las vetas fuera de mazmorras vuelven a crecer). */
+  featureUsed(f: ZoneFeature): boolean {
+    const t = this.state.world.features[featureKey(this.zone.def, f.x, f.y)];
+    if (t === undefined) return false;
+    if (f.kind === 'mineral' && !this.zone.def.dungeon) return this.state.turn - t < ORE_REGROW_TURNS;
+    return true;
+  }
+
+  private markUsed(f: ZoneFeature): void {
+    this.state.world.features[featureKey(this.zone.def, f.x, f.y)] = this.state.turn;
+  }
+
+  /** Trampa activa que ya conoces (no la pisas al caminar). */
+  isKnownTrap(x: number, y: number): boolean {
+    const f = this.zone.featureAt(x, y);
+    return !!f && f.kind === 'trampa' && this.detectedTraps.has(featureKey(this.zone.def, x, y)) && !this.featureUsed(f);
+  }
+
+  /** Elemento con el que se puede interactuar en esa casilla. */
+  interactiveFeatureAt(x: number, y: number): ZoneFeature | undefined {
+    const f = this.zone.featureAt(x, y);
+    if (!f || this.featureUsed(f)) return undefined;
+    if (f.kind === 'trampa' && !this.detectedTraps.has(featureKey(this.zone.def, x, y))) return undefined;
+    return f;
+  }
+
+  /** Qué dibujar para cada elemento visible (lo usa el renderizador). */
+  featureSprites(): Array<{ x: number; y: number; sprite: string; dim: boolean }> {
+    const out: Array<{ x: number; y: number; sprite: string; dim: boolean }> = [];
+    for (const f of this.zone.def.features ?? []) {
+      const used = this.featureUsed(f);
+      if (f.kind === 'cofre') out.push({ x: f.x, y: f.y, sprite: used ? 'chestOpen' : f.locked ? 'chestLocked' : 'chest', dim: false });
+      else if (f.kind === 'mineral') {
+        if (!used) out.push({ x: f.x, y: f.y, sprite: ORES.get(f.ore)?.sprite ?? 'oreIron', dim: false });
+      } else if (used || this.detectedTraps.has(featureKey(this.zone.def, f.x, f.y))) {
+        out.push({ x: f.x, y: f.y, sprite: TRAPS.get(f.trap)?.sprite ?? 'trapSpikes', dim: used });
+      }
+    }
+    return out;
+  }
+
+  /** Bonificador y modo de una prueba de habilidad (el Pícaro es experto: competencia y ventaja). */
+  private skillCheck(stat: 'SAB' | 'DES' | 'FUE', expert: boolean): { bonus: number; mode: 'normal' | 'ventaja' } {
+    const picaro = this.state.player.classId === 'picaro' && expert;
+    return {
+      bonus: abilityModifier(this.derived.stats[stat]) + (picaro ? proficiencyBonus(this.state.player.level) : 0),
+      mode: picaro ? 'ventaja' : 'normal',
+    };
+  }
+
+  private rollCheck(label: string, stat: 'SAB' | 'DES' | 'FUE', dc: number, expert: boolean, show = true): { success: boolean; total: number } {
+    const c = this.skillCheck(stat, expert);
+    const d = rollD20(this.rng, c.mode);
+    const total = d.natural + c.bonus;
+    const success = d.natural === 20 || (d.natural !== 1 && total >= dc);
+    if (show) {
+      this.events.emit('dice', {
+        label, natural: d.natural, bonus: c.bonus, total, target: dc, targetLabel: 'CD', outcome: success ? 'success' : 'fail',
+      });
+    }
+    return { success, total };
+  }
+
+  private trapDC(f: Extract<ZoneFeature, { kind: 'trampa' }>): number {
+    return (TRAPS.get(f.trap)?.dc ?? 12) + Math.floor((f.level ?? this.zone.def.level) / 2);
+  }
+
+  /** Percepción pasiva: al acercarte a una trampa oculta tiras SAB una vez. */
+  private scanTraps(): void {
+    const p = this.playerPos;
+    for (const f of this.zone.def.features ?? []) {
+      if (f.kind !== 'trampa' || this.featureUsed(f)) continue;
+      const key = featureKey(this.zone.def, f.x, f.y);
+      if (this.detectedTraps.has(key) || this.checkedTraps.has(key)) continue;
+      if (dist(p.x, p.y, f.x, f.y) > 2 || !this.los(p, f)) continue;
+      this.checkedTraps.add(key);
+      const r = this.rollCheck('Percepción (SAB)', 'SAB', this.trapDC(f), true, false);
+      if (r.success) {
+        this.detectedTraps.add(key);
+        this.cancelPath();
+        this.floatText(f.x, f.y, '⚠', '#ff6040');
+        this.msg(`¡Detectas una ${TRAPS.get(f.trap)?.name.toLowerCase() ?? 'trampa'}! Tócala para desactivarla o rodéala.`, 'warn');
+      }
+    }
+  }
+
+  /** Pisar una casilla: si hay una trampa oculta, salta. Devuelve true si saltó. */
+  private stepOnTrap(x: number, y: number): boolean {
+    const f = this.zone.featureAt(x, y);
+    if (!f || f.kind !== 'trampa' || this.featureUsed(f)) return false;
+    this.triggerTrap(f);
+    return true;
+  }
+
+  private triggerTrap(f: Extract<ZoneFeature, { kind: 'trampa' }>): void {
+    const t = TRAPS.get(f.trap);
+    this.markUsed(f);
+    this.detectedTraps.add(featureKey(this.zone.def, f.x, f.y));
+    if (!t) return;
+    const dc = this.trapDC(f);
+    const bonus = abilityModifier(this.derived.stats[t.save]);
+    const s = savingThrow(this.rng, bonus, dc);
+    this.events.emit('dice', {
+      label: `Salvación de ${t.save}`, natural: s.natural, bonus, total: s.total, target: dc, targetLabel: 'CD', outcome: s.success ? 'success' : 'fail',
+    });
+    let dmg = roll(this.rng, t.damage).total;
+    if (s.success) dmg = Math.max(1, Math.floor(dmg / 2));
+    this.fx.push({ kind: 'burst', x: f.x, y: f.y, radius: 0.9, color: t.damageType === 'fuego' ? '#ff8030' : '#d0d0d0', t: 0, life: 0.5 });
+    this.msg(`¡${t.name}!${s.success ? ' Reaccionas a tiempo y recibes la mitad.' : ''}`, 'warn');
+    this.damagePlayer(dmg, t.name);
+    if (!this.isDead && !s.success && t.applyStatus) this.applyStatusToPlayer(t.applyStatus);
+  }
+
+  /** Usar un cofre, una veta o una trampa conocida (estando al lado). Gasta el turno. */
+  interact(f: ZoneFeature): void {
+    if (!this.canAct) return;
+    const p = this.playerPos;
+    if (f.x !== p.x) this.view.facing = f.x > p.x ? 'right' : 'left';
+    if (f.kind === 'cofre') this.openChest(f);
+    else if (f.kind === 'mineral') {
+      if (!this.mine(f)) return;
+    } else this.disarmTrap(f);
+    if (!this.isDead) this.endPlayerTurn();
+  }
+
+  private openChest(f: Extract<ZoneFeature, { kind: 'cofre' }>): void {
+    const level = f.level ?? this.zone.def.level;
+    if (f.locked) {
+      const dc = 10 + Math.floor(level / 2);
+      // Ganzúa (DES, el Pícaro es experto) o forzar (FUE): se usa lo mejor que tengas.
+      const des = this.skillCheck('DES', true);
+      const fue = this.skillCheck('FUE', false);
+      const useDes = des.bonus + (des.mode === 'ventaja' ? 3 : 0) >= fue.bonus;
+      const r = this.rollCheck(useDes ? 'Abrir cerradura (DES)' : 'Forzar el cofre (FUE)', useDes ? 'DES' : 'FUE', dc, useDes);
+      if (!r.success) {
+        this.msg(useDes ? 'La cerradura se resiste. Puedes volver a intentarlo.' : 'El cofre no cede. Puedes volver a intentarlo.', 'warn');
+        if (!useDes || this.rng.chance(0.25)) {
+          this.msg('¡Un dardo oculto sale disparado del cofre!', 'warn');
+          this.damagePlayer(roll(this.rng, '1d4').total, 'cofre con trampa');
+        }
+        return;
+      }
+      this.msg(useDes ? '¡Clic! Abres la cerradura.' : '¡Crac! Revientas la cerradura.', 'good');
+    }
+    this.markUsed(f);
+    const loot = rollLoot(this.rng, f.loot ?? 'cofre', level);
+    this.fx.push({ kind: 'burst', x: f.x, y: f.y, radius: 0.8, color: '#f2d888', t: 0, life: 0.5 });
+    if (!loot.items.length && !loot.gold) {
+      this.msg('El cofre está vacío. Alguien llegó antes.', 'info');
+      return;
+    }
+    this.msg('Abres el cofre...', 'good');
+    this.dropLoot(this.playerPos.x, this.playerPos.y, loot.items, loot.gold);
+    this.pickupHere();
+  }
+
+  /** Un golpe de pico. Devuelve false si no se pudo (no gasta turno). */
+  private mine(f: Extract<ZoneFeature, { kind: 'mineral' }>): boolean {
+    const ore = ORES.get(f.ore);
+    if (!ore) return false;
+    const tool = this.state.player.equipment.herramienta;
+    const tier = tool ? (itemDef(tool).pickaxeTier ?? 0) : 0;
+    if (tier <= 0) {
+      this.msg(`${ore.name}: necesitas un pico equipado en la ranura Herramienta (se venden en la herrería).`, 'warn');
+      return false;
+    }
+    if (tier < ore.tier) {
+      this.msg(`${ore.name}: tu pico no es lo bastante duro (hace falta uno de nivel ${ore.tier}).`, 'warn');
+      return false;
+    }
+    const key = featureKey(this.zone.def, f.x, f.y);
+    const hits = (this.mineHits.get(key) ?? 0) + 1;
+    this.mineHits.set(key, hits);
+    this.floatText(f.x, f.y, '⛏', '#d0d8e8');
+    this.fx.push({ kind: 'burst', x: f.x, y: f.y, radius: 0.4, color: '#d0d8e8', t: 0, life: 0.25 });
+    if (hits < ore.hits) {
+      this.msg(`Picas la ${ore.name.toLowerCase()}... (${hits}/${ore.hits})`, 'info');
+      return true;
+    }
+    this.markUsed(f);
+    this.zone.setBlocked(f.x, f.y, false);
+    const it = createItem(ore.item, 'comun', this.rng, { qty: this.rng.int(ore.qty[0], ore.qty[1]) });
+    this.dropLoot(this.playerPos.x, this.playerPos.y, [it], 0);
+    this.pickupHere();
+    this.gainXp(ore.xp, 'minería');
+    return true;
+  }
+
+  private disarmTrap(f: Extract<ZoneFeature, { kind: 'trampa' }>): void {
+    const t = TRAPS.get(f.trap);
+    const dc = this.trapDC(f);
+    const r = this.rollCheck('Desactivar trampa (DES)', 'DES', dc, true);
+    if (r.success) {
+      this.markUsed(f);
+      this.msg(`Desactivas la ${t?.name.toLowerCase() ?? 'trampa'}.`, 'good');
+      this.gainXp(10 * (f.level ?? this.zone.def.level), 'trampa desactivada');
+      return;
+    }
+    if (r.total <= dc - 5) {
+      this.msg('¡Mal movimiento! La trampa salta.', 'warn');
+      this.triggerTrap(f);
+      return;
+    }
+    this.msg('No consigues desactivarla. Puedes volver a intentarlo.', 'warn');
   }
 
   // ======================================================== PNJ y servicios

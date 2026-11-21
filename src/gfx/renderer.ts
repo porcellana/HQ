@@ -114,6 +114,7 @@ export class Renderer {
     this.drawExits(zone);
     this.drawPath(game);
     this.drawDarkness(game, camX, camY);
+    this.drawFeatures(game);
     this.drawLoot(game);
     this.drawEntities(game);
     this.drawFx(game);
@@ -214,6 +215,16 @@ export class Renderer {
         ctx.fillStyle = enemy ? `rgba(255,80,60,${(a + 0.25).toFixed(3)})` : `rgba(242,216,136,${a.toFixed(3)})`;
         ctx.fillRect(x * TILE + 1, y * TILE + 1, TILE - 2, TILE - 2);
       }
+    }
+  }
+
+  /** Cofres, vetas de mineral y trampas descubiertas. */
+  private drawFeatures(game: Game): void {
+    const { ctx } = this;
+    for (const f of game.featureSprites()) {
+      if (f.dim) ctx.globalAlpha = 0.45;
+      ctx.drawImage(getTileSprite(f.sprite, 0), f.x * TILE, f.y * TILE);
+      ctx.globalAlpha = 1;
     }
   }
 

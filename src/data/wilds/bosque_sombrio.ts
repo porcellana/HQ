@@ -29,6 +29,11 @@ export default {
     '1': { to: 'aldea_brumaroja', arrive: '1', label: 'Volver a la aldea' },
     '2': { to: 'cueva_goblin', arrive: '1', label: 'Cueva de los Colmillos', tile: 'cueva' },
   },
+  // Vetas de mineral al aire libre (vuelven a crecer con el tiempo).
+  features: [
+    { kind: 'mineral', x: 22, y: 17, ore: 'hierro' },
+    { kind: 'mineral', x: 13, y: 19, ore: 'hierro' },
+  ],
   map: [
     'YYYYYYYYYYYYYYYYYYYYYYYYYYYYYY',
     'YYYYYYYYYYYYYYYYYYYYYYYRRRYYYY',

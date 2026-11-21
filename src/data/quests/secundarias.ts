@@ -3,6 +3,13 @@ import type { QuestDef } from '../schema';
 
 export default [
   {
+    id: 'sq_mineral', name: 'Hierro para la forja', kind: 'secundaria', giver: 'herrera_brunna',
+    description: 'Brunna necesita mineral de hierro. Equipa un pico y busca vetas en el bosque, el Paso Gris o las mazmorras.',
+    objectives: [{ type: 'collect', item: 'mineral_hierro', count: 5, label: 'Consigue mineral de hierro' }],
+    completeText: '¡Buen hierro! Con esto forjo media docena de herraduras. Toma, te lo has ganado.',
+    rewards: { xp: 90, gold: 50, items: [{ item: 'pocion_curacion', qty: 2 }] },
+  },
+  {
     id: 'sq_ratas', name: 'Ratas en la bodega', kind: 'secundaria', giver: 'tabernera_marga',
     description: 'Unas ratas gigantes salen del bosque y se comen las provisiones de La Jarra Roja.',
     objectives: [{ type: 'kill', enemy: 'rata_gigante', count: 4, label: 'Mata ratas gigantes' }],

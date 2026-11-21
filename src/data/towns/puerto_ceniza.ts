@@ -19,6 +19,7 @@ export default {
     '4': { to: 'ciudad_herreria', arrive: '1', label: 'Forja del Ancla', tile: 'puerta', door: true },
     '5': { to: 'ciudad_posada', arrive: '1', label: 'Posada El Faro', tile: 'puerta', door: true },
     '6': { to: 'ciudad_templo', arrive: '1', label: 'Templo de la Llama', tile: 'puerta', door: true },
+    '7': { to: 'cripta_velkar', arrive: '1', label: 'Cripta (bajo la ciudad)', tile: 'escalera_bajada' },
   },
   map: [
     '#############11###############',
@@ -53,7 +54,7 @@ export default {
     '#p,,,pppLppppppppppppppp~~~~~~',
     '#ppppppppppppppppppppppp~~~~~~',
     '#ppppppppppppppppppppppp~~~~~~',
-    '#ppppppppppppppppppppppp~~~~~~',
+    '#p7ppppppppppppppppppppp~~~~~~',
     '##############################',
   ],
 } satisfies ZoneDef;

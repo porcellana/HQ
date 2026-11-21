@@ -41,6 +41,15 @@ const tiles: TileDef[] = [
   { id: 'yunque', char: 'U', name: 'Yunque', walkable: false, blocksSight: false, sprite: 'anvil', minimap: '#5e6470' },
   { id: 'farola', char: 'L', name: 'Farola', walkable: false, blocksSight: false, sprite: 'streetLamp', minimap: '#d8b050' },
   { id: 'muelle', char: 'D', name: 'Muelle', walkable: true, blocksSight: false, sprite: 'dock', minimap: '#7a5a38' },
+  // --- Mazmorras (Hito 6). Los mapas generados usan '#'/'.' con `legend`. ---
+  { id: 'muro_cueva', char: 'G', name: 'Pared de roca', walkable: false, blocksSight: true, sprite: 'caveWall', minimap: '#1c1712' },
+  { id: 'suelo_cueva', char: 'g', name: 'Suelo de la cueva', walkable: true, blocksSight: false, sprite: 'caveFloor', minimap: '#4a3f33' },
+  { id: 'muro_seda', char: 'Q', name: 'Pared cubierta de seda', walkable: false, blocksSight: true, sprite: 'silkWall', minimap: '#2a2630' },
+  { id: 'suelo_seda', char: 'q', name: 'Suelo pegajoso', walkable: true, blocksSight: false, sprite: 'silkFloor', minimap: '#4a4652' },
+  { id: 'muro_cripta', char: 'J', name: 'Muro de la cripta', walkable: false, blocksSight: true, sprite: 'cryptWall', minimap: '#15131c' },
+  { id: 'suelo_cripta', char: 'j', name: 'Losas de la cripta', walkable: true, blocksSight: false, sprite: 'cryptFloor', minimap: '#3a3446' },
+  { id: 'escalera_bajada', char: 'v', name: 'Escaleras de bajada', walkable: true, blocksSight: false, sprite: 'stairsDown', minimap: '#f2d888' },
+  { id: 'escalera_subida', char: 'n', name: 'Escaleras de subida', walkable: true, blocksSight: false, sprite: 'stairsUp', minimap: '#f2d888' },
 ];
 
 export default tiles;

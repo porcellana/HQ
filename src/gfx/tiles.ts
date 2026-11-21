@@ -420,12 +420,163 @@ const dock: Gen = (c, r) => {
   px(c, 0, 7, PAL.woodD, TILE, 1);
 };
 
+
+// ------------------------------------------------------------ Mazmorras (Hito 6)
+/** Suelo irregular de mazmorra con piedrecitas. */
+const dungeonFloor = (base: string, dark: string, light: string): Gen => (c, r) => {
+  px(c, 0, 0, base, TILE, TILE);
+  speckle(c, r, 22, [dark, dark, light]);
+  for (let i = 0; i < 2; i++) {
+    const x = r.int(1, 13), y = r.int(1, 13);
+    px(c, x, y, light, 2, 1);
+    px(c, x, y + 1, dark, 2, 1);
+  }
+};
+
+/** Pared de roca con bloques irregulares y borde inferior oscuro. */
+const dungeonWall = (base: string, dark: string, light: string, extra?: (c: CanvasRenderingContext2D, r: Rng) => void): Gen => (c, r) => {
+  px(c, 0, 0, dark, TILE, TILE);
+  for (let i = 0; i < 6; i++) {
+    const w = r.int(4, 8), h = r.int(3, 5);
+    const x = r.int(-2, 12), y = r.int(0, 10);
+    px(c, x, y, base, w, h);
+    px(c, x, y, light, w, 1);
+  }
+  px(c, 0, 14, PAL.black, TILE, 2);
+  extra?.(c, r);
+};
+
+const silkStrands = (c: CanvasRenderingContext2D, r: Rng) => {
+  for (let i = 0; i < 3; i++) {
+    let x = r.int(0, 15);
+    for (let y = 0; y < 14; y++) {
+      px(c, x, y, 'rgba(236,230,214,0.55)');
+      if (r.chance(0.3)) x += r.int(-1, 1);
+    }
+  }
+};
+
+const cryptBricks = (c: CanvasRenderingContext2D, r: Rng) => {
+  for (let row = 0; row < 3; row++) {
+    const off = row % 2 === 0 ? 0 : -4;
+    for (let col = 0; col < 3; col++) px(c, off + col * 8, row * 5 + 4, '#0e0c14', 8, 1);
+  }
+  if (r.chance(0.25)) {
+    px(c, 7, 5, PAL.purple, 2, 2);
+    px(c, 7, 5, '#c080ff', 1, 1);
+  }
+};
+
+const stairs = (down: boolean): Gen => (c, r) => {
+  dungeonFloor('#3e3a47', '#2c2934', '#57525f')(c, r);
+  px(c, 1, 1, PAL.black, 14, 14);
+  for (let i = 0; i < 5; i++) {
+    const shade = down ? [PAL.stoneLL, PAL.stoneL, PAL.stone, PAL.stoneD, PAL.shadow][i]! : [PAL.shadow, PAL.stoneD, PAL.stone, PAL.stoneL, PAL.stoneLL][i]!;
+    px(c, 2, 2 + i * 2 + (down ? 0 : 0), shade, 12, 2);
+  }
+  // Flecha
+  const col = PAL.goldL;
+  if (down) {
+    px(c, 7, 4, col, 2, 5);
+    px(c, 5, 8, col, 6, 1);
+    px(c, 6, 9, col, 4, 1);
+    px(c, 7, 10, col, 2, 1);
+  } else {
+    px(c, 7, 7, col, 2, 5);
+    px(c, 7, 4, col, 2, 1);
+    px(c, 6, 5, col, 4, 1);
+    px(c, 5, 6, col, 6, 1);
+  }
+};
+
+/** Cofre (fondo transparente: se dibuja encima del suelo). */
+const chestGen = (open: boolean, locked: boolean): Gen => (c) => {
+  px(c, 2, 13, 'rgba(0,0,0,0.35)', 12, 2);
+  if (open) {
+    px(c, 2, 3, PAL.black, 12, 4);
+    px(c, 3, 4, PAL.woodD, 10, 2);
+    px(c, 2, 7, PAL.black, 12, 7);
+    px(c, 3, 8, PAL.woodD, 10, 5);
+    px(c, 4, 8, '#0e0c14', 8, 2);
+    px(c, 3, 10, PAL.wood, 10, 1);
+    px(c, 7, 9, PAL.gold, 2, 1);
+    return;
+  }
+  px(c, 2, 4, PAL.black, 12, 10);
+  px(c, 3, 5, PAL.wood, 10, 3);
+  px(c, 3, 5, PAL.woodL, 10, 1);
+  px(c, 3, 9, PAL.wood, 10, 4);
+  px(c, 3, 8, PAL.woodD, 10, 1);
+  px(c, 5, 5, PAL.gold, 1, 8);
+  px(c, 10, 5, PAL.gold, 1, 8);
+  px(c, 7, 7, locked ? PAL.steel : PAL.gold, 2, 3);
+  if (locked) px(c, 7, 8, PAL.black, 2, 1);
+};
+
+const trapGen = (kind: 'spikes' | 'darts' | 'fire'): Gen => (c) => {
+  px(c, 2, 2, 'rgba(0,0,0,0.25)', 12, 12);
+  if (kind === 'spikes') {
+    for (let y = 3; y < 13; y += 4) for (let x = 3; x < 13; x += 4) {
+      px(c, x + 1, y, PAL.steel, 1, 2);
+      px(c, x, y + 2, PAL.steelD, 3, 1);
+    }
+  } else if (kind === 'darts') {
+    px(c, 3, 3, PAL.stoneD, 10, 10);
+    for (let y = 5; y < 12; y += 3) for (let x = 5; x < 12; x += 3) px(c, x, y, PAL.black, 1, 1);
+    px(c, 7, 7, '#7ac040', 2, 2);
+  } else {
+    px(c, 3, 3, '#3a1a10', 10, 10);
+    px(c, 4, 7, PAL.fire, 8, 2);
+    px(c, 7, 4, PAL.fire, 2, 8);
+    px(c, 7, 7, PAL.goldL, 2, 2);
+  }
+  // Borde de aviso
+  px(c, 2, 2, '#ff6040', 12, 1);
+  px(c, 2, 13, '#ff6040', 12, 1);
+  px(c, 2, 2, '#ff6040', 1, 12);
+  px(c, 13, 2, '#ff6040', 1, 12);
+};
+
+const oreGen = (vein: string, light: string): Gen => (c, r) => {
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const dx = x - 7.5, dy = y - 9;
+      const d = dx * dx * 0.8 + dy * dy * 1.2;
+      if (d < 40) px(c, x, y, d > 32 ? PAL.black : dx + dy > 2 ? PAL.stone : PAL.stoneL);
+    }
+  }
+  for (let i = 0; i < 5; i++) {
+    const x = r.int(3, 10), y = r.int(5, 11);
+    px(c, x, y, PAL.black, 4, 3);
+    px(c, x + 1, y, vein, 2, 2);
+    px(c, x, y + 1, vein, 3, 1);
+    px(c, x + 1, y, light, 1, 1);
+  }
+};
+
 export const TILE_GENERATORS: Readonly<Record<string, Gen>> = {
   streetLamp, woodFloor, carpet, counter, table, barrel, shelf, altar, hearth, bed, anvil, dock,
   grass, flowers, dirt, cobble, stoneFloor, stoneWall, water, tree, pine, bush, rock,
   roof: roofGen(PAL.roofD, PAL.roof, PAL.roofL),
   roofSlate: roofGen(PAL.slateD, PAL.slate, PAL.slateL),
   woodWall, door, fence, bridge, well, sign, lamp, grave, cave,
+  caveFloor: dungeonFloor('#6a5a46', '#54473a', '#80705a'),
+  caveWall: dungeonWall('#3a3026', '#16120e', '#54473a'),
+  silkFloor: dungeonFloor('#5e5a68', '#4a4652', '#7a7686'),
+  silkWall: dungeonWall('#2e2a34', '#141218', '#46424e', silkStrands),
+  cryptFloor: dungeonFloor('#4e475e', '#3c3648', '#625a76'),
+  cryptWall: dungeonWall('#26222e', '#0e0c14', '#3c3648', cryptBricks),
+  stairsDown: stairs(true),
+  stairsUp: stairs(false),
+  chest: chestGen(false, false),
+  chestLocked: chestGen(false, true),
+  chestOpen: chestGen(true, false),
+  trapSpikes: trapGen('spikes'),
+  trapDarts: trapGen('darts'),
+  trapFire: trapGen('fire'),
+  oreIron: oreGen('#c08a6a', '#f0c0a0'),
+  oreSilver: oreGen('#d8e0f0', '#ffffff'),
+  oreGem: oreGen('#d04080', '#ff90c0'),
 };
 
 /** Número de variantes por tile. */

@@ -14,6 +14,7 @@ import { derive } from './rules/derived';
 import type { QuestProgress } from './quests/quests';
 import type { ShopState } from './economy/shop';
 import { buildZone } from './world/zone';
+import { emptyWorld, type WorldState } from './world/dungeons';
 
 export interface Position {
   zone: string;
@@ -66,6 +67,8 @@ export interface GameState {
   quests: Record<string, QuestProgress>;
   /** Stock de las tiendas visitadas (se renueva con el tiempo). */
   shops: Record<string, ShopState>;
+  /** Mazmorras (reinicios, jefes) y elementos usados (cofres, trampas, vetas). */
+  world: WorldState;
   playTimeSec: number;
   createdAt: string;
 }
@@ -111,6 +114,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
     flags: {},
     quests: {},
     shops: {},
+    world: emptyWorld(),
     playTimeSec: 0,
     createdAt: new Date().toISOString(),
   };
