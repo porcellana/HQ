@@ -66,6 +66,10 @@ export interface ZoneDef {
   description?: string;
   /** Oscuridad ambiental 0 (pleno día) .. 1 (negro). */
   darkness?: number;
+  /** Encuentros aleatorios (zonas salvajes). Ver EncounterTable. */
+  encounters?: EncounterTable;
+  /** XP por descubrir la zona la primera vez (por defecto 20 × nivel). */
+  discoverXp?: number;
 }
 
 // ===========================================================================
@@ -163,4 +167,121 @@ export interface ClassDef {
   traits: string[];
   look: ClassLook;
   skills: SkillDef[];
+}
+
+// ===========================================================================
+// ENEMIGOS Y ENCUENTROS
+// ===========================================================================
+
+export type EnemyFamily = 'goblinoide' | 'no-muerto' | 'bestia' | 'araña' | 'orco' | 'humano';
+
+/**
+ * Comportamiento:
+ *  - melee: se acerca y ataca cuerpo a cuerpo.
+ *  - ranged: mantiene la distancia y dispara.
+ *  - caster: lanza hechizos (con recarga) y si no, ataca.
+ *  - skirmisher: rápido (2 casillas por turno), rodea y muerde.
+ *  - boss: como melee/caster, con fases al bajar de vida.
+ */
+export type EnemyAI = 'melee' | 'ranged' | 'caster' | 'skirmisher' | 'boss';
+
+export interface EnemyAttack {
+  name: string;
+  /** Bonificador al ataque (d20 + toHit contra la CA del jugador). */
+  toHit: number;
+  dice: string;
+  damageType: DamageType;
+  /** 1 = cuerpo a cuerpo. */
+  range: number;
+  applyStatus?: StatusApply;
+}
+
+export interface EnemySpell {
+  id: string;
+  name: string;
+  kind: 'damage' | 'heal' | 'summon';
+  dice?: string;
+  damageType?: DamageType;
+  range: number;
+  /** Radio de área alrededor del objetivo (0 = un objetivo). */
+  radius?: number;
+  /** Si existe, el jugador tira salvación de `save` contra `dc` (mitad de daño si la supera). */
+  save?: AbilityKey;
+  dc?: number;
+  applyStatus?: StatusApply;
+  summon?: { enemy: string; count: number };
+  cooldown: number;
+}
+
+export interface BossPhase {
+  /** Se activa cuando la vida baja de esta fracción (0..1). */
+  hpBelow: number;
+  message: string;
+  summon?: { enemy: string; count: number };
+  /** Bonificadores permanentes a partir de esta fase. */
+  toHitBonus?: number;
+  damageBonus?: number;
+  /** Se cura esta fracción de su vida máxima. */
+  heal?: number;
+}
+
+export interface EnemyLook {
+  /** Forma de src/gfx/monsters.ts: goblin, esqueleto, lobo, rata, araña, humanoide... */
+  shape: string;
+  /** Capa opcional (de OVERLAYS en sprites.ts) para humanoides: picaro, mago, guerrero... */
+  overlay?: string;
+  main: string;
+  dark: string;
+  accent: string;
+  eye?: string;
+  /** Corona o aura de jefe. */
+  crown?: boolean;
+}
+
+export interface EnemyDef {
+  id: string;
+  name: string;
+  family: EnemyFamily;
+  level: number;
+  /** Vida en dados, p. ej. "2d6+2" (cada enemigo tira la suya). */
+  hp: string;
+  ac: number;
+  /** Casillas por turno (1 normal, 2 rápido). */
+  speed: number;
+  /** Lento: sólo actúa uno de cada dos turnos (zombis). */
+  slow?: boolean;
+  /** Radio de visión en casillas. */
+  sight: number;
+  ai: EnemyAI;
+  attack: EnemyAttack;
+  spells?: EnemySpell[];
+  phases?: BossPhase[];
+  /** Bonificadores de salvación; por defecto nivel/2. */
+  saves?: Partial<Record<AbilityKey, number>>;
+  /** Mitad de daño de estos tipos. */
+  resist?: DamageType[];
+  /** Doble daño de estos tipos. */
+  vulnerable?: DamageType[];
+  /** Estados que no le afectan. */
+  immune?: StatusId[];
+  /** XP base (se ajusta por diferencia de nivel). */
+  xp: number;
+  boss?: boolean;
+  description: string;
+  look: EnemyLook;
+  /** Tabla de botín (Hito 4). */
+  lootTable?: string;
+}
+
+/** Encuentros aleatorios de una zona salvaje. */
+export interface EncounterTable {
+  /** Grupos que aparecen al entrar en la zona. */
+  initial: number;
+  /** Probabilidad por paso de que aparezca un grupo nuevo. */
+  perStepChance: number;
+  /** Máximo de enemigos vivos a la vez. */
+  maxActive: number;
+  /** Distancia mínima al jugador para aparecer. */
+  minDistance?: number;
+  groups: Array<{ enemy: string; weight: number; min?: number; max?: number }>;
 }

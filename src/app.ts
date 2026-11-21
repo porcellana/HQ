@@ -10,7 +10,7 @@ import { getClass, getZoneDef } from '@/data/registry';
 import { GameLoop } from '@/engine/loop';
 import { Input } from '@/engine/input';
 import { randomSeed } from '@/engine/rng';
-import { Game } from '@/game/game';
+import { Game, type LevelUpEvent } from '@/game/game';
 import { SaveManager } from '@/game/save/saveManager';
 import { defaultStores } from '@/game/save/storage';
 import { loadSettings, saveSettings, type Settings } from '@/game/settings';
@@ -20,7 +20,7 @@ import { heroColors } from '@/gfx/sprites';
 import { creationScreen } from '@/ui/creation';
 import { characterSheet } from '@/ui/sheet';
 import { confirmDialog, showDialog } from '@/ui/dialogs';
-import { buzz } from '@/ui/dom';
+import { buzz, h } from '@/ui/dom';
 import { Hud } from '@/ui/hud';
 import { mainMenu, settingsScreen } from '@/ui/menus';
 
@@ -52,6 +52,12 @@ export class App {
         if (code === 'Space' || code === 'Period') this.game?.waitTurn();
         if (code === 'Escape') this.togglePause();
         if (code === 'KeyC') this.showSheet();
+        if (code === 'KeyF') this.game?.flee();
+        const n = Number(code.replace('Digit', ''));
+        if (code.startsWith('Digit') && n >= 1 && this.game) {
+          const sk = this.game.cls.skills.filter((s) => s.unlockLevel <= this.game!.state.player.level)[n - 1];
+          if (sk) this.game.selectSkill(sk);
+        }
       },
     });
     window.addEventListener('resize', () => this.layout());
@@ -169,6 +175,8 @@ export class App {
       onMenu: () => this.togglePause(),
       onInventory: () => hud.pushMessage('La mochila llegará en el Hito 4.'),
       onJoystick: (d) => this.setHeldDir(d),
+      onSkill: (sk) => game.selectSkill(sk),
+      onFlee: () => game.flee(),
     });
     this.hud = hud;
     this.ui.prepend(hud.root);
@@ -176,6 +184,10 @@ export class App {
     this.applySettings();
 
     game.events.on('message', (m) => hud.pushMessage(m.text, m.kind));
+    game.events.on('dice', (d) => hud.dice.show(d));
+    game.events.on('playerHurt', ({ amount }) => buzz(this.settings.vibration, Math.min(80, 15 + amount * 4)));
+    game.events.on('levelUp', (ev) => this.showLevelUp(ev));
+    game.events.on('playerDied', () => this.showDeath());
     game.events.on('zoneChanged', ({ zone, firstVisit }) => {
       hud.showBanner(zone.def.name, firstVisit ? zone.def.description : undefined);
       buzz(this.settings.vibration, 20);
@@ -189,6 +201,8 @@ export class App {
     hud.showBanner(def?.name ?? '', undefined);
     this.layout();
     this.loop.start();
+    // Sólo en desarrollo (npm run dev): acceso desde la consola del navegador para depurar.
+    if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
   }
 
   /** Aplica aspecto de clase y retrato al mapa y al HUD. */
@@ -200,6 +214,43 @@ export class App {
     this.renderer.heroColors = colors;
     this.hud.setPortrait(colors);
     this.hud.setResource(cls.resource.short, cls.resource.color);
+  }
+
+  private showLevelUp(ev: LevelUpEvent): void {
+    buzz(this.settings.vibration, 60);
+    void this.autosave('subida de nivel');
+    const body = h('ul', {}, [
+      h('li', { text: `+${Math.max(0, ev.hpGain)} PV máximos (vida restaurada)` }),
+      ev.mpGain > 0 ? h('li', { text: `+${ev.mpGain} ${this.game?.cls.resource.short ?? 'PM'} máximos` }) : null,
+      h('li', { text: `+${ev.points} punto${ev.points > 1 ? 's' : ''} de característica para repartir` }),
+      ...ev.skills.map((sk) => h('li', { text: `Nueva habilidad: ${sk.icon} ${sk.name}` })),
+    ]);
+    const close = showDialog(this.ui, `¡Nivel ${ev.level}!`, body, [
+      { label: 'Repartir puntos', kind: 'primary', action: () => this.showSheet() },
+      { label: 'Seguir', action: () => void 0 },
+    ]);
+    void close;
+    this.ui.querySelector('.modal:last-of-type')?.classList.add('levelup');
+  }
+
+  private showDeath(): void {
+    buzz(this.settings.vibration, 200);
+    window.setTimeout(() => {
+      showDialog(this.ui, 'Has caído', 'La oscuridad te envuelve... pero tu historia no termina aquí.', [
+        {
+          label: 'Despertar en la aldea (−10 % de oro)',
+          kind: 'primary',
+          action: () => {
+            this.game?.respawn();
+            void this.autosave('reaparición');
+          },
+        },
+        {
+          label: 'Cargar la última partida guardada',
+          action: () => void this.continueGame(),
+        },
+      ]);
+    }, 700);
   }
 
   private showSheet(): void {
@@ -218,13 +269,13 @@ export class App {
   private tick(dt: number): void {
     const game = this.game;
     if (!game) return;
-    if (!this.pauseClose && !this.screen) game.update(dt);
+    if (!this.pauseClose && !this.screen && !this.ui.querySelector('.modal-back')) game.update(dt);
     this.renderer.render(game, dt, { grid: this.settings.grid });
     this.hud?.update(game, dt);
   }
 
   private onTap(sx: number, sy: number): void {
-    if (!this.game || this.pauseClose || this.screen) return;
+    if (!this.game || this.pauseClose || this.screen || this.ui.querySelector('.modal-back')) return;
     const t = this.renderer.screenToTile(sx, sy);
     this.game.tapTile(t.x, t.y);
   }
@@ -238,7 +289,7 @@ export class App {
   /** Guarda en segundo plano; las llamadas se encadenan para no solaparse. */
   private autosave(reason: string): Promise<void> {
     const game = this.game;
-    if (!game) return this.saving;
+    if (!game || game.isDead) return this.saving;
     this.lastSavedTurn = game.state.turn;
     this.saving = this.saving
       .then(() => this.saves.save(game.state))

@@ -7,8 +7,11 @@ import { levelProgress } from '@/game/rules/progression';
 import type { Settings } from '@/game/settings';
 import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
 import { h } from './dom';
+import type { SkillDef } from '@/data/schema';
+import { DiceRoller } from './dice';
 import { Joystick } from './joystick';
 import { Minimap } from './minimap';
+import { SkillBar } from './skillbar';
 
 export interface HudActions {
   onWait(): void;
@@ -16,6 +19,8 @@ export interface HudActions {
   onMenu(): void;
   onInventory(): void;
   onJoystick(dir: { dx: number; dy: number } | null): void;
+  onSkill(skill: SkillDef): void;
+  onFlee(): void;
 }
 
 function bar(kind: string, thin = false): { el: HTMLDivElement; fill: HTMLElement; label: HTMLElement } {
@@ -38,6 +43,8 @@ export class Hud {
   private readonly banner: HTMLDivElement;
   private readonly log: HTMLDivElement;
   private readonly actionBar: HTMLDivElement;
+  readonly skillBar: SkillBar;
+  readonly dice = new DiceRoller();
   private bannerTimer = 0;
   private resourceShort = 'PM';
   /** Última firma de datos mostrada, para no tocar el DOM si no cambia nada. */
@@ -70,11 +77,15 @@ export class Hud {
       btn('☰', 'Menú', actions.onMenu),
     ]);
 
+    this.skillBar = new SkillBar(actions.onSkill, actions.onFlee);
     this.root = h('div', { class: 'hud passthrough' }, [
       h('div', { class: 'hud-top' }, [panel, this.minimap.el]),
+      this.skillBar.statusRow,
       this.banner,
       this.log,
+      this.dice.el,
       this.joystick.el,
+      this.skillBar.el,
       this.actionBar,
     ]);
   }
@@ -83,12 +94,13 @@ export class Hud {
     this.joystick.el.style.display = s.joystick ? '' : 'none';
     this.joystick.setSide(s.hand);
     this.actionBar.classList.toggle('izquierda', s.hand === 'izquierda');
+    this.skillBar.el.classList.toggle('izquierda', s.hand === 'izquierda');
   }
 
   /** Altura en px CSS tapada por el panel superior y la barra de acciones. */
   insets(): { top: number; bottom: number } {
     const top = this.root.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0;
-    const barTop = this.actionBar.getBoundingClientRect().top;
+    const barTop = Math.min(this.actionBar.getBoundingClientRect().top, this.skillBar.el.getBoundingClientRect().top || Infinity);
     return { top: top * 0.6, bottom: Math.max(0, window.innerHeight - barTop) * 0.8 };
   }
 
@@ -107,11 +119,11 @@ export class Hud {
     this.bannerTimer = window.setTimeout(() => this.banner.classList.remove('show'), 3200);
   }
 
-  pushMessage(text: string, kind: 'info' | 'warn' | 'good' = 'info'): void {
+  pushMessage(text: string, kind: 'info' | 'warn' | 'good' | 'combat' = 'info'): void {
     const el = h('div', { class: kind, text });
     this.log.append(el);
-    while (this.log.childElementCount > 4) this.log.firstElementChild?.remove();
-    window.setTimeout(() => el.remove(), 5200);
+    while (this.log.childElementCount > 3) this.log.firstElementChild?.remove();
+    window.setTimeout(() => el.remove(), 4200);
   }
 
   /** Nombre corto y color del recurso de la clase (PM, VIG, ENE, FE). */
@@ -140,5 +152,6 @@ export class Hud {
       this.xp.el.title = prog.needed ? `XP ${prog.current}/${prog.needed}` : 'Nivel máximo';
     }
     this.minimap.draw(game.zone, game.view.rx, game.view.ry, dt);
+    this.skillBar.update(game);
   }
 }

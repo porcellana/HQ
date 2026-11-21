@@ -14,7 +14,7 @@ Android en vertical (se juega con una mano) y probable en el navegador como PWA.
 |------|-----------|--------|
 | 1 | Motor base, mapa, movimiento, HUD y guardado | ✅ v0.0.1 |
 | 2 | Creación de personaje, 4 clases y características | ✅ v0.0.2 |
-| 3 | Combate por turnos, enemigos, XP y niveles | ⏳ |
+| 3 | Combate por turnos, enemigos, XP y niveles | ✅ v0.0.3 |
 | 4 | Inventario, equipo y botín | ⏳ |
 | 5 | Pueblos, tiendas, comercio y misiones | ⏳ |
 | 6 | Mazmorras procedurales, minería y jefes | ⏳ |
@@ -53,7 +53,14 @@ Otros comandos:
 - **Joystick virtual** (opcional, en Ajustes): moverse casilla a casilla.
 - **Esperar**: pasa un turno sin moverte.
 - **Menú**: pausa, guardar, ajustes y salir. En Android, el botón *Atrás* abre/cierra la pausa.
-- En PC: flechas/WASD para moverse, espacio para esperar, Esc para pausa.
+- **Atacar**: toca a un enemigo pegado a ti (o empuja el joystick contra él).
+- **Habilidades**: botones encima de la barra inferior; si piden objetivo, toca al
+  enemigo (las casillas a tu alcance se iluminan). El número es su coste; ⏳ = recarga.
+- **Huir** aparece durante el combate.
+- Toca a un enemigo lejano para ver su nivel, vida y peligro. El número sobre su
+  barra de vida es su nivel (rojo con ☠ = mortal para ti).
+- En PC: flechas/WASD para moverse, espacio para esperar, 1-5 habilidades, F huir,
+  C ficha, Esc pausa.
 - Las casillas que brillan en dorado son **salidas** a otras zonas.
 
 ---
@@ -213,6 +220,60 @@ Cada clase es un archivo en `src/data/classes/` (mira `guerrero.ts`). Campos cla
 
 Cambiar los números de una clase también afecta a las partidas guardadas (los PV y
 el recurso máximos se recalculan al cargar).
+
+### Añadir un enemigo
+
+Crea o edita un archivo en `src/data/enemies/` (cada archivo exporta una lista):
+
+```ts
+{
+  id: 'kobold', name: 'Kobold', family: 'goblinoide', level: 1,
+  hp: '2d6', ac: 12, speed: 1, sight: 6, ai: 'melee',
+  attack: { name: 'Lanza', toHit: 4, dice: '1d6', damageType: 'perforante', range: 1 },
+  xp: 15, description: 'Pequeño reptil traicionero.',
+  look: { shape: 'goblin', main: '#a05a2a', dark: '#5a2a10', accent: '#3a3a3a', eye: '#ffd040' },
+},
+```
+
+- `ai`: `melee`, `ranged` (mantiene distancia), `caster` (usa `spells`), `skirmisher`
+  (rápido) o `boss` (usa `spells` y `phases`).
+- `attack.applyStatus`: `{ id: 'veneno' | 'sangrado' | 'quemado' | 'aturdido' | 'ralentizado', chance, turns }`.
+- `resist` / `vulnerable` / `immune`: tipos de daño y estados.
+- `look.shape`: `goblin`, `esqueleto`, `lobo`, `rata`, `arana` o `humanoide` (con
+  `overlay`: `guerrero`, `picaro`, `mago`, `clerigo`); `crown: true` para jefes. Las
+  formas están en `src/gfx/monsters.ts` como pixel art en texto.
+- `phases` (jefes): al bajar de `hpBelow` (0..1) muestra `message`, puede invocar
+  (`summon`), curarse (`heal`) o enfurecerse (`toHitBonus`, `damageBonus`).
+
+### Encuentros aleatorios de una zona
+
+En la zona (p. ej. `bosque_sombrio.ts`) añade `encounters`:
+
+```ts
+encounters: {
+  initial: 4,            // grupos al entrar
+  perStepChance: 0.04,   // probabilidad por paso de un grupo nuevo
+  maxActive: 8,
+  groups: [{ enemy: 'goblin', weight: 4, min: 1, max: 3 }],
+},
+```
+
+### Reglas de combate (resumen)
+
+- Ataque: d20 + bonificador contra la CA. **20 natural = crítico** (dados de daño ×2) y
+  **1 natural = pifia**. Ventaja/desventaja: se tiran 2d20 y se queda el mejor/peor
+  (sigilo da ventaja; el veneno, desventaja).
+- Hechizos con salvación: el objetivo tira d20 + bonificador contra CD = 8 +
+  competencia + modificador; si la supera, recibe la mitad.
+- Estados: veneno (1d4/turno y desventaja), sangrado (1d4/turno), quemado
+  (1d6/turno), aturdido (pierde el turno), ralentizado (actúa un turno de cada dos, −2 CA).
+- XP por enemigo = base × multiplicador por diferencia de nivel: +25 % por nivel por
+  encima (máx. ×2) y −20 % por nivel por debajo; 5 o más niveles por debajo = ×0,05.
+  Descubrir una zona salvaje da 20 × su nivel.
+- Huir: d20 + DES + competencia contra CD 10 + nivel del enemigo más fuerte (no se
+  puede huir de un jefe).
+- Morir: despiertas en la aldea con la mitad de la vida y pierdes el 10 % del oro.
+- Fuera de combate recuperas 1 PV cada 5 turnos y 1 punto de recurso cada 3.
 
 *(Las secciones para objetos, enemigos, botín, misiones y mazmorras se
 añadirán a medida que lleguen sus hitos.)*

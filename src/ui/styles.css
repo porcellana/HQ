@@ -116,7 +116,7 @@ button.danger { border-color: var(--danger); color: #f0b0a8; }
 }
 .log div {
   background: rgba(11,10,16,0.82); border-left: 3px solid var(--border-l); padding: 4px 10px; border-radius: 4px;
-  font-size: 0.85em; animation: logfade 5s forwards;
+  font-size: 0.8em; animation: logfade 4s forwards; max-width: 92%;
 }
 .log div.warn { border-color: var(--danger); }
 .log div.good { border-color: var(--ok); }
@@ -206,3 +206,46 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .hud-portrait { cursor: pointer; }
 .hud-points { color: var(--gold); animation: pulse 1.2s infinite alternate; }
 @keyframes pulse { from { opacity: 0.6; } to { opacity: 1; } }
+.log div.combat { border-color: #8a6a9a; font-size: 0.78em; }
+
+/* ------------------------------- Combate --------------------------------- */
+.skill-bar {
+  position: absolute; left: 8px; right: 8px; bottom: calc(var(--tap) + 22px + env(safe-area-inset-bottom));
+  display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; pointer-events: none;
+}
+.action-bar.izquierda ~ .skill-bar, .skill-bar.izquierda { justify-content: flex-start; }
+.skill-bar button.skill {
+  pointer-events: auto; min-height: 50px; min-width: 50px; padding: 2px 6px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; line-height: 1; border-radius: 12px;
+}
+.skill-bar button.skill .ico { font-size: 1.35em; }
+.skill-bar button.skill small { font-size: 0.65em; color: var(--muted); margin-top: 2px; }
+.skill-bar button.skill.selected { border-color: var(--gold); box-shadow: 0 0 12px rgba(242,216,136,0.6); }
+.skill-bar button.skill.blocked { opacity: 0.45; }
+.skill-bar button.flee { border-color: #6a8aa0; }
+.status-row { position: absolute; left: 8px; right: 104px; top: calc(96px + env(safe-area-inset-top)); display: flex; gap: 4px; flex-wrap: wrap; pointer-events: none; }
+.chip { background: rgba(11,10,16,0.85); border: 1px solid var(--border); border-radius: 10px; padding: 1px 7px; font-size: 0.7em; }
+.chip.good { border-color: var(--ok); }
+.chip.warn { border-color: var(--danger); color: #f0b0a8; }
+.log { bottom: calc(var(--tap) + 84px + env(safe-area-inset-bottom)); }
+
+.dice-roller {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%) scale(0.8); display: flex; flex-direction: column;
+  align-items: center; gap: 6px; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none;
+}
+.dice-roller.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.d20 {
+  width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; font-size: 1.6em; font-weight: bold;
+  color: #fff; background: linear-gradient(135deg, #5a2a6a, #2a1a3a); border: 3px solid var(--border-l);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); text-shadow: 0 2px 0 #000;
+}
+.dice-roller.crit .d20 { background: linear-gradient(135deg, #c9a227, #7a5a10); }
+.dice-roller.fumble .d20 { background: linear-gradient(135deg, #8a1a1a, #3a0a0a); }
+.dice-roller.miss .d20 { filter: grayscale(0.7); }
+.dice-info { background: rgba(11,10,16,0.88); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; text-align: center; font-size: 0.8em; }
+.dice-info b { display: block; color: var(--gold-l); font-weight: normal; font-size: 1.15em; }
+.dice-roller.miss .dice-info b, .dice-roller.fumble .dice-info b { color: #f0a0a0; }
+.dice-info small { color: var(--muted); }
+
+.levelup h3 { font-size: 1.5em; }
+.levelup ul { margin: 0; padding-left: 20px; line-height: 1.6; }

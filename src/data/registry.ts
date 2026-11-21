@@ -6,7 +6,7 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { ClassDef, TileDef, ZoneDef } from './schema';
+import type { ClassDef, EnemyDef, TileDef, ZoneDef } from './schema';
 import tileList from './config/tiles';
 
 type Module = { default: unknown };
@@ -69,4 +69,14 @@ export function getClass(id: string): ClassDef {
   const c = CLASSES.get(id) ?? CLASSES.get('guerrero') ?? [...CLASSES.values()][0];
   if (!c) throw new Error('No hay ninguna clase definida en src/data/classes');
   return c;
+}
+
+// --- Enemigos -----------------------------------------------------------------
+export const ENEMIES: ReadonlyMap<string, EnemyDef> = collect<EnemyDef>(
+  import.meta.glob('./enemies/*.{ts,json}', { eager: true }),
+  'enemigo',
+);
+
+export function getEnemy(id: string): EnemyDef | undefined {
+  return ENEMIES.get(id);
 }

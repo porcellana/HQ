@@ -2,6 +2,25 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.0.3 · 2026-11-21 — Hito 3: combate
+
+- Combate por turnos en el propio mapa: atacar, habilidades, esperar y huir.
+- Tiradas d20 contra CA con críticos (20) y pifias (1), ventaja y desventaja,
+  salvaciones contra CD, resistencias y vulnerabilidades. Animación del d20.
+- 12 enemigos en 6 familias (goblinoides, bestias, arañas, no-muertos, humanos,
+  orcos) y 3 jefes con fases (Gruñaz, Mórgala, Velkar) listos para las mazmorras.
+- IA: cuerpo a cuerpo, a distancia (mantiene la distancia), hechiceros (curan e
+  invocan), rápidos (2 casillas) y jefes con fases e invocaciones.
+- Estados: veneno, sangrado, quemado, aturdido y ralentizado (para ti y enemigos).
+- Encuentros aleatorios en el Bosque Sombrío.
+- Experiencia por matar (escalada por diferencia de nivel) y por descubrir zonas.
+  Subida de nivel con pantalla propia, PV, recurso, puntos y habilidades nuevas.
+- Barra de habilidades con coste y recarga, selección de objetivo con alcance
+  resaltado, números de daño flotantes, proyectiles, explosiones y destellos.
+- Muerte: despiertas en la aldea perdiendo el 10 % del oro (o cargas la partida).
+- Clérigo: Llama sagrada desde nivel 1 y nueva habilidad «Juicio divino».
+- 59 tests, incluida una simulación de duelos para equilibrar.
+
 ## v0.0.2 · 2026-11-21 — Hito 2: personajes
 
 - Pantalla de creación: elige clase (Guerrero, Pícaro, Mago, Clérigo), nombre

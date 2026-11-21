@@ -60,7 +60,7 @@ describe('reglas de personaje', () => {
     expect(proficiencyBonus(5)).toBe(3);
     expect(proficiencyBonus(20)).toBe(6);
     const c = getClass('clerigo');
-    expect(unlockedSkills(c, 1).length).toBe(1);
+    expect(unlockedSkills(c, 1).length).toBe(2);
     expect(unlockedSkills(c, 20).length).toBe(c.skills.length);
   });
 

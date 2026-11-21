@@ -7,7 +7,11 @@
  */
 import { Camera } from '@/engine/camera';
 import type { Point } from '@/engine/pathfinding';
+import { dangerLevel, dist } from '@/game/combat/rules';
+import { STATUS_INFO } from '@/game/combat/status';
+import type { Enemy } from '@/game/combat/entities';
 import type { Game } from '@/game/game';
+import { monsterSprite } from './monsters';
 import type { Zone } from '@/game/world/zone';
 import { TILE, ctx2d, makeCanvas } from './canvas';
 import { PAL } from './palette';
@@ -103,10 +107,138 @@ export class Renderer {
     ctx.drawImage(zc, 0, 0);
 
     if (opts.grid) this.drawGrid(zone);
+    this.drawTargeting(game);
     this.drawExits(zone);
     this.drawPath(game);
-    this.drawPlayer(game);
     this.drawDarkness(game, camX, camY);
+    this.drawEntities(game);
+    this.drawFx(game);
+  }
+
+  /** Casillas al alcance de la habilidad elegida. */
+  private drawTargeting(game: Game): void {
+    const sk = game.targeting;
+    if (!sk) return;
+    const { ctx } = this;
+    const p = game.playerPos;
+    const r = Math.max(1, sk.range);
+    const a = 0.18 + 0.08 * Math.sin(this.time * 5);
+    for (let y = p.y - r; y <= p.y + r; y++) {
+      for (let x = p.x - r; x <= p.x + r; x++) {
+        if (!game.zone.inBounds(x, y) || (x === p.x && y === p.y)) continue;
+        if (!game.zone.tileAt(x, y)?.walkable || !game.los(p, { x, y })) continue;
+        const enemy = game.enemyAt(x, y);
+        ctx.fillStyle = enemy ? `rgba(255,80,60,${(a + 0.25).toFixed(3)})` : `rgba(242,216,136,${a.toFixed(3)})`;
+        ctx.fillRect(x * TILE + 1, y * TILE + 1, TILE - 2, TILE - 2);
+      }
+    }
+  }
+
+  /** Enemigos y jugador ordenados por fila (los de abajo tapan a los de arriba). */
+  private drawEntities(game: Game): void {
+    const list: Array<{ y: number; draw: () => void }> = game.enemies.map((e) => ({ y: e.ry, draw: () => this.drawEnemy(game, e) }));
+    list.push({ y: game.view.ry, draw: () => this.drawPlayer(game) });
+    list.sort((a, b) => a.y - b.y);
+    for (const it of list) it.draw();
+  }
+
+  private drawEnemy(game: Game, e: Enemy): void {
+    const { ctx } = this;
+    const p = game.playerPos;
+    // Fuera de la vista del jugador y lejos: no se dibuja (niebla ligera).
+    if (dist(e.x, e.y, p.x, p.y) > 10) return;
+    const bump = Math.sin(e.bumpT * Math.PI) * 4;
+    const x = e.rx * TILE + e.bumpDx * bump;
+    const y = e.ry * TILE + e.bumpDy * bump;
+    if (e.def.boss) {
+      const pulse = 7 + Math.sin(this.time * 4) * 1.5;
+      ctx.fillStyle = 'rgba(160,40,255,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(x + 8, y + 13, pulse, pulse / 2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x + 8, y + 15, 5, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const spr = monsterSprite(e.def.look);
+    const img = e.facing === 'right' ? spr.right : spr.left;
+    ctx.drawImage(img, Math.round(x), Math.round(y) - 1);
+    if (e.flashT > 0) {
+      ctx.globalAlpha = e.flashT;
+      ctx.drawImage(silhouette(img), Math.round(x), Math.round(y) - 1);
+      ctx.globalAlpha = 1;
+    }
+    // Barra de vida, nivel y estados
+    if (e.alerted || e.hp < e.maxHp || e.def.boss) {
+      const w = 12;
+      const bx = Math.round(x) + 2;
+      const by = Math.round(y) - 3;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(bx - 0.5, by - 0.5, w + 1, 2.5);
+      ctx.fillStyle = e.def.boss ? '#a040ff' : '#d03030';
+      ctx.fillRect(bx, by, (w * Math.max(0, e.hp)) / e.maxHp, 1.5);
+      const danger = dangerLevel(e.def.level, game.state.player.level);
+      const col = { trivial: '#8a8a8a', facil: '#80c080', normal: '#ece6d6', dificil: '#f0a040', mortal: '#ff4040' }[danger];
+      ctx.font = 'bold 4px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#000';
+      const label = `${danger === 'mortal' ? '☠' : ''}${e.def.level}`;
+      ctx.strokeText(label, bx - 1, by + 2.5);
+      ctx.fillStyle = col;
+      ctx.fillText(label, bx - 1, by + 2.5);
+      e.statuses.forEach((st, i) => {
+        ctx.fillStyle = STATUS_INFO[st.id].color;
+        ctx.fillRect(bx + i * 3, by + 2.5, 2, 2);
+      });
+    }
+  }
+
+  private drawFx(game: Game): void {
+    const { ctx } = this;
+    for (const f of game.fx) {
+      const k = f.t / f.life;
+      if (f.kind === 'text') {
+        const x = f.x * TILE + 8;
+        const y = f.y * TILE + 2 - k * 10;
+        ctx.globalAlpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+        ctx.font = 'bold 7px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#000';
+        ctx.strokeText(f.text, x, y);
+        ctx.fillStyle = f.color;
+        ctx.fillText(f.text, x, y);
+        ctx.globalAlpha = 1;
+      } else if (f.kind === 'bolt') {
+        const sx = f.fx * TILE + 8, sy = f.fy * TILE + 8, tx = f.tx * TILE + 8, ty = f.ty * TILE + 8;
+        const px = sx + (tx - sx) * k, py = sy + (ty - sy) * k;
+        ctx.strokeStyle = f.color;
+        ctx.globalAlpha = 0.5;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(sx + (tx - sx) * Math.max(0, k - 0.35), sy + (ty - sy) * Math.max(0, k - 0.35));
+        ctx.lineTo(px, py);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = f.color;
+        ctx.beginPath();
+        ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = f.color;
+        ctx.globalAlpha = 1 - k;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(f.x * TILE + 8, f.y * TILE + 8, Math.max(0.1, f.radius * TILE * (0.3 + 0.7 * k)), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = f.color;
+        ctx.globalAlpha = (1 - k) * 0.25;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
   }
 
   private drawGrid(zone: Zone): void {
@@ -152,8 +284,19 @@ export class Renderer {
     ctx.fill();
     // Pequeño salto al caminar
     const bob = v.stepT >= 0 ? -Math.round(Math.sin(v.stepT * Math.PI) * 1.5) : 0;
+    const bump = Math.sin(v.bumpT * Math.PI) * 4;
+    const sx = Math.round(x + v.bumpDx * bump);
+    const sy = Math.round(y + v.bumpDy * bump) + bob - 1;
     const sprite = humanoidSprite(this.heroColors);
-    ctx.drawImage(v.facing === 'right' ? sprite.right : sprite.left, Math.round(x), Math.round(y) + bob - 1);
+    const img = v.facing === 'right' ? sprite.right : sprite.left;
+    if (game.combat.stealth > 0) ctx.globalAlpha = 0.45;
+    ctx.drawImage(img, sx, sy);
+    ctx.globalAlpha = 1;
+    if (v.flashT > 0) {
+      ctx.globalAlpha = v.flashT * 0.8;
+      ctx.drawImage(silhouette(img, '#ff3030'), sx, sy);
+      ctx.globalAlpha = 1;
+    }
   }
 
   /** Oscuridad ambiental con un halo de luz alrededor del jugador. */
@@ -173,4 +316,22 @@ export class Renderer {
     ctx.fillStyle = g;
     ctx.fillRect(camX, camY, camera.viewW, camera.viewH);
   }
+}
+
+/** Silueta de un sprite en un color (para el destello al recibir daño). */
+const silCache = new WeakMap<HTMLCanvasElement, Map<string, HTMLCanvasElement>>();
+function silhouette(img: HTMLCanvasElement, color = '#ffffff'): HTMLCanvasElement {
+  let m = silCache.get(img);
+  if (!m) silCache.set(img, (m = new Map()));
+  let c = m.get(color);
+  if (!c) {
+    c = makeCanvas(img.width, img.height);
+    const x = ctx2d(c);
+    x.drawImage(img, 0, 0);
+    x.globalCompositeOperation = 'source-in';
+    x.fillStyle = color;
+    x.fillRect(0, 0, c.width, c.height);
+    m.set(color, c);
+  }
+  return c;
 }

@@ -11,6 +11,20 @@ export default {
   level: 2,
   darkness: 0.18,
   description: 'Los árboles susurran. Algo se mueve entre las sombras.',
+  encounters: {
+    initial: 4,
+    perStepChance: 0.04,
+    maxActive: 8,
+    minDistance: 7,
+    groups: [
+      { enemy: 'rata_gigante', weight: 3, min: 1, max: 3 },
+      { enemy: 'goblin', weight: 4, min: 1, max: 3 },
+      { enemy: 'goblin_arquero', weight: 2, min: 1, max: 1 },
+      { enemy: 'lobo', weight: 2, min: 1, max: 2 },
+      { enemy: 'goblin_chaman', weight: 1, min: 1, max: 1 },
+      { enemy: 'arana_gigante', weight: 1, min: 1, max: 1 },
+    ],
+  },
   exits: {
     '1': { to: 'aldea_brumaroja', arrive: '1', label: 'Volver a la aldea' },
     '2': { to: 'cueva_goblin', arrive: '1', label: 'Cueva de los Colmillos', tile: 'cueva' },
