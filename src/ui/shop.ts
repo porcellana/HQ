@@ -23,7 +23,8 @@ export function shopScreen(game: Game, shopId: string, onClose: () => void, onCh
     const cha = game.derived.stats.CAR;
     const stock = game.shopStock(shopId).items;
     const list: ItemInstance[] = tab === 'comprar' ? stock : p.inventory;
-    const priceOf = (it: ItemInstance) => (tab === 'comprar' ? buyPrice(it, shop, cha) : sellPrice(it, shop, cha));
+    const discount = game.shopDiscount(shopId);
+    const priceOf = (it: ItemInstance) => (tab === 'comprar' ? buyPrice(it, shop, cha, discount) : sellPrice(it, shop, cha));
     const sel = list.find((x) => x.uid === selected) ?? null;
 
     const rows = list.map((it) => {
@@ -85,7 +86,7 @@ export function shopScreen(game: Game, shopId: string, onClose: () => void, onCh
 
     const parts: Array<HTMLElement | null> = [
       h('h2', { text: shop.name }),
-      h('div', { class: 'shop-gold' }, [`Tu oro: `, h('b', { text: `${p.gold} ●` }), h('small', { class: 'muted', text: `  ·  Vendes al ${Math.round(sellPriceRate(game) * 100)} % (CAR)` })]),
+      h('div', { class: 'shop-gold' }, [`Tu oro: `, h('b', { text: `${p.gold} ●` }), h('small', { class: 'muted', text: `  ·  Vendes al ${Math.round(sellPriceRate(game) * 100)} % (CAR)${discount ? `  ·  Descuento ${discount} %` : ''}` })]),
       h('div', { class: 'tabs' }, [
         h('button', { class: tab === 'comprar' ? 'primary' : '', text: 'Comprar', onClick: () => { tab = 'comprar'; selected = null; note = ''; render(); } }),
         h('button', { class: tab === 'vender' ? 'primary' : '', text: 'Vender', onClick: () => { tab = 'vender'; selected = null; note = ''; render(); } }),

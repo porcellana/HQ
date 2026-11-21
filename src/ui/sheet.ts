@@ -1,5 +1,8 @@
 /** Ficha de personaje: características, valores derivados, rasgos y habilidades. */
-import { getClass } from '@/data/registry';
+import { getBackground, getClass } from '@/data/registry';
+import type { SkillKey } from '@/data/schema';
+import { SKILLS, isProficient, skillBonus } from '@/game/rules/skills';
+import { ownedTalents } from '@/game/talents';
 import { ABILITY_KEYS } from '@/data/schema';
 import { abilityModifier } from '@/game/rules/dice';
 import { STAT_HINTS, STAT_MAX, STAT_NAMES, formatMod, proficiencyBonus } from '@/game/rules/character';
@@ -10,7 +13,7 @@ import { heroColors, spriteCanvas } from '@/gfx/sprites';
 import { skillList } from './creation';
 import { h } from './dom';
 
-export function characterSheet(p: PlayerState, onClose: () => void, onChanged: () => void, onJournal?: () => void): HTMLElement {
+export function characterSheet(p: PlayerState, onClose: () => void, onChanged: () => void, onJournal?: () => void, onTalents?: () => void): HTMLElement {
   const root = h('div', { class: 'screen sheet' });
   const render = () => {
     const cls = getClass(p.classId);
@@ -66,6 +69,9 @@ export function characterSheet(p: PlayerState, onClose: () => void, onChanged: (
         h('h3', { text: `Arma: ${d.weapon.name} (${d.weapon.dice} ${d.weapon.damageType}${d.weapon.range > 1 ? `, alcance ${d.weapon.range}` : ''})` }),
         h('h3', { text: 'Rasgos' }),
         h('ul', { class: 'traits' }, cls.traits.map((t) => h('li', { text: t }))),
+      ]),
+      identityPanel(p, onTalents),
+      h('div', { class: 'panel' }, [
         h('h3', { text: 'Habilidades' }),
         skillList(cls, p.level),
       ]),
@@ -81,4 +87,24 @@ export function characterSheet(p: PlayerState, onClose: () => void, onChanged: (
 
 function item(label: string, value: string): HTMLElement {
   return h('div', { class: 'derived-item' }, [h('small', { text: label }), h('b', { text: value })]);
+}
+
+/** Trasfondo, talentos y habilidades sociales. */
+function identityPanel(p: PlayerState, onTalents?: () => void): HTMLElement {
+  const bg = getBackground(p.background);
+  const talents = ownedTalents(p);
+  const pending = p.talentChoices ?? 0;
+  return h('div', { class: 'panel' }, [
+    h('h3', { text: `Trasfondo: ${bg ? `${bg.icon} ${bg.name}` : '—'}` }),
+    bg ? h('p', { class: 'bg-feature', text: `✦ ${bg.feature}` }) : null,
+    h('h3', { text: 'Talentos' }),
+    pending > 0 && onTalents ? h('button', { class: 'primary', text: `✦ Tienes ${pending} talento${pending > 1 ? 's' : ''} por elegir`, onClick: onTalents }) : null,
+    ...(talents.length
+      ? talents.map((t) => h('div', { class: 'talent-owned' }, [h('span', { class: 'ico', text: t.icon }), h('div', {}, [h('b', { text: `${t.name} ` }), h('small', { class: 'muted', text: t.branch }), h('div', { text: t.description })])]))
+      : [h('small', { class: 'muted', text: 'Aún no tienes talentos. Ganarás uno cada vez que subas de nivel.' })]),
+    h('h3', { text: 'Habilidades sociales' }),
+    h('div', { class: 'skill-rows' }, (Object.keys(SKILLS) as SkillKey[]).map((k) =>
+      h('span', { class: isProficient(p, k) ? 'prof' : '', text: `${SKILLS[k].name} ${formatMod(skillBonus(p, k))}${isProficient(p, k) ? ' ★' : ''}` }),
+    )),
+  ]);
 }

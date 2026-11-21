@@ -21,6 +21,7 @@ import { heroColors } from '@/gfx/sprites';
 import { creationScreen } from '@/ui/creation';
 import { characterSheet } from '@/ui/sheet';
 import { inventoryScreen } from '@/ui/inventory';
+import { talentPicker } from '@/ui/talents';
 import { npcDialog } from '@/ui/npcDialog';
 import { shopScreen } from '@/ui/shop';
 import { journalScreen } from '@/ui/journal';
@@ -293,8 +294,10 @@ export class App {
       h('li', { text: `+${ev.points} punto${ev.points > 1 ? 's' : ''} de característica para repartir` }),
       ...ev.skills.map((sk) => h('li', { text: `Nueva habilidad: ${sk.icon} ${sk.name}` })),
     ]);
+    if (ev.talentChoices > 0) body.append(h('li', { text: `✦ Elige un talento nuevo (${ev.talentChoices} pendiente${ev.talentChoices > 1 ? 's' : ''})` }));
     const close = showDialog(this.ui, `¡Nivel ${ev.level}!`, body, [
-      { label: 'Repartir puntos', kind: 'primary', action: () => this.showSheet() },
+      ...(ev.talentChoices > 0 ? [{ label: '✦ Elegir talento', kind: 'primary' as const, action: () => this.showTalents() }] : []),
+      { label: 'Repartir puntos', kind: ev.talentChoices > 0 ? undefined : ('primary' as const), action: () => this.showSheet() },
       { label: 'Seguir', action: () => void 0 },
     ]);
     void close;
@@ -338,6 +341,19 @@ export class App {
     );
   }
 
+  private showTalents(): void {
+    const game = this.game;
+    if (!game) return;
+    game.heldDir = null;
+    this.setScreen(
+      talentPicker(game, () => {
+        this.setScreen(null);
+        this.applyLook();
+        void this.autosave('talento');
+      }),
+    );
+  }
+
   private showSheet(): void {
     const game = this.game;
     if (!game || this.pauseClose || this.screen) return;
@@ -348,6 +364,7 @@ export class App {
         () => this.setScreen(null),
         () => void this.autosave('ficha'),
         () => this.showJournal(),
+        () => this.showTalents(),
       ),
     );
   }

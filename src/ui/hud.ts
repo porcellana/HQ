@@ -51,6 +51,9 @@ export class Hud {
   private resourceShort = 'PM';
   /** Última firma de datos mostrada, para no tocar el DOM si no cambia nada. */
   private lastSig = '';
+  /** Mini barra del compañero. */
+  private readonly allyEl: HTMLDivElement;
+  private allySig = '';
 
   constructor(actions: HudActions) {
     this.portrait = h('canvas', { class: 'hud-portrait' });
@@ -59,12 +62,14 @@ export class Hud {
     this.portrait.addEventListener('click', () => actions.onSheet());
     this.nameEl = h('b');
     this.goldEl = h('span', { class: 'hud-gold' });
+    this.allyEl = h('div', { class: 'hud-ally' });
     const panel = h('div', { class: 'hud-panel' }, [
       this.portrait,
       h('div', { class: 'hud-name' }, [this.nameEl, this.goldEl]),
       this.hp.el,
       this.mp.el,
       this.xp.el,
+      this.allyEl,
     ]);
     this.banner = h('div', { class: 'zone-banner' });
     this.log = h('div', { class: 'log' });
@@ -163,5 +168,27 @@ export class Hud {
     }
     this.minimap.draw(game.zone, game.view.rx, game.view.ry, dt);
     this.skillBar.update(game);
+    // Compañero: nombre y vida
+    const cd = game.companionDef;
+    const party = game.state.party;
+    const max = cd ? game.allyStats().maxHp : 0;
+    const asig = cd ? `${cd.id}|${party.hp}|${max}|${party.down}|${party.approval[cd.id] ?? 0}` : '';
+    if (asig !== this.allySig) {
+      this.allySig = asig;
+      this.allyEl.style.display = cd ? '' : 'none';
+      // Los avisos de estado van justo debajo del panel (que crece con el compañero).
+      requestAnimationFrame(() => {
+        const bottom = this.allyEl.closest('.hud-panel')?.getBoundingClientRect().bottom ?? 0;
+        if (bottom > 0) this.skillBar.statusRow.style.top = `${Math.round(bottom + 4)}px`;
+      });
+      if (cd) {
+        const ap = party.approval[cd.id] ?? 0;
+        const mood = ap >= 4 ? '😊' : ap <= -4 ? '😠' : '😐';
+        this.allyEl.replaceChildren(
+          h('span', { class: 'ally-name', text: `${cd.name} ${party.down ? '💀' : mood}` }),
+          h('div', { class: 'bar hp thin ally' }, [h('i', { attrs: { style: `width:${party.down ? 0 : (100 * party.hp) / Math.max(1, max)}%` } })]),
+        );
+      }
+    }
   }
 }

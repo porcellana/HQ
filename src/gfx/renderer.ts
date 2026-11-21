@@ -131,6 +131,7 @@ export class Renderer {
     this.drawPath(game);
     this.drawDarkness(game, camX, camY, opts.dayNight ?? false);
     this.drawFeatures(game);
+    this.drawHazards(game);
     this.drawLoot(game);
     this.drawEntities(game);
     this.drawFx(game);
@@ -278,8 +279,61 @@ export class Renderer {
     const list: Array<{ y: number; draw: () => void }> = game.enemies.map((e) => ({ y: e.ry, draw: () => this.drawEnemy(game, e) }));
     for (const n of game.npcs) list.push({ y: n.y, draw: () => this.drawNpc(game, n) });
     list.push({ y: game.view.ry, draw: () => this.drawPlayer(game) });
+    const ally = game.ally;
+    if (ally) list.push({ y: ally.ry, draw: () => this.drawAlly(game) });
     list.sort((a, b) => a.y - b.y);
     for (const it of list) it.draw();
+  }
+
+  /** Compañero: sprite humanoide con barra de vida verde (gris si está caído). */
+  private drawAlly(game: Game): void {
+    const a = game.ally;
+    if (!a) return;
+    const { ctx } = this;
+    const k = Math.min(1, 0.25);
+    a.rx += (a.x - a.rx) * k;
+    a.ry += (a.y - a.ry) * k;
+    a.bumpT = Math.max(0, a.bumpT - 0.08);
+    a.flashT = Math.max(0, a.flashT - 0.06);
+    const bump = Math.sin(a.bumpT * Math.PI) * 4;
+    const x = a.rx * TILE + a.bumpDx * bump;
+    const y = a.ry * TILE + a.bumpDy * bump;
+    const l = a.def.look;
+    const spr = humanoidSprite({
+      hair: l.hair ?? PAL.hair, skin: l.skin ?? PAL.skin, cloth: l.cloth, clothDark: l.clothDark, pants: l.pants,
+      ...(l.hat ? { hat: l.hat } : {}), ...(l.overlay ? { overlay: l.overlay } : {}),
+    });
+    const down = game.state.party.down;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x + 8, y + 15, 5, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = down ? 0.4 : 1;
+    ctx.drawImage(a.facing === 'right' ? spr.right : spr.left, Math.round(x), Math.round(y) - 1);
+    ctx.globalAlpha = 1;
+    if (a.flashT > 0) {
+      ctx.fillStyle = `rgba(255,80,60,${(a.flashT * 0.4).toFixed(2)})`;
+      ctx.fillRect(Math.round(x) + 3, Math.round(y), 10, 15);
+    }
+    const max = game.allyStats().maxHp;
+    const hp = down ? 0 : game.state.party.hp;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(Math.round(x) + 1.5, Math.round(y) - 3.5, 13, 2.5);
+    ctx.fillStyle = '#5ad05a';
+    ctx.fillRect(Math.round(x) + 2, Math.round(y) - 3, (12 * hp) / Math.max(1, max), 1.5);
+  }
+
+  /** Suelo ardiendo (talentos). */
+  private drawHazards(game: Game): void {
+    const { ctx } = this;
+    for (const hz of game.hazards) {
+      const flick = 0.35 + 0.2 * Math.sin(this.time * 9 + hz.x * 3 + hz.y);
+      ctx.fillStyle = `rgba(255,110,30,${flick.toFixed(3)})`;
+      ctx.fillRect(hz.x * TILE + 1, hz.y * TILE + 1, TILE - 2, TILE - 2);
+      ctx.fillStyle = `rgba(255,220,120,${(flick * 0.8).toFixed(3)})`;
+      const f = Math.floor(this.time * 6 + hz.x) % 3;
+      ctx.fillRect(hz.x * TILE + 4 + f * 3, hz.y * TILE + 8 - f, 2, 4);
+    }
   }
 
   private drawNpc(game: Game, n: NpcDef): void {

@@ -3,8 +3,9 @@
  * Muestra el texto del nodo actual y sus opciones. Las acciones (tienda,
  * posada, templo, misiones...) se delegan en `handlers`.
  */
-import { NPCS } from '@/data/registry';
+import { BACKGROUNDS, CLASSES, COMPANIONS, NPCS } from '@/data/registry';
 import type { DialogAction, DialogOption, NpcDef } from '@/data/schema';
+import { SKILLS, successChance } from '@/game/rules/skills';
 import type { Game } from '@/game/game';
 import * as Quests from '@/game/quests/quests';
 import { PAL } from '@/gfx/palette';
@@ -52,18 +53,51 @@ export function npcDialog(game: Game, npc: NpcDef, handlers: DialogHandlers): HT
       if (want === 'activa' ? !(st === 'activa' || st === 'lista') : st !== want) return false;
     }
     if (o.action?.type === 'quests' && Quests.questsForNpc(game.state, npc.id).length === 0) return false;
+    const p = game.state.player;
+    if (o.ifBackground && !([] as string[]).concat(o.ifBackground).includes(p.background ?? 'aventurero')) return false;
+    if (o.ifClass && !([] as string[]).concat(o.ifClass).includes(p.classId)) return false;
+    if (o.ifCompanion && game.state.party?.active !== o.ifCompanion) return false;
+    if (o.ifAttitude && game.attitude(o.ifAttitude.npc) < o.ifAttitude.min) return false;
+    if (o.ifGold !== undefined && p.gold < o.ifGold) return false;
     return true;
   };
 
-  const showNode = (id: string, override?: string) => {
+  /** Etiqueta con la tirada y la probabilidad, o el trasfondo/clase que la desbloquea. */
+  const decorate = (o: DialogOption, base: string): string => {
+    const tags: string[] = [];
+    if (o.ifBackground) {
+      const bg = BACKGROUNDS.get(([] as string[]).concat(o.ifBackground).find((b) => b === game.state.player.background) ?? '');
+      if (bg) tags.push(`${bg.icon} ${bg.name}`);
+    }
+    if (o.ifClass) {
+      const c = CLASSES.get(game.state.player.classId);
+      if (c) tags.push(c.name);
+    }
+    if (o.ifCompanion) tags.push(COMPANIONS.get(o.ifCompanion)?.name ?? '');
+    if (o.check) {
+      const bonus = game.skillBonusOf(o.check.skill);
+      const pct = Math.round(successChance(bonus, o.check.dc) * 100);
+      tags.push(`🎲 ${SKILLS[o.check.skill].name} CD ${o.check.dc} · ${pct} %`);
+    }
+    return tags.length ? `[${tags.join(' · ')}] ${base}` : base;
+  };
+
+  const showNode = (id: string, override?: string, banner?: { ok: boolean; text: string }) => {
     const node = npc.dialog[id] ?? npc.dialog['inicio'];
     if (!node) return close();
     const text = override ?? (Array.isArray(node.text) ? node.text[Math.floor(Math.random() * node.text.length)]! : node.text);
+    // Consecuencias del nodo (oro, objetos, banderas, peleas...)
+    const fight = game.applyDialogEffects(node);
+    if (node.effects?.length) handlers.afterService();
+    const opts = node.options.filter(visible);
     sheet.replaceChildren(
+      ...(banner ? [h('div', { class: `check-banner ${banner.ok ? 'ok' : 'ko'}`, text: banner.text })] : []),
       header(text),
-      h('div', { class: 'dialog-options' }, node.options.filter(visible).map((o) =>
-        h('button', { text: optionLabel(o), onClick: () => choose(o) }),
-      )),
+      h('div', { class: 'dialog-options' }, fight
+        ? [h('button', { class: 'danger', text: '⚔️ ¡A las armas!', onClick: close })]
+        : (opts.length ? opts : [{ label: 'Adiós', action: { type: 'end' } } as DialogOption]).map((o) =>
+            h('button', { class: o.check ? 'check' : o.ifBackground || o.ifClass ? 'special' : '', text: optionLabel(o), onClick: () => choose(o) }),
+          )),
     );
   };
 
@@ -74,10 +108,27 @@ export function npcDialog(game: Game, npc: NpcDef, handlers: DialogHandlers): HT
       if (list.some((q) => q.status === 'disponible')) return '📜 Misiones (nueva)';
     }
     if (o.action?.type === 'temple') return `${o.label} (${o.action.pricePerLevel * game.state.player.level} oro)`;
-    return o.label;
+    return decorate(o, o.label);
   };
 
   const choose = (o: DialogOption) => {
+    if (o.check) {
+      const c = o.check;
+      const r = game.dialogCheck(c.skill, c.dc);
+      // Esperamos a que termine la animación del dado.
+      sheet.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+      window.setTimeout(() => {
+        const crit = r.natural === 20;
+        const fumble = r.natural === 1;
+        const next = crit && c.crit ? c.crit : fumble && c.fumble ? c.fumble : r.success ? c.success : c.failure;
+        const what = `${SKILLS[c.skill].name}: ${r.natural} ${r.bonus >= 0 ? '+' : '−'} ${Math.abs(r.bonus)} = ${r.total} vs CD ${c.dc}`;
+        showNode(next, undefined, {
+          ok: r.success,
+          text: `${crit ? '✨ ¡ÉXITO CRÍTICO!' : fumble ? '💀 ¡DESASTRE!' : r.success ? '✔ Éxito' : '✘ Fracaso'} — ${what}`,
+        });
+      }, 900);
+      return;
+    }
     if (o.action) return act(o.action);
     if (o.goto) showNode(o.goto);
   };
@@ -104,6 +155,10 @@ export function npcDialog(game: Game, npc: NpcDef, handlers: DialogHandlers): HT
         return showNode('inicio');
       case 'quests':
         return showQuests();
+      case 'dismiss':
+        game.dismissCompanion();
+        handlers.afterService();
+        return close();
     }
   };
 
