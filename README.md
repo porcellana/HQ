@@ -15,7 +15,7 @@ Android en vertical (se juega con una mano) y probable en el navegador como PWA.
 | 1 | Motor base, mapa, movimiento, HUD y guardado | ✅ v0.0.1 |
 | 2 | Creación de personaje, 4 clases y características | ✅ v0.0.2 |
 | 3 | Combate por turnos, enemigos, XP y niveles | ✅ v0.0.3 |
-| 4 | Inventario, equipo y botín | ⏳ |
+| 4 | Inventario, equipo y botín | ✅ v0.0.4 |
 | 5 | Pueblos, tiendas, comercio y misiones | ⏳ |
 | 6 | Mazmorras procedurales, minería y jefes | ⏳ |
 | 7 | Historia principal, pulido y APK final (v0.1.0) | ⏳ |
@@ -60,8 +60,14 @@ Otros comandos:
 - Toca a un enemigo lejano para ver su nivel, vida y peligro. El número sobre su
   barra de vida es su nivel (rojo con ☠ = mortal para ti).
 - En PC: flechas/WASD para moverse, espacio para esperar, 1-5 habilidades, F huir,
-  C ficha, Esc pausa.
-- Las casillas que brillan en dorado son **salidas** a otras zonas.
+  C ficha, I mochila, Q poción, Esc pausa.
+- Las casillas que brillan en dorado son **salidas** a otras zonas; si están fuera de la
+  pantalla, una **flecha dorada** en el borde indica hacia dónde ir.
+- **Toca el minimapa** para caminar directamente a ese punto (o a la salida más cercana).
+- **Mochila**: equipo, objetos y comparación. 🧪 en la barra = beber poción de curación.
+- El botín cae al suelo (brilla con el color de su rareza): písalo para recogerlo.
+- **Exportar/Importar partida** (en Ajustes): copia tu partida como código de texto para
+  pasarla entre la web y el APK, o guardar una copia de seguridad.
 
 ---
 
@@ -274,6 +280,53 @@ encounters: {
   puede huir de un jefe).
 - Morir: despiertas en la aldea con la mitad de la vida y pierdes el 10 % del oro.
 - Fuera de combate recuperas 1 PV cada 5 turnos y 1 punto de recurso cada 3.
+
+### Añadir un objeto
+
+Los objetos están en `src/data/items/` (armas, armaduras, accesorios y herramientas,
+consumibles, materiales). Ejemplo de arma:
+
+```ts
+{ id: 'lanza', name: 'Lanza', kind: 'arma', slot: 'arma', level: 2, value: 12,
+  icon: { shape: 'espada', color: '#b8bec8' },
+  weapon: { type: 'espada', dice: '1d8', stat: 'FUE', damageType: 'perforante', range: 1 } },
+```
+
+- `slot`: `cabeza`, `pecho`, `manos`, `piernas`, `pies`, `arma`, `secundaria`,
+  `herramienta` o `accesorio` (anillos/amuletos: hay 2 ranuras).
+- `armor: { ac, maxDex }` para armaduras y escudos; `stats: { FUE: 1, pv: 5 }` para bonos
+  fijos (`FUE…CAR`, `ca`, `ataque`, `daño`, `pv`, `recurso`).
+- Consumibles: `stackable: true` y `use: { heal: '2d4+2' }` (también `restore`,
+  `cleanse`, `buff`, `outOfCombatOnly`).
+- `level`: a partir de qué nivel de botín aparece. `value`: precio base en oro.
+- `icon.shape`: una forma de `src/gfx/items.ts` (espada, hacha, arco, baston, daga, maza,
+  casco, capucha, pecho, guantes, piernas, botas, escudo, libro, simbolo, pico, anillo,
+  amuleto, pocion, pan, carne, colmillo, piel, seda, polvo, mineral, gema, saco) y un color.
+- `plain: true`: nunca recibe bonos aleatorios.
+
+**Rarezas** (`src/data/config/rarities.ts`): común, poco común, raro, épico y legendario.
+Cada una da más bonos aleatorios, multiplica el precio y suma poder (daño o CA). A más
+nivel del botín, más probables las rarezas altas.
+
+### Tablas de botín
+
+En `src/data/loot_tables/` (cada enemigo indica la suya con `lootTable`):
+
+```ts
+{ id: 'goblin', rolls: [1, 1], gold: [1, 4], goldChance: 0.7,
+  entries: [
+    { nothing: true, weight: 40 },
+    { item: 'colmillo_goblin', weight: 25, min: 1, max: 2 },
+    { pool: 'armas', weight: 7 },        // arma aleatoria de nivel adecuado, con rareza
+  ] }
+```
+
+`pool` puede ser `equipo`, `armas`, `armaduras` o `accesorios`. El oro se multiplica por el
+nivel del enemigo.
+
+### Equipo inicial de una clase
+
+En la clase, `startingItems: [{ item: 'espada_larga', equip: true }, { item: 'pocion_curacion', qty: 2 }]`.
 
 *(Las secciones para objetos, enemigos, botín, misiones y mazmorras se
 añadirán a medida que lleguen sus hitos.)*

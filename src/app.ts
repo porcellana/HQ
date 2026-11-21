@@ -11,7 +11,8 @@ import { GameLoop } from '@/engine/loop';
 import { Input } from '@/engine/input';
 import { randomSeed } from '@/engine/rng';
 import { Game, type LevelUpEvent } from '@/game/game';
-import { SaveManager } from '@/game/save/saveManager';
+import { SaveManager, exportCode, importCode } from '@/game/save/saveManager';
+import { showExport, showImport } from '@/ui/transfer';
 import { defaultStores } from '@/game/save/storage';
 import { loadSettings, saveSettings, type Settings } from '@/game/settings';
 import { createNewGame, type GameState } from '@/game/state';
@@ -19,6 +20,7 @@ import { Renderer } from '@/gfx/renderer';
 import { heroColors } from '@/gfx/sprites';
 import { creationScreen } from '@/ui/creation';
 import { characterSheet } from '@/ui/sheet';
+import { inventoryScreen } from '@/ui/inventory';
 import { confirmDialog, showDialog } from '@/ui/dialogs';
 import { buzz, h } from '@/ui/dom';
 import { Hud } from '@/ui/hud';
@@ -52,6 +54,8 @@ export class App {
         if (code === 'Space' || code === 'Period') this.game?.waitTurn();
         if (code === 'Escape') this.togglePause();
         if (code === 'KeyC') this.showSheet();
+        if (code === 'KeyI') this.showInventory();
+        if (code === 'KeyQ') this.game?.quickPotion();
         if (code === 'KeyF') this.game?.flee();
         const n = Number(code.replace('Digit', ''));
         if (code.startsWith('Digit') && n >= 1 && this.game) {
@@ -105,8 +109,42 @@ export class App {
                 this.toast('Partida borrada.');
               }
             },
+        { onExport: () => void this.exportSave(), onImport: () => this.importSave(back) },
       ),
     );
+  }
+
+  private async exportSave(): Promise<void> {
+    let state = this.game?.state;
+    if (!state) {
+      const res = await this.saves.load();
+      if (!res.ok) {
+        showDialog(this.ui, 'Exportar partida', 'No hay ninguna partida guardada que exportar.', [{ label: 'Vale' }]);
+        return;
+      }
+      state = res.state;
+    } else {
+      await this.autosave('exportar');
+    }
+    showExport(this.ui, exportCode(state, __APP_VERSION__));
+  }
+
+  private importSave(back: () => void): void {
+    showImport(this.ui, async (code) => {
+      const res = importCode(code);
+      if (!res.ok) return res.message;
+      const wasPlaying = !!this.game;
+      this.loop.stop();
+      this.game = null;
+      this.hud?.root.remove();
+      this.hud = null;
+      await this.saves.save(res.state);
+      this.setScreen(null);
+      if (wasPlaying) this.startGame(res.state);
+      else back();
+      this.toast(`Partida de ${res.state.player.name} importada.`);
+      return null;
+    });
   }
 
   private applySettings(): void {
@@ -175,10 +213,14 @@ export class App {
       onWait: () => game.waitTurn(),
       onSheet: () => this.showSheet(),
       onMenu: () => this.togglePause(),
-      onInventory: () => hud.pushMessage('La mochila llegará en el Hito 4.'),
+      onInventory: () => this.showInventory(),
       onJoystick: (d) => this.setHeldDir(d),
       onSkill: (sk) => game.selectSkill(sk),
       onFlee: () => game.flee(),
+      onPotion: () => {
+        const err = game.quickPotion();
+        if (err) hud.pushMessage(err, 'warn');
+      },
       onMinimapTap: (x, y) => {
         if (!this.pauseClose && !this.screen) game.tapTile(x, y);
       },
@@ -256,6 +298,23 @@ export class App {
         },
       ]);
     }, 700);
+  }
+
+  private showInventory(): void {
+    const game = this.game;
+    if (!game || this.pauseClose || this.screen) return;
+    game.heldDir = null;
+    this.setScreen(
+      inventoryScreen(
+        game,
+        () => this.setScreen(null),
+        () => {
+          // Usar un objeto en combate gasta el turno: cerramos para que se vea.
+          if (game.phase === 'enemies') this.setScreen(null);
+          void this.autosave('mochila');
+        },
+      ),
+    );
   }
 
   private showSheet(): void {

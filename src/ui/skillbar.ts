@@ -3,6 +3,7 @@ import type { SkillDef } from '@/data/schema';
 import type { Game } from '@/game/game';
 import { unlockedSkills } from '@/game/rules/character';
 import { STATUS_INFO } from '@/game/combat/status';
+import { itemDef } from '@/game/items/items';
 import { h } from './dom';
 
 export class SkillBar {
@@ -10,7 +11,11 @@ export class SkillBar {
   private readonly statusEl: HTMLDivElement;
   private sig = '';
 
-  constructor(private readonly onSkill: (s: SkillDef) => void, private readonly onFlee: () => void) {
+  constructor(
+    private readonly onSkill: (s: SkillDef) => void,
+    private readonly onFlee: () => void,
+    private readonly onPotion: () => void,
+  ) {
     this.statusEl = h('div', { class: 'status-row' });
     this.el = h('div', { class: 'skill-bar' });
   }
@@ -25,7 +30,9 @@ export class SkillBar {
     const skills = unlockedSkills(cls, p.level);
     const combat = game.inCombat;
     const c = game.combat;
+    const potions = p.inventory.filter((x) => { const u = itemDef(x).use; return !!u?.heal && !u.outOfCombatOnly; }).reduce((a, x) => a + x.qty, 0);
     const sig = [
+      potions,
       skills.map((s) => s.id).join(','), p.mp, JSON.stringify(c.cooldowns), game.targeting?.id ?? '', combat, game.canAct,
       c.statuses.map((s) => `${s.id}${s.turns}`).join(), c.buffs.map((b) => `${b.stat}${b.amount}${b.turns}`).join(), c.stealth,
     ].join('|');
@@ -46,6 +53,7 @@ export class SkillBar {
         ]);
         return b;
       }),
+      ...(potions > 0 ? [h('button', { class: 'skill potion', onClick: this.onPotion, attrs: { 'aria-label': 'Poción de curación' } }, [h('span', { class: 'ico', text: '🧪' }), h('small', { text: `×${potions}` })])] : []),
       ...(combat ? [h('button', { class: 'skill flee', onClick: this.onFlee, attrs: { 'aria-label': 'Huir' } }, [h('span', { class: 'ico', text: '🏃' }), h('small', { text: 'Huir' })])] : []),
     );
 

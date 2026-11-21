@@ -12,6 +12,8 @@ import { STATUS_INFO } from '@/game/combat/status';
 import type { Enemy } from '@/game/combat/entities';
 import type { Game } from '@/game/game';
 import { monsterSprite } from './monsters';
+import { itemIcon } from './items';
+import { itemDef, rarityOf } from '@/game/items/items';
 import type { Zone } from '@/game/world/zone';
 import { TILE, ctx2d, makeCanvas } from './canvas';
 import { PAL } from './palette';
@@ -111,6 +113,7 @@ export class Renderer {
     this.drawExits(zone);
     this.drawPath(game);
     this.drawDarkness(game, camX, camY);
+    this.drawLoot(game);
     this.drawEntities(game);
     this.drawFx(game);
     this.drawExitPointers(game, camX, camY);
@@ -208,6 +211,30 @@ export class Renderer {
         ctx.fillStyle = enemy ? `rgba(255,80,60,${(a + 0.25).toFixed(3)})` : `rgba(242,216,136,${a.toFixed(3)})`;
         ctx.fillRect(x * TILE + 1, y * TILE + 1, TILE - 2, TILE - 2);
       }
+    }
+  }
+
+  /** Botín en el suelo: saco (o el icono del objeto) con brillo del color de la rareza. */
+  private drawLoot(game: Game): void {
+    const { ctx } = this;
+    for (const g of game.ground) {
+      const best = g.items.reduce<{ color: string; rank: number } | null>((acc, it) => {
+        const r = rarityOf(it);
+        const rank = ['comun', 'poco_comun', 'raro', 'epico', 'legendario'].indexOf(r.id);
+        return !acc || rank > acc.rank ? { color: r.color, rank } : acc;
+      }, null);
+      const bob = Math.sin(this.time * 3 + g.x) * 0.8;
+      if (best && best.rank >= 1) {
+        ctx.globalAlpha = 0.35 + 0.2 * Math.sin(this.time * 4);
+        ctx.fillStyle = best.color;
+        ctx.beginPath();
+        ctx.arc(g.x * TILE + 8, g.y * TILE + 9, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      const icon = g.items.length === 1 ? itemDef(g.items[0]!).icon : { shape: g.items.length ? 'saco' : 'anillo', color: '#f2d888' };
+      const img = g.items.length === 0 && g.gold > 0 ? itemIcon({ shape: 'saco', color: '#f2d888' }) : itemIcon(icon);
+      ctx.drawImage(img, g.x * TILE, Math.round(g.y * TILE + bob));
     }
   }
 

@@ -22,6 +22,7 @@ export interface HudActions {
   onSkill(skill: SkillDef): void;
   onFlee(): void;
   onMinimapTap(x: number, y: number): void;
+  onPotion(): void;
 }
 
 function bar(kind: string, thin = false): { el: HTMLDivElement; fill: HTMLElement; label: HTMLElement } {
@@ -78,7 +79,7 @@ export class Hud {
       btn('☰', 'Menú', actions.onMenu),
     ]);
 
-    this.skillBar = new SkillBar(actions.onSkill, actions.onFlee);
+    this.skillBar = new SkillBar(actions.onSkill, actions.onFlee, actions.onPotion);
     this.minimap.onTapTile = actions.onMinimapTap;
     this.root = h('div', { class: 'hud passthrough' }, [
       h('div', { class: 'hud-top' }, [panel, this.minimap.el]),

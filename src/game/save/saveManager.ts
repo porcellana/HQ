@@ -153,3 +153,50 @@ export class SaveManager {
     }
   }
 }
+
+// ------------------------------------------------------- exportar / importar
+const CODE_PREFIX = 'ECOS1:';
+
+function toBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+function fromBase64(b64: string): string {
+  const bin = atob(b64);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+/** Código de texto con la partida (para copiarla a otro dispositivo o versión). */
+export function exportCode(state: GameState, gameVersion: string): string {
+  const env: SaveEnvelope = {
+    saveVersion: CURRENT_SAVE_VERSION,
+    gameVersion,
+    savedAt: new Date().toISOString(),
+    state: structuredClone(state) as unknown as RawSave,
+  };
+  return CODE_PREFIX + toBase64(JSON.stringify(env));
+}
+
+/** Lee un código exportado; aplica migraciones si es de una versión antigua. */
+export function importCode(code: string): LoadResult {
+  const clean = code.trim().replace(/\s+/g, '');
+  if (!clean.startsWith(CODE_PREFIX)) return { ok: false, reason: 'error', message: 'Ese texto no es un código de partida de Ecos del Abismo.' };
+  let env: SaveEnvelope | null = null;
+  try {
+    env = parseEnvelope(fromBase64(clean.slice(CODE_PREFIX.length)));
+  } catch {
+    env = null;
+  }
+  if (!env) return { ok: false, reason: 'error', message: 'El código está incompleto o dañado. Cópialo entero.' };
+  try {
+    const migrated = migrate(env.state, env.saveVersion);
+    if (!isPlausibleState(migrated)) throw new Error('Faltan datos esenciales en la partida');
+    return { ok: true, state: migrated, migratedFrom: env.saveVersion !== CURRENT_SAVE_VERSION ? env.saveVersion : null, usedBackup: false };
+  } catch (e) {
+    return { ok: false, reason: 'error', message: e instanceof Error ? e.message : String(e) };
+  }
+}

@@ -53,6 +53,7 @@ export function settingsScreen(
   onChange: (s: Settings) => void,
   onBack: () => void,
   onDeleteSave: (() => void) | null,
+  transfer?: { onExport: () => void; onImport: () => void },
 ): HTMLElement {
   const s = { ...current };
   const row = <K extends keyof Settings>(label: string, key: K, options: Option<Settings[K]>[]) => {
@@ -89,6 +90,8 @@ export function settingsScreen(
       ]),
       row('Cuadrícula del mapa', 'grid', onOff),
       row('Vibración', 'vibration', onOff),
+      transfer ? h('button', { text: '📤 Exportar partida', onClick: transfer.onExport }) : null,
+      transfer ? h('button', { text: '📥 Importar partida', onClick: transfer.onImport }) : null,
       onDeleteSave ? h('button', { class: 'danger', text: 'Borrar partida guardada', onClick: onDeleteSave }) : null,
       h('button', { class: 'primary', text: 'Volver', onClick: onBack }),
     ]),

@@ -250,3 +250,31 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .levelup h3 { font-size: 1.5em; }
 .levelup ul { margin: 0; padding-left: 20px; line-height: 1.6; }
 .minimap { cursor: pointer; }
+
+/* ------------------------------ Inventario ------------------------------- */
+.screen.inventory { justify-content: flex-start; gap: 10px; }
+.equip-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.bag-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+.inv-cell {
+  position: relative; aspect-ratio: 1; min-height: 0; padding: 0; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; background: #0e0c14; border: 2px solid var(--border);
+}
+.inv-cell.empty { opacity: 0.6; }
+.inv-cell.sel { box-shadow: 0 0 0 2px var(--gold-l), 0 0 12px rgba(242,216,136,0.5); }
+.item-icon { width: 78%; height: 78%; image-rendering: pixelated; }
+.item-icon.ghost { opacity: 0.6; }
+.item-icon.big { width: 56px; height: 56px; }
+.inv-cell .qty { position: absolute; right: 3px; bottom: 1px; font-size: 0.7em; text-shadow: 0 1px 0 #000, 0 0 3px #000; }
+.inv-cell .slot-label { position: absolute; left: 0; right: 0; bottom: -1px; font-size: 0.5em; color: var(--muted); }
+.item-detail { display: flex; flex-direction: column; gap: 4px; font-size: 0.85em; }
+.item-head { display: flex; gap: 10px; align-items: center; }
+.item-head b { font-weight: normal; font-size: 1.15em; }
+.item-detail .bonus { color: #8ae08a; }
+.compare { border-top: 1px solid var(--border); padding-top: 4px; margin-top: 2px; }
+.compare .up { color: #8ae08a; }
+.compare .down { color: #f08a8a; }
+.item-buttons { display: flex; gap: 8px; margin-top: 6px; }
+.item-buttons button { flex: 1; }
+.transfer { display: flex; flex-direction: column; gap: 8px; }
+.code-area { width: 100%; font: 12px monospace; background: #000; color: var(--text); border: 1px solid var(--border-l); border-radius: 8px; padding: 8px; user-select: text; -webkit-user-select: text; word-break: break-all; }
+.warn-text { color: #f0a0a0; }

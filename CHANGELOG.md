@@ -2,6 +2,26 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.0.4 · 2026-11-21 — Hito 4: inventario, equipo y botín
+
+- Mochila de 24 huecos con pilas de consumibles y materiales.
+- 10 ranuras de equipo: cabeza, pecho, manos, piernas, pies, arma, mano secundaria,
+  herramienta (pico) y 2 accesorios. Armas a dos manos liberan el escudo.
+- 60 objetos: armas de 6 tipos (espadas, hachas, arcos, bastones, dagas, mazas),
+  armaduras con límite de DES, escudos, tomos, símbolos sagrados, anillos, amuletos,
+  picos de 3 niveles, pociones, comida y materiales. Iconos pixel art propios.
+- 5 rarezas con bonos aleatorios (características, CA, ataque, daño, PV, recurso),
+  más poder y más valor. A más nivel, mejores rarezas.
+- Tablas de botín por familia de enemigo y para jefes; el botín cae al suelo y brilla
+  con el color de su rareza.
+- Pantalla de equipo con comparación de estadísticas (▲/▼) antes de equipar.
+- Pociones utilizables en combate (gastan el turno) y botón rápido 🧪.
+- Cada clase empieza con su equipo; las partidas antiguas lo reciben al cargar
+  (guardado v3 con migración).
+- Exportar/importar partida como código de texto (pasar progreso entre web y APK).
+- Navegación: flechas doradas hacia las salidas, minimapa táctil, HUD más compacto
+  que no tapa el mapa y consejos al empezar.
+
 ## v0.0.3 · 2026-11-21 — Hito 3: combate
 
 - Combate por turnos en el propio mapa: atacar, habilidades, esperar y huir.
