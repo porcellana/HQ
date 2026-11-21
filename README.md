@@ -17,7 +17,7 @@ Android en vertical (se juega con una mano) y probable en el navegador como PWA.
 | 3 | Combate por turnos, enemigos, XP y niveles | ✅ v0.0.3 |
 | 4 | Inventario, equipo y botín | ✅ v0.0.4 |
 | 5 | Pueblos, tiendas, comercio y misiones | ✅ v0.0.5 |
-| 6 | Mazmorras procedurales, minería y jefes | ⏳ |
+| 6 | Mazmorras procedurales, minería y jefes | ✅ v0.0.6 |
 | 7 | Historia principal, pulido y APK final (v0.1.0) | ⏳ |
 
 El workflow de GitHub Actions que compila el APK ya funciona desde el Hito 1, para
@@ -75,6 +75,16 @@ Otros comandos:
   de la aldea).
 - **Exportar/Importar partida** (en Ajustes): copia tu partida como código de texto para
   pasarla entre la web y el APK, o guardar una copia de seguridad.
+- **Mazmorras**: entradas en el Bosque Sombrío (Cueva de los Colmillos, norte), el Paso
+  Gris (Galerías de Seda, este) y Puerto Ceniza (Cripta, abajo a la izquierda; sellada
+  hasta que avance la historia). Las escaleras llevan de piso en piso; al fondo está el
+  jefe. Tras vencerlo se abre la salida a la superficie.
+- **Cofres**: tócalos estando al lado. Los que tienen cerradura (gris) hay que abrirlos
+  (DES) o forzarlos (FUE); el Pícaro es experto.
+- **Trampas**: al acercarte tiras Percepción (SAB) para verlas (borde rojo). Rodéalas o
+  tócalas para desactivarlas (DES, da XP). Si pisas una que no viste, salta.
+- **Minería**: equipa un pico (ranura Herramienta) y toca una veta varias veces. Pico de
+  hierro → hierro; de acero → plata; de mithril → gemas.
 
 ---
 
@@ -419,8 +429,41 @@ En `src/data/quests/` (principal, secundarias o encargos del gremio):
 - `kind: 'repetible'` + `cooldownTurns`: vuelve a estar disponible tras ese tiempo.
 - Los PNJ con misión nueva muestran ❗ y con misión para entregar, ❓.
 
-*(Las secciones para objetos, enemigos, botín, misiones y mazmorras se
-añadirán a medida que lleguen sus hitos.)*
+### Añadir una mazmorra
+
+Crea un archivo en `src/data/dungeons/` (mira `cueva_goblin.ts`):
+
+```ts
+{ id: 'minas_olvidadas', name: 'Minas olvidadas', description: '...',
+  level: 4, floors: 2, width: 40, height: 40, rooms: [7, 10],
+  wallTile: 'muro_cueva', floorTile: 'suelo_cueva', darkness: 0.25,
+  surface: { zone: 'paso_gris', arrive: '4' },        // salida que lleva aquí
+  floorEncounters: [ { initial: 4, perStepChance: 0.012, maxActive: 9, groups: [...] } ],
+  chestLoot: 'cofre', chestsPerFloor: [2, 3], lockedChance: 0.4,
+  trapsPerFloor: [2, 4], traps: ['pinchos', 'dardos', 'fuego'],
+  oresPerFloor: [2, 3], ores: ['hierro', 'plata'],
+  boss: { enemy: 'rey_goblin', guards: [{ enemy: 'goblin', x: 5, y: 5 }],
+          map: [ /* mapa fijo: '1' subir, '3' salida a la superficie, 'X' el jefe */ ] },
+  requiresFlag: 'minas_abiertas', lockedText: 'La entrada está tapiada.' }   // opcional
+```
+
+Luego, en la zona de la superficie, pon un dígito en el mapa y en `exits`:
+`'4': { to: 'minas_olvidadas', arrive: '1', label: 'Minas olvidadas', tile: 'cueva' }`.
+Las zonas de cada piso se llaman `<id>` (piso 1), `<id>__p2`, `<id>__p3`… y `<id>__jefe`.
+
+- **Generación**: cada piso sale de la semilla de la partida + id + piso + reinicio. Es el
+  mismo cada vez que entras en esa partida (puedes guardar dentro) y distinto en otra.
+  Salas unidas por pasillos, escaleras de subida en la primera sala y de bajada en la más
+  lejana; cofres y vetas en esquinas sin cortar el paso; trampas dentro de salas.
+- **Rejugar**: tras vencer al jefe, la siguiente vez que entres desde la superficie la
+  mazmorra se regenera (nueva semilla, cofres y jefe nuevos).
+- **Elementos fijos en cualquier zona**: `features: [{ kind: 'mineral', x, y, ore: 'hierro' },
+  { kind: 'cofre', x, y, locked: true, loot: 'cofre', level: 3 }, { kind: 'trampa', x, y, trap: 'pinchos' }]`.
+  Fuera de las mazmorras las vetas vuelven a crecer con el tiempo.
+- **Trampas** (`src/data/config/traps.ts`) y **minerales** (`src/data/config/ores.ts`):
+  CD, daño, estado, objeto que dan, golpes necesarios y nivel de pico.
+- **Jefes**: cualquier enemigo con `boss: true` y `phases`. Al vencerlo se pone la
+  bandera `boss_<id>` (úsala en misiones o diálogos con `ifFlag`).
 
 ---
 
@@ -486,5 +529,16 @@ añadirán a medida que lleguen sus hitos.)*
 - Los PNJ están quietos en su sitio (más fácil encontrarlos en móvil).
 - El stock de las tiendas y el estado de las misiones se guardan en la partida
   (guardado v4). El botín del suelo no se guarda.
+- **Mazmorras (Hito 6)**: Cueva de los Colmillos (nivel 2-3, 2 pisos, jefe Gruñaz),
+  Galerías de Seda (nivel 5-7, 3 pisos, jefa Mórgala) y Cripta de Velkar (nivel 8-10,
+  3 pisos, jefe Velkar). La cripta está sellada con la bandera `cripta_abierta`, que
+  pondrá la historia del Hito 7. Se añadieron 3 enemigos para los pisos profundos
+  (araña cazadora, caballero esqueleto y espectro).
+- Los enemigos, el botín del suelo, las trampas detectadas y los golpes de pico a medias
+  no se guardan; sí se guardan los cofres abiertos, las trampas usadas, las vetas
+  agotadas y el progreso de cada mazmorra (guardado v5).
+- La salida de la sala del jefe se abre con la bandera del jefe; al rejugar una mazmorra
+  ya está abierta (comodidad).
+- Equilibrio: limpiar una mazmorra a su nivel da ~1 nivel (hay un test que lo vigila).
 - Ajustes: joystick, mano dominante (lado del joystick y los botones), velocidad,
   tamaño de interfaz, cuadrícula y vibración.

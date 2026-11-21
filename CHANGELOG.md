@@ -2,6 +2,26 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.0.6 · 2026-11-21 — Hito 6: mazmorras, minería y jefes
+
+- 3 mazmorras procedurales con semilla: Cueva de los Colmillos (entrada al norte del
+  Bosque Sombrío), Galerías de Seda (en el Paso Gris) y Cripta de Velkar (bajo Puerto
+  Ceniza, sellada hasta el Hito 7). Salas, pasillos, escaleras entre pisos y sala del
+  jefe con mapa fijo.
+- Jefes en su guarida: Gruñaz, Mórgala y Velkar, con escoltas. Al vencerlos se abre la
+  salida a la superficie y la mazmorra se regenera la próxima vez (rejugable).
+- Cofres con botín por nivel; algunos con cerradura (DES para abrirla o FUE para
+  forzarla; el Pícaro es experto).
+- Trampas ocultas (pinchos, dardos venenosos, runas de fuego): se detectan con SAB al
+  acercarte, se desactivan con DES (dan XP) o saltan si las pisas.
+- Minería: vetas de hierro, plata y gemas en mazmorras, el bosque y el Paso Gris. Hace
+  falta un pico del nivel adecuado; fuera de las mazmorras las vetas vuelven a crecer.
+- 3 enemigos nuevos: araña cazadora, caballero esqueleto y espectro.
+- Misión principal «La Cueva de los Colmillos» y secundaria «Hierro para la forja».
+- Nuevos tiles: paredes y suelos de cueva, seda y cripta, escaleras, cofres, trampas y vetas.
+- Guardado v5 con migración (progreso de mazmorras y elementos usados). Si guardas dentro
+  de una mazmorra, vuelves al mismo piso.
+
 ## v0.0.5 · 2026-11-21 — Hito 5: pueblos, comercio y misiones
 
 - Tiendas: comprar y vender por cantidades (−, +, +5, Máx) en una sola operación.
