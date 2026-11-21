@@ -1,0 +1,36 @@
+/** Armas. `level` limita en qué botín aparecen; `value` es el precio base en oro. */
+import type { ItemDef } from '../schema';
+
+const steel = '#b8bec8';
+export default [
+  { id: 'daga', name: 'Daga', kind: 'arma', slot: 'arma', level: 1, value: 4, icon: { shape: 'daga', color: steel },
+    weapon: { type: 'daga', dice: '1d4', stat: 'DES', damageType: 'perforante', range: 1, critRange: 19 }, description: 'Crítico con 19-20.' },
+  { id: 'espada_corta', name: 'Espada corta', kind: 'arma', slot: 'arma', level: 1, value: 10, icon: { shape: 'espada', color: steel },
+    weapon: { type: 'espada', dice: '1d6', stat: 'DES', damageType: 'perforante', range: 1 }, description: 'Ligera: usa DES.' },
+  { id: 'espada_larga', name: 'Espada larga', kind: 'arma', slot: 'arma', level: 1, value: 15, icon: { shape: 'espada', color: steel },
+    weapon: { type: 'espada', dice: '1d8', stat: 'FUE', damageType: 'cortante', range: 1 } },
+  { id: 'hacha_mano', name: 'Hacha de mano', kind: 'arma', slot: 'arma', level: 1, value: 6, icon: { shape: 'hacha', color: steel },
+    weapon: { type: 'hacha', dice: '1d6', stat: 'FUE', damageType: 'cortante', range: 1 } },
+  { id: 'maza', name: 'Maza', kind: 'arma', slot: 'arma', level: 1, value: 6, icon: { shape: 'maza', color: steel },
+    weapon: { type: 'maza', dice: '1d6', stat: 'FUE', damageType: 'contundente', range: 1 }, description: 'Destroza esqueletos.' },
+  { id: 'baston', name: 'Bastón', kind: 'arma', slot: 'arma', level: 1, value: 3, icon: { shape: 'baston', color: '#8a6a4a' },
+    weapon: { type: 'baston', dice: '1d6', stat: 'FUE', damageType: 'contundente', range: 1, twoHanded: true } },
+  { id: 'arco_corto', name: 'Arco corto', kind: 'arma', slot: 'arma', level: 1, value: 25, icon: { shape: 'arco', color: '#8a6a4a' },
+    weapon: { type: 'arco', dice: '1d6', stat: 'DES', damageType: 'perforante', range: 5, twoHanded: true }, description: 'Ataca a distancia.' },
+  { id: 'estoque', name: 'Estoque', kind: 'arma', slot: 'arma', level: 3, value: 30, icon: { shape: 'espada', color: '#d8e0f0' },
+    weapon: { type: 'espada', dice: '1d8', stat: 'DES', damageType: 'perforante', range: 1 }, description: 'Elegante y preciso: usa DES.' },
+  { id: 'hacha_guerra', name: 'Hacha de guerra', kind: 'arma', slot: 'arma', level: 3, value: 30, icon: { shape: 'hacha', color: '#a0a8b4' },
+    weapon: { type: 'hacha', dice: '1d10', stat: 'FUE', damageType: 'cortante', range: 1, twoHanded: true } },
+  { id: 'baston_arcano', name: 'Bastón arcano', kind: 'arma', slot: 'arma', level: 3, value: 45, icon: { shape: 'baston', color: '#7fd7ff' },
+    weapon: { type: 'baston', dice: '1d6', stat: 'FUE', damageType: 'contundente', range: 1, twoHanded: true }, stats: { INT: 1, recurso: 2 } },
+  { id: 'martillo_guerra', name: 'Martillo de guerra', kind: 'arma', slot: 'arma', level: 4, value: 35, icon: { shape: 'maza', color: '#c8a060' },
+    weapon: { type: 'maza', dice: '1d8', stat: 'FUE', damageType: 'contundente', range: 1 } },
+  { id: 'arco_largo', name: 'Arco largo', kind: 'arma', slot: 'arma', level: 4, value: 60, icon: { shape: 'arco', color: '#5a3a2a' },
+    weapon: { type: 'arco', dice: '1d8', stat: 'DES', damageType: 'perforante', range: 7, twoHanded: true } },
+  { id: 'gran_hacha', name: 'Gran hacha', kind: 'arma', slot: 'arma', level: 6, value: 80, icon: { shape: 'hacha', color: '#d0d8e8' },
+    weapon: { type: 'hacha', dice: '1d12', stat: 'FUE', damageType: 'cortante', range: 1, twoHanded: true } },
+  { id: 'daga_sombria', name: 'Daga sombría', kind: 'arma', slot: 'arma', level: 6, value: 90, icon: { shape: 'daga', color: '#8a5ad0' },
+    weapon: { type: 'daga', dice: '1d6', stat: 'DES', damageType: 'perforante', range: 1, critRange: 18 }, description: 'Crítico con 18-20.' },
+  { id: 'espada_runica', name: 'Espada rúnica', kind: 'arma', slot: 'arma', level: 8, value: 160, icon: { shape: 'espada', color: '#80e0ff' },
+    weapon: { type: 'espada', dice: '2d6', stat: 'FUE', damageType: 'cortante', range: 1 } },
+] satisfies ItemDef[];

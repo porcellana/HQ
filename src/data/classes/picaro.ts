@@ -9,8 +9,11 @@ export default {
   primary: ['DES', 'INT'],
   hitDie: 8,
   resource: { name: 'Energía', short: 'ENE', base: 5, perLevel: 1, stat: 'DES', color: '#4fae6a' },
-  armorBonus: 1,
-  weapon: { name: 'Daga', dice: '1d6', stat: 'DES', damageType: 'perforante', range: 1 },
+  armorBonus: 0,
+  startingItems: [
+    { item: 'espada_corta', equip: true }, { item: 'armadura_cuero', equip: true }, { item: 'capucha_cuero', equip: true },
+    { item: 'botas_cuero', equip: true }, { item: 'daga', qty: 1 }, { item: 'pocion_curacion', qty: 2 }, { item: 'pan', qty: 2 },
+  ],
   critRange: 19,
   startingGold: 45,
   traits: ['Crítico con 19-20', 'Experto en trampas y cofres (ventaja al desactivar/abrir)'],

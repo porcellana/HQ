@@ -113,6 +113,83 @@ export class Renderer {
     this.drawDarkness(game, camX, camY);
     this.drawEntities(game);
     this.drawFx(game);
+    this.drawExitPointers(game, camX, camY);
+  }
+
+  /**
+   * Flechas doradas en el borde de la pantalla que señalan las salidas fuera de
+   * la vista, y etiqueta con el destino sobre las salidas visibles.
+   */
+  private drawExitPointers(game: Game, camX: number, camY: number): void {
+    const { ctx, canvas, zoom, camera } = this;
+    const dpr = this.pixelRatio;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const top = camera.insets.top * zoom + 30 * dpr;
+    const bottom = canvas.height - camera.insets.bottom * zoom - 20 * dpr;
+    const left = 26 * dpr;
+    const right = canvas.width - 26 * dpr;
+    const cx = canvas.width / 2;
+    const cy = (top + bottom) / 2;
+    const seen = new Set<string>();
+    const fontPx = Math.round(13 * dpr);
+    ctx.font = `bold ${fontPx}px Georgia, serif`;
+    ctx.textAlign = 'center';
+    for (const e of game.zone.exits) {
+      if (seen.has(e.digit)) continue;
+      seen.add(e.digit);
+      const marks = game.zone.exitMarkers.get(e.digit) ?? [{ x: e.x, y: e.y }];
+      const mx = marks.reduce((a, m) => a + m.x, 0) / marks.length;
+      const my = marks.reduce((a, m) => a + m.y, 0) / marks.length;
+      const sx = ((mx + 0.5) * TILE - camX) * zoom;
+      const sy = ((my + 0.5) * TILE - camY) * zoom;
+      const label = e.label ?? e.to;
+      const pulse = 0.75 + 0.25 * Math.sin(this.time * 4);
+      if (sx >= left && sx <= right && sy >= top && sy <= bottom) {
+        this.labelAt(label, sx, sy - TILE * zoom * 0.8, fontPx, pulse);
+        continue;
+      }
+      // Punto del borde en dirección a la salida
+      const dx = sx - cx;
+      const dy = sy - cy;
+      const k = Math.min(Math.abs((dx > 0 ? right - cx : left - cx) / (dx || 1e-6)), Math.abs((dy > 0 ? bottom - cy : top - cy) / (dy || 1e-6)));
+      const px = cx + dx * k;
+      const py = cy + dy * k;
+      const ang = Math.atan2(dy, dx);
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(ang);
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = PAL.goldL;
+      ctx.strokeStyle = PAL.black;
+      ctx.lineWidth = 2 * dpr;
+      const a = 14 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(a, 0);
+      ctx.lineTo(-a * 0.7, -a * 0.75);
+      ctx.lineTo(-a * 0.35, 0);
+      ctx.lineTo(-a * 0.7, a * 0.75);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fill();
+      ctx.restore();
+      // Etiqueta hacia dentro de la pantalla
+      const lx = Math.max(left + 50 * dpr, Math.min(right - 50 * dpr, px - Math.cos(ang) * 40 * dpr));
+      const ly = Math.max(top + 8 * dpr, Math.min(bottom - 4 * dpr, py - Math.sin(ang) * 28 * dpr));
+      this.labelAt(label, lx, ly, fontPx, pulse);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private labelAt(text: string, x: number, y: number, fontPx: number, alpha: number): void {
+    const { ctx } = this;
+    const w = ctx.measureText(text).width + fontPx;
+    ctx.globalAlpha = 0.85 * alpha;
+    ctx.fillStyle = 'rgba(11,10,16,0.85)';
+    ctx.fillRect(x - w / 2, y - fontPx, w, fontPx * 1.4);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = PAL.goldL;
+    ctx.fillText(text, x, y);
+    ctx.globalAlpha = 1;
   }
 
   /** Casillas al alcance de la habilidad elegida. */

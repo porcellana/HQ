@@ -13,7 +13,7 @@
  * Nunca borres migraciones antiguas.
  */
 
-export const CURRENT_SAVE_VERSION = 2;
+export const CURRENT_SAVE_VERSION = 3;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
@@ -31,6 +31,17 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     if (!player['classId'] || player['classId'] === 'aventurero') player['classId'] = 'guerrero';
     player['stats'] ??= { FUE: 15, DES: 12, CON: 14, INT: 8, SAB: 10, CAR: 11 };
     player['attributePoints'] ??= 0;
+    return { ...s, player };
+  },
+  /**
+   * v2 → v3 (Hito 4): inventario y equipo. La partida recibe el equipo inicial
+   * de su clase la próxima vez que se cargue (needsStarterKit).
+   */
+  2: (s) => {
+    const player = { ...(s['player'] as Record<string, unknown>) };
+    player['inventory'] ??= [];
+    player['equipment'] ??= {};
+    player['needsStarterKit'] = true;
     return { ...s, player };
   },
 };

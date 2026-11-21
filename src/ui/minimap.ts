@@ -7,11 +7,31 @@ export class Minimap {
   private zone: Zone | null = null;
   private t = 0;
 
+  /** Al tocar el minimapa se llama con la casilla tocada (para ir allí). */
+  onTapTile: ((x: number, y: number) => void) | null = null;
+
   constructor() {
     this.el = document.createElement('canvas');
     this.el.className = 'minimap';
     this.el.width = 64;
     this.el.height = 64;
+    this.el.addEventListener('click', (e) => {
+      const zone = this.zone;
+      const base = this.base;
+      if (!zone || !base || !this.onTapTile) return;
+      const r = this.el.getBoundingClientRect();
+      const px = ((e.clientX - r.left) / r.width) * 64;
+      const py = ((e.clientY - r.top) / r.height) * 64;
+      const scale = base.width / zone.width;
+      const ox = Math.floor((64 - base.width) / 2);
+      const oy = Math.floor((64 - base.height) / 2);
+      const tx = Math.floor((px - ox) / scale);
+      const ty = Math.floor((py - oy) / scale);
+      // Si tocas cerca de una salida, ve exactamente a ella (dedos gordos).
+      const near = zone.exits.find((ex) => Math.max(Math.abs(ex.x - tx), Math.abs(ex.y - ty)) <= 2);
+      if (near) this.onTapTile(near.x, near.y);
+      else this.onTapTile(Math.max(0, Math.min(zone.width - 1, tx)), Math.max(0, Math.min(zone.height - 1, ty)));
+    });
   }
 
   private build(zone: Zone): void {

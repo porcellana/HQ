@@ -144,7 +144,9 @@ export class App {
           const state = createNewGame({ ...r, seed: randomSeed() });
           this.startGame(state);
           void this.autosave('nueva partida');
-          this.hud?.pushMessage(`¡Que empiece la aventura, ${r.name}! Toca el mapa para moverte.`, 'good');
+          this.hud?.pushMessage(`¡Que empiece la aventura, ${r.name}!`, 'good');
+          this.hud?.pushMessage('Toca el mapa para caminar. Las flechas doradas llevan a las salidas.', 'info');
+          this.hud?.pushMessage('Consejo: toca el minimapa (arriba a la derecha) para ir directo a un sitio.', 'info');
         },
         () => void this.showMainMenu(),
       ),
@@ -177,6 +179,9 @@ export class App {
       onJoystick: (d) => this.setHeldDir(d),
       onSkill: (sk) => game.selectSkill(sk),
       onFlee: () => game.flee(),
+      onMinimapTap: (x, y) => {
+        if (!this.pauseClose && !this.screen) game.tapTile(x, y);
+      },
     });
     this.hud = hud;
     this.ui.prepend(hud.root);

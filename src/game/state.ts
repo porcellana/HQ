@@ -7,7 +7,10 @@
  */
 import { START_ZONE_ID, getClass, getZoneDef } from '@/data/registry';
 import type { StatBlock } from '@/data/schema';
-import { maxHpFor, maxResourceFor } from './rules/character';
+import { addItem, equip, type Equipment } from './items/inventory';
+import { createItem, type ItemInstance } from './items/items';
+import { Rng } from '@/engine/rng';
+import { derive } from './rules/derived';
 import { buildZone } from './world/zone';
 
 export interface Position {
@@ -26,6 +29,12 @@ export interface PlayerState {
   stats: StatBlock;
   /** Puntos de característica sin repartir (se ganan al subir de nivel). */
   attributePoints: number;
+  /** Mochila. */
+  inventory: ItemInstance[];
+  /** Objetos equipados por ranura. */
+  equipment: Equipment;
+  /** Pendiente de recibir el equipo inicial de su clase (partidas migradas). */
+  needsStarterKit?: boolean;
   level: number;
   /** XP acumulada total. */
   xp: number;
@@ -78,6 +87,9 @@ export function createNewGame(opts: NewGameOptions): GameState {
       portrait: opts.portrait,
       stats: { ...opts.stats },
       attributePoints: 0,
+      inventory: [],
+      equipment: {},
+      needsStarterKit: true,
       level: 1,
       xp: 0,
       hp: 1,
@@ -107,8 +119,33 @@ export function createNewGame(opts: NewGameOptions): GameState {
 export function recalcPlayer(p: PlayerState): void {
   const cls = getClass(p.classId);
   p.classId = cls.id;
-  p.maxHp = maxHpFor(cls, p.level, p.stats.CON);
-  p.maxMp = maxResourceFor(cls, p.level, p.stats);
+  p.inventory ??= [];
+  p.equipment ??= {};
+  if (p.needsStarterKit) giveStarterKit(p);
+  const d = derive(p);
+  p.maxHp = d.maxHp;
+  p.maxMp = d.maxMp;
   p.hp = Math.min(Math.max(0, p.hp), p.maxHp);
   p.mp = Math.min(Math.max(0, p.mp), p.maxMp);
+}
+
+/** Entrega el equipo inicial de la clase (al crear o tras migrar una partida antigua). */
+export function giveStarterKit(p: PlayerState): void {
+  const cls = getClass(p.classId);
+  const rng = new Rng(0x5eed);
+  for (const s of cls.startingItems) {
+    let it: ItemInstance;
+    try {
+      it = createItem(s.item, 'comun', rng, { qty: s.qty ?? 1 });
+    } catch {
+      console.warn(`[equipo inicial] objeto desconocido: ${s.item}`);
+      continue;
+    }
+    addItem(p, it);
+    if (s.equip) {
+      const stack = p.inventory.find((x) => x.id === s.item);
+      if (stack) equip(p, stack.uid);
+    }
+  }
+  p.needsStarterKit = false;
 }

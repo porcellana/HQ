@@ -156,10 +156,12 @@ export interface ClassDef {
   hitDie: number;
   /** Recurso para habilidades. */
   resource: { name: string; short: string; base: number; perLevel: number; stat: AbilityKey | null; color: string };
-  /** Bonificador a la CA sin armadura (se sumará a la del equipo en el Hito 4). */
+  /** Bonificador fijo a la CA por entrenamiento de la clase (se suma al del equipo). */
   armorBonus: number;
-  /** Arma inicial (dados de daño y característica de ataque) hasta tener inventario. */
-  weapon: { name: string; dice: string; stat: AbilityKey; damageType: DamageType; range: number };
+  /** Ataque desarmado (si no lleva arma equipada). */
+  unarmed?: { name: string; dice: string; stat: AbilityKey; damageType: DamageType };
+  /** Equipo y objetos con los que empieza. */
+  startingItems: StartingItem[];
   /** Rango de crítico natural (20 = sólo 20; 19 = 19-20). */
   critRange: number;
   startingGold: number;
@@ -284,4 +286,117 @@ export interface EncounterTable {
   /** Distancia mínima al jugador para aparecer. */
   minDistance?: number;
   groups: Array<{ enemy: string; weight: number; min?: number; max?: number }>;
+}
+
+// ===========================================================================
+// OBJETOS, RAREZAS Y BOTÍN
+// ===========================================================================
+
+/** Ranuras de equipo. Los accesorios ocupan accesorio1 y accesorio2. */
+export type EquipSlot =
+  | 'cabeza' | 'pecho' | 'manos' | 'piernas' | 'pies'
+  | 'arma' | 'secundaria' | 'herramienta' | 'accesorio1' | 'accesorio2';
+export const EQUIP_SLOTS: readonly EquipSlot[] = [
+  'cabeza', 'pecho', 'manos', 'piernas', 'pies', 'arma', 'secundaria', 'herramienta', 'accesorio1', 'accesorio2',
+];
+
+export type ItemKind = 'arma' | 'armadura' | 'secundaria' | 'herramienta' | 'accesorio' | 'consumible' | 'material';
+export type WeaponType = 'espada' | 'hacha' | 'arco' | 'baston' | 'daga' | 'maza';
+/** Ranura "lógica" del objeto (accesorio vale para accesorio1 y accesorio2). */
+export type ItemSlot = Exclude<EquipSlot, 'accesorio1' | 'accesorio2'> | 'accesorio';
+
+/** Estadísticas que pueden dar los objetos (características y extras). */
+export type BonusStat = AbilityKey | 'ca' | 'ataque' | 'daño' | 'pv' | 'recurso';
+
+export interface ItemIcon {
+  /** Forma de src/gfx/items.ts: espada, hacha, arco, pocion, anillo... */
+  shape: string;
+  /** Color principal (metal, líquido, gema...). */
+  color?: string;
+}
+
+export interface ItemDef {
+  id: string;
+  name: string;
+  kind: ItemKind;
+  slot?: ItemSlot;
+  description?: string;
+  icon: ItemIcon;
+  /** Nivel del objeto: limita dónde aparece y escala sus bonos aleatorios. */
+  level: number;
+  /** Precio base en oro (rareza y ciudad lo multiplican en el Hito 5). */
+  value: number;
+  /** Se apilan (consumibles y materiales). */
+  stackable?: boolean;
+  maxStack?: number;
+  weapon?: {
+    type: WeaponType;
+    dice: string;
+    stat: AbilityKey;
+    damageType: DamageType;
+    /** 1 = cuerpo a cuerpo. */
+    range: number;
+    twoHanded?: boolean;
+    critRange?: number;
+  };
+  /** Armadura o escudo: suma a la CA; `maxDex` limita el bono de DES (pecho). */
+  armor?: { ac: number; maxDex?: number };
+  /** Bonos fijos del objeto base. */
+  stats?: Partial<Record<BonusStat, number>>;
+  /** Consumibles. */
+  use?: {
+    heal?: string;
+    restore?: string;
+    cleanse?: boolean;
+    buff?: { stat: 'ataque' | 'daño' | 'ca'; amount: number; turns: number };
+    /** No se puede usar en combate (comida). */
+    outOfCombatOnly?: boolean;
+  };
+  /** Nivel de pico (minería, Hito 6). */
+  pickaxeTier?: number;
+  /** Nunca recibe bonos aleatorios (pociones, materiales...). */
+  plain?: boolean;
+}
+
+export type Rarity = 'comun' | 'poco_comun' | 'raro' | 'epico' | 'legendario';
+
+export interface RarityDef {
+  id: Rarity;
+  name: string;
+  color: string;
+  /** Bonos aleatorios que recibe el objeto. */
+  affixes: number;
+  /** Multiplicador de precio. */
+  priceMult: number;
+  /** Bono extra a daño (armas) o CA (armaduras/escudos). */
+  powerBonus: number;
+  /** Peso relativo al generar botín (se ajusta por nivel). */
+  weight: number;
+  /** Nivel mínimo del botín para que pueda salir. */
+  minLevel: number;
+}
+
+/** Entrada de una tabla de botín. */
+export type LootEntry =
+  | { item: string; weight: number; min?: number; max?: number }
+  /** Objeto de equipo aleatorio de nivel adecuado (con rareza). */
+  | { pool: 'equipo' | 'armas' | 'armaduras' | 'accesorios'; weight: number }
+  | { nothing: true; weight: number };
+
+export interface LootTableDef {
+  id: string;
+  /** Número de tiradas en la tabla [mín, máx]. */
+  rolls: [number, number];
+  /** Oro [mín, máx] multiplicado por el nivel del enemigo. */
+  gold?: [number, number];
+  /** Probabilidad 0..1 de soltar oro. */
+  goldChance?: number;
+  entries: LootEntry[];
+}
+
+/** Objeto inicial de una clase. */
+export interface StartingItem {
+  item: string;
+  qty?: number;
+  equip?: boolean;
 }

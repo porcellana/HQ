@@ -9,11 +9,14 @@ export default {
   primary: ['SAB', 'CON'],
   hitDie: 8,
   resource: { name: 'Fe', short: 'FE', base: 6, perLevel: 2, stat: 'SAB', color: '#e0c050' },
-  armorBonus: 3,
-  weapon: { name: 'Maza', dice: '1d6', stat: 'FUE', damageType: 'contundente', range: 1 },
+  armorBonus: 0,
+  startingItems: [
+    { item: 'maza', equip: true }, { item: 'cota_anillas', equip: true }, { item: 'escudo_madera', equip: true },
+    { item: 'simbolo_sagrado', qty: 1 }, { item: 'pocion_curacion', qty: 2 }, { item: 'pan', qty: 2 },
+  ],
   critRange: 20,
   startingGold: 35,
-  traits: ['Armadura media: +3 a la CA', 'Su daño sagrado castiga a los no-muertos'],
+  traits: ['Empieza con cota de anillas y escudo', 'Su daño sagrado castiga a los no-muertos'],
   look: { overlay: 'clerigo', cloth: '#d8d0bc', clothDark: '#a89c80', pants: '#5a4a3a', hat: '#d8b050' },
   skills: [
     {

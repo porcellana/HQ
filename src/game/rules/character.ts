@@ -50,15 +50,6 @@ export function maxResourceFor(cls: ClassDef, level: number, stats: StatBlock): 
   return Math.max(1, r.base + (level - 1) * r.perLevel + Math.max(0, statMod) * 2);
 }
 
-export function armorClass(cls: ClassDef, stats: StatBlock): number {
-  return 10 + abilityModifier(stats.DES) + cls.armorBonus;
-}
-
-/** Bonificador de ataque con el arma de la clase. */
-export function attackBonus(cls: ClassDef, stats: StatBlock, level: number): number {
-  return abilityModifier(stats[cls.weapon.stat]) + proficiencyBonus(level);
-}
-
 /** Habilidades desbloqueadas a cierto nivel. */
 export function unlockedSkills(cls: ClassDef, level: number): SkillDef[] {
   return cls.skills.filter((s) => s.unlockLevel <= level);

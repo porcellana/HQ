@@ -11,12 +11,10 @@ import {
   CREATION_STAT_MAX,
   STAT_HINTS,
   STAT_NAMES,
-  armorClass,
-  attackBonus,
   formatMod,
-  maxHpFor,
-  maxResourceFor,
 } from '@/game/rules/character';
+import { createNewGame } from '@/game/state';
+import { derive } from '@/game/rules/derived';
 import { PORTRAIT_COUNT, heroColors, spriteCanvas } from '@/gfx/sprites';
 import { h } from './dom';
 
@@ -89,10 +87,17 @@ export function creationScreen(onDone: (r: CreationResult) => void, onCancel: ()
         }),
       );
       derivedBox.replaceChildren(
-        derived('PV', `${maxHpFor(cls, 1, s.CON)}`),
-        derived(cls.resource.short, `${maxResourceFor(cls, 1, s)}`),
-        derived('CA', `${armorClass(cls, s)}`),
-        derived('Ataque', `${formatMod(attackBonus(cls, s, 1))} · ${cls.weapon.dice}`),
+        // Vista previa con el equipo inicial real de la clase
+        ...(() => {
+          const pv = createNewGame({ name: 'x', classId: cls.id, portrait: 0, seed: 1, stats: s }).player;
+          const d = derive(pv);
+          return [
+            derived('PV', `${pv.maxHp}`),
+            derived(cls.resource.short, `${pv.maxMp}`),
+            derived('CA', `${d.ac}`),
+            derived('Ataque', `${formatMod(d.toHit)} · ${d.weapon.dice}`),
+          ];
+        })(),
       );
     };
 

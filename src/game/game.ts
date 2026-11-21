@@ -25,10 +25,15 @@ import {
   type RollMode,
 } from './combat/rules';
 import { STATUS_INFO, consumeStun, hasStatus, tickStatuses, tryApplyStatus, type StatusInstance } from './combat/status';
-import { armorClass, attackBonus, attributePointsAtLevel, proficiencyBonus, unlockedSkills } from './rules/character';
+import { attributePointsAtLevel, proficiencyBonus, unlockedSkills } from './rules/character';
+import { derive, type Derived } from './rules/derived';
 import { abilityModifier, roll } from './rules/dice';
 import { levelForXp } from './rules/progression';
 import { recalcPlayer, type GameState } from './state';
+import { addItem, equip, removeQty, unequip } from './items/inventory';
+import { itemDef, rarityOf, type ItemInstance } from './items/items';
+import { rollLoot } from './items/loot';
+import type { EquipSlot } from '@/data/schema';
 import { buildZone, type Zone, type ZoneExit } from './world/zone';
 
 export type MsgKind = 'info' | 'warn' | 'good' | 'combat';
@@ -70,6 +75,14 @@ export type Fx =
   | { kind: 'bolt'; fx: number; fy: number; tx: number; ty: number; color: string; t: number; life: number }
   | { kind: 'burst'; x: number; y: number; radius: number; color: string; t: number; life: number };
 
+/** Botín tirado en el suelo (no se guarda: desaparece al cambiar de zona). */
+export interface GroundLoot {
+  x: number;
+  y: number;
+  items: ItemInstance[];
+  gold: number;
+}
+
 /** Estado visual del jugador (no se guarda; se reconstruye al cargar). */
 export interface PlayerView {
   rx: number;
@@ -105,6 +118,7 @@ export class Game {
   readonly view: PlayerView;
   readonly combat: PlayerCombat = { statuses: [], buffs: [], cooldowns: {}, stealth: 0, skipNext: false };
   enemies: Enemy[] = [];
+  ground: GroundLoot[] = [];
   fx: Fx[] = [];
   /** Habilidad elegida esperando objetivo. */
   targeting: SkillDef | null = null;
@@ -187,17 +201,22 @@ export class Game {
     return this.combat.buffs.filter((b) => b.stat === stat).reduce((s, b) => s + b.amount, 0);
   }
 
+  /** Valores derivados con equipo (CA, ataque, arma...). */
+  get derived(): Derived {
+    return derive(this.state.player);
+  }
+
   playerAC(): number {
-    return armorClass(this.cls, this.state.player.stats) + this.buffTotal('ca') - (hasStatus(this.combat.statuses, 'ralentizado') ? 2 : 0);
+    return this.derived.ac + this.buffTotal('ca') - (hasStatus(this.combat.statuses, 'ralentizado') ? 2 : 0);
   }
 
   playerToHit(): number {
-    return attackBonus(this.cls, this.state.player.stats, this.state.player.level) + this.buffTotal('ataque');
+    return this.derived.toHit + this.buffTotal('ataque');
   }
 
   /** CD de los hechizos del jugador con una característica. */
   spellDC(stat: keyof GameState['player']['stats']): number {
-    return 8 + proficiencyBonus(this.state.player.level) + abilityModifier(this.state.player.stats[stat]);
+    return 8 + proficiencyBonus(this.state.player.level) + abilityModifier(this.derived.stats[stat]);
   }
 
   // ==================================================================== mensajes
@@ -221,7 +240,7 @@ export class Game {
     const enemy = this.enemyAt(x, y);
     if (enemy && this.canAct) {
       const p = this.playerPos;
-      const range = this.cls.weapon.range;
+      const range = this.derived.weapon.range;
       if (dist(p.x, p.y, enemy.x, enemy.y) <= range && this.los(p, enemy)) {
         this.cancelPath();
         this.playerAttack(enemy, {});
@@ -402,6 +421,7 @@ export class Game {
     v.ry = v.to.y;
     v.stepT = -1;
     if (v.path.length === 0) v.target = null;
+    this.pickupHere();
     const exit = this.zone.exitAt(v.to.x, v.to.y);
     if (exit && !prevExit) {
       this.state.turn++;
@@ -522,6 +542,7 @@ export class Game {
   /** Coloca los grupos iniciales de la zona (los enemigos no se guardan). */
   private populateZone(): void {
     this.enemies = [];
+    this.ground = [];
     this.fx = [];
     const enc = this.zone.def.encounters;
     if (!enc) return;
@@ -593,8 +614,8 @@ export class Game {
   // ======================================================== ataques del jugador
   /** Ataque con el arma (también lo usan las habilidades de tipo "attack"). */
   playerAttack(enemy: Enemy, opt: { extraDice?: string; toHitBonus?: number; critRange?: number; applyStatus?: StatusApply }): void {
-    const cls = this.cls;
-    const p = this.state.player;
+    const d = this.derived;
+    const weapon = d.weapon;
     const pos = this.playerPos;
     this.faceTowards(enemy);
     this.view.bumpT = 1;
@@ -611,22 +632,21 @@ export class Game {
       this.msg('Atacas desde las sombras (ventaja).', 'combat');
     }
     const toHit = this.playerToHit() + (opt.toHitBonus ?? 0);
-    const critRange = Math.min(cls.critRange, opt.critRange ?? 20);
+    const critRange = Math.min(weapon.critRange, opt.critRange ?? 20);
     const r = attackRoll(this.rng, toHit, enemy.def.ac, mode, critRange);
     this.events.emit('dice', {
-      label: cls.weapon.name, natural: r.natural, bonus: toHit, total: r.total, target: enemy.def.ac, targetLabel: 'CA',
+      label: weapon.name, natural: r.natural, bonus: toHit, total: r.total, target: enemy.def.ac, targetLabel: 'CA',
       outcome: r.fumble ? 'fumble' : r.crit ? 'crit' : r.hit ? 'hit' : 'miss',
     });
     enemy.alerted = true;
     if (!r.hit) {
       this.floatText(enemy.x, enemy.y, r.fumble ? '¡Pifia!' : 'Fallo', '#a49c8a');
-      this.msg(r.fumble ? `¡Pifia! Tu ${cls.weapon.name.toLowerCase()} golpea el aire.` : `Fallas contra ${enemy.def.name} (${r.total} vs CA ${enemy.def.ac}).`, 'combat');
+      this.msg(r.fumble ? `¡Pifia! Tu ${weapon.name.toLowerCase()} golpea el aire.` : `Fallas contra ${enemy.def.name} (${r.total} vs CA ${enemy.def.ac}).`, 'combat');
       return;
     }
-    const statMod = abilityModifier(p.stats[cls.weapon.stat]);
-    let dmg = damageRoll(this.rng, cls.weapon.dice, statMod + this.buffTotal('daño'), r.crit).total;
+    let dmg = damageRoll(this.rng, weapon.dice, d.damageMod + this.buffTotal('daño'), r.crit).total;
     if (opt.extraDice) dmg += damageRoll(this.rng, opt.extraDice, 0, r.crit).total;
-    this.damageEnemy(enemy, dmg, cls.weapon.damageType, r.crit);
+    this.damageEnemy(enemy, dmg, weapon.damageType, r.crit);
     if (enemy.hp > 0 && opt.applyStatus) this.applyStatusToEnemy(enemy, opt.applyStatus);
   }
 
@@ -662,6 +682,117 @@ export class Game {
     const xp = xpForKill(enemy.def.xp, enemy.def.level, this.state.player.level);
     this.msg(`${enemy.def.name} cae derrotado.`, 'good');
     this.gainXp(xp, enemy.def.name);
+    const loot = rollLoot(this.rng, enemy.def.lootTable, enemy.def.level);
+    if (loot.items.length || loot.gold) this.dropLoot(enemy.x, enemy.y, loot.items, loot.gold);
+  }
+
+  /** Deja botín en una casilla (se junta con lo que ya hubiera). */
+  dropLoot(x: number, y: number, items: ItemInstance[], gold: number): void {
+    let g = this.ground.find((l) => l.x === x && l.y === y);
+    if (!g) this.ground.push((g = { x, y, items: [], gold: 0 }));
+    g.items.push(...items);
+    g.gold += gold;
+  }
+
+  /** Recoge el botín de la casilla del jugador. */
+  private pickupHere(): void {
+    const p = this.playerPos;
+    const g = this.ground.find((l) => l.x === p.x && l.y === p.y);
+    if (!g) return;
+    const pl = this.state.player;
+    if (g.gold > 0) {
+      pl.gold += g.gold;
+      this.floatText(p.x, p.y - 0.3, `+${g.gold} oro`, '#f2d888');
+      this.msg(`Recoges ${g.gold} de oro.`, 'good');
+      g.gold = 0;
+    }
+    const left: ItemInstance[] = [];
+    for (const it of g.items) {
+      const qty = it.qty;
+      const rest = addItem(pl, it);
+      const def = itemDef(it);
+      if (rest < qty) {
+        const r = rarityOf(it);
+        this.msg(`Recoges: ${def.name}${qty - rest > 1 ? ` ×${qty - rest}` : ''}${r.id !== 'comun' ? ` (${r.name})` : ''}.`, r.id === 'comun' ? 'info' : 'good');
+      }
+      if (rest > 0) left.push({ ...it, qty: rest });
+    }
+    g.items = left;
+    if (left.length) this.msg('¡La mochila está llena! Parte del botín se queda en el suelo.', 'warn');
+    if (!g.items.length && !g.gold) this.ground = this.ground.filter((x) => x !== g);
+  }
+
+  // ================================================================ objetos
+  /** Usa un consumible. En combate gasta el turno. Devuelve un error o null. */
+  useItem(uid: string): string | null {
+    if (this.isDead) return 'Ahora no.';
+    if (!this.canAct) return 'Espera a tu turno.';
+    const p = this.state.player;
+    const it = p.inventory.find((x) => x.uid === uid);
+    if (!it) return 'No tienes ese objeto.';
+    const def = itemDef(it);
+    const use = def.use;
+    if (!use) return 'Eso no se puede usar.';
+    const combat = this.inCombat;
+    if (use.outOfCombatOnly && combat) return 'No puedes comer en pleno combate.';
+    const pos = this.playerPos;
+    if (use.heal) {
+      const before = p.hp;
+      p.hp = Math.min(p.maxHp, p.hp + roll(this.rng, use.heal).total);
+      this.floatText(pos.x, pos.y, `+${p.hp - before}`, '#60e070');
+      this.msg(`${def.name}: recuperas ${p.hp - before} PV.`, 'good');
+    }
+    if (use.restore) {
+      const before = p.mp;
+      p.mp = Math.min(p.maxMp, p.mp + roll(this.rng, use.restore).total);
+      this.floatText(pos.x, pos.y - 0.3, `+${p.mp - before}`, '#6a9af0');
+      this.msg(`${def.name}: recuperas ${p.mp - before} de ${this.cls.resource.name.toLowerCase()}.`, 'good');
+    }
+    if (use.cleanse) {
+      this.combat.statuses = [];
+      this.msg('Te sientes limpio de males.', 'good');
+    }
+    if (use.buff) {
+      this.combat.buffs.push({ ...use.buff, turns: use.buff.turns + 1 });
+      this.msg(`${def.name}: +${use.buff.amount} ${use.buff.stat}.`, 'good');
+    }
+    this.fx.push({ kind: 'burst', x: pos.x, y: pos.y, radius: 0.8, color: '#60e070', t: 0, life: 0.4 });
+    removeQty(p, uid, 1);
+    if (combat) this.endPlayerTurn();
+    return null;
+  }
+
+  /** Poción de curación rápida (botón 🧪): la más pequeña que tengas. */
+  quickPotion(): string | null {
+    const p = this.state.player;
+    const potions = p.inventory.filter((x) => itemDef(x).use?.heal && !itemDef(x).use?.outOfCombatOnly);
+    if (!potions.length) return 'No te quedan pociones de curación.';
+    potions.sort((a, b) => itemDef(a).value - itemDef(b).value);
+    return this.useItem(potions[0]!.uid);
+  }
+
+  equipItem(uid: string, slot?: EquipSlot): string | null {
+    if (this.inCombat) return 'No puedes cambiarte de equipo en pleno combate.';
+    const err = equip(this.state.player, uid, slot);
+    if (!err) recalcPlayer(this.state.player);
+    return err;
+  }
+
+  unequipSlot(slot: EquipSlot): string | null {
+    if (this.inCombat) return 'No puedes cambiarte de equipo en pleno combate.';
+    const err = unequip(this.state.player, slot);
+    if (!err) recalcPlayer(this.state.player);
+    return err;
+  }
+
+  /** Suelta una pila de la mochila en el suelo. */
+  dropItem(uid: string): void {
+    const p = this.state.player;
+    const i = p.inventory.findIndex((x) => x.uid === uid);
+    if (i < 0) return;
+    const [it] = p.inventory.splice(i, 1);
+    this.dropLoot(this.playerPos.x, this.playerPos.y, [it!], 0);
+    this.msg(`Dejas ${itemDef(it!).name} en el suelo.`);
   }
 
   private checkBossPhase(e: Enemy): void {
@@ -751,7 +882,7 @@ export class Game {
           : [this.enemyAt(center.x, center.y)].filter((e): e is Enemy => !!e);
         if (skill.target !== 'self') this.fx.push({ kind: 'bolt', fx: pos.x, fy: pos.y, tx: center.x, ty: center.y, color, t: 0, life: 0.3 });
         if (radius > 0) this.fx.push({ kind: 'burst', x: center.x, y: center.y, radius: radius + 0.5, color, t: 0, life: 0.5 });
-        const mod = abilityModifier(p.stats[eff.stat]);
+        const mod = abilityModifier(this.derived.stats[eff.stat]);
         const dc = this.spellDC(eff.stat);
         for (const t of targets) {
           for (let i = 0; i < (eff.hits ?? 1) && t.hp > 0; i++) {
@@ -772,7 +903,7 @@ export class Game {
         break;
       }
       case 'heal': {
-        const amount = Math.max(1, roll(this.rng, eff.dice).total + (eff.stat ? abilityModifier(p.stats[eff.stat]) : 0) + (eff.perLevel ?? 0) * p.level);
+        const amount = Math.max(1, roll(this.rng, eff.dice).total + (eff.stat ? abilityModifier(this.derived.stats[eff.stat]) : 0) + (eff.perLevel ?? 0) * p.level);
         const before = p.hp;
         p.hp = Math.min(p.maxHp, p.hp + amount);
         this.floatText(pos.x, pos.y, `+${p.hp - before}`, '#60e070');
@@ -808,7 +939,7 @@ export class Game {
       return;
     }
     const dc = 10 + Math.max(...foes.map((e) => e.def.level));
-    const bonus = abilityModifier(p.stats.DES) + proficiencyBonus(p.level);
+    const bonus = abilityModifier(this.derived.stats.DES) + proficiencyBonus(p.level);
     const s = savingThrow(this.rng, bonus, dc);
     this.events.emit('dice', {
       label: 'Huir', natural: s.natural, bonus, total: s.total, target: dc, targetLabel: 'CD', outcome: s.success ? 'success' : 'fail',
@@ -938,7 +1069,7 @@ export class Game {
     let dmg = roll(this.rng, sp.dice ?? '1d6').total + e.damageBonus;
     let saved = false;
     if (sp.save && sp.dc) {
-      const bonus = abilityModifier(this.state.player.stats[sp.save]);
+      const bonus = abilityModifier(this.derived.stats[sp.save]);
       const s = savingThrow(this.rng, bonus, sp.dc);
       saved = s.success;
       this.events.emit('dice', {

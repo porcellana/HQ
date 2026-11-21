@@ -10,7 +10,10 @@ export default {
   hitDie: 6,
   resource: { name: 'Maná', short: 'PM', base: 8, perLevel: 3, stat: 'INT', color: '#3a6ad0' },
   armorBonus: 0,
-  weapon: { name: 'Bastón', dice: '1d6', stat: 'FUE', damageType: 'contundente', range: 1 },
+  startingItems: [
+    { item: 'baston', equip: true }, { item: 'tunica', equip: true }, { item: 'pocion_curacion', qty: 1 },
+    { item: 'pocion_mana', qty: 2 }, { item: 'pan', qty: 2 },
+  ],
   critRange: 20,
   startingGold: 35,
   traits: ['Mucho maná que crece con la INT', 'Hechizos a distancia y en área'],

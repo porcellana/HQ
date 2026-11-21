@@ -9,11 +9,14 @@ export default {
   primary: ['FUE', 'CON'],
   hitDie: 10,
   resource: { name: 'Vigor', short: 'VIG', base: 4, perLevel: 1, stat: 'CON', color: '#d08a3a' },
-  armorBonus: 5,
-  weapon: { name: 'Espada larga', dice: '1d8', stat: 'FUE', damageType: 'cortante', range: 1 },
+  armorBonus: 0,
+  startingItems: [
+    { item: 'espada_larga', equip: true }, { item: 'cota_escamas', equip: true }, { item: 'escudo_madera', equip: true },
+    { item: 'botas_cuero', equip: true }, { item: 'pocion_curacion', qty: 2 }, { item: 'pan', qty: 2 },
+  ],
   critRange: 20,
   startingGold: 30,
-  traits: ['Armadura pesada: +5 a la CA', 'Dado de golpe d10: la vida que más crece'],
+  traits: ['Empieza con cota de escamas y escudo', 'Dado de golpe d10: la vida que más crece'],
   look: { overlay: 'guerrero', cloth: '#7a808c', clothDark: '#4e535e', pants: '#3a3340', hat: '#9aa0ac' },
   skills: [
     {

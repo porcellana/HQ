@@ -21,6 +21,7 @@ export interface HudActions {
   onJoystick(dir: { dx: number; dy: number } | null): void;
   onSkill(skill: SkillDef): void;
   onFlee(): void;
+  onMinimapTap(x: number, y: number): void;
 }
 
 function bar(kind: string, thin = false): { el: HTMLDivElement; fill: HTMLElement; label: HTMLElement } {
@@ -78,6 +79,7 @@ export class Hud {
     ]);
 
     this.skillBar = new SkillBar(actions.onSkill, actions.onFlee);
+    this.minimap.onTapTile = actions.onMinimapTap;
     this.root = h('div', { class: 'hud passthrough' }, [
       h('div', { class: 'hud-top' }, [panel, this.minimap.el]),
       this.skillBar.statusRow,
@@ -101,7 +103,7 @@ export class Hud {
   insets(): { top: number; bottom: number } {
     const top = this.root.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0;
     const barTop = Math.min(this.actionBar.getBoundingClientRect().top, this.skillBar.el.getBoundingClientRect().top || Infinity);
-    return { top: top * 0.6, bottom: Math.max(0, window.innerHeight - barTop) * 0.8 };
+    return { top: top + 4, bottom: Math.max(0, window.innerHeight - barTop) + 4 };
   }
 
   setPortrait(colors: HumanoidColors): void {
@@ -116,7 +118,7 @@ export class Hud {
     this.banner.replaceChildren(title, ...(subtitle ? [h('small', { text: subtitle })] : []));
     this.banner.classList.add('show');
     window.clearTimeout(this.bannerTimer);
-    this.bannerTimer = window.setTimeout(() => this.banner.classList.remove('show'), 3200);
+    this.bannerTimer = window.setTimeout(() => this.banner.classList.remove('show'), 2400);
   }
 
   pushMessage(text: string, kind: 'info' | 'warn' | 'good' | 'combat' = 'info'): void {

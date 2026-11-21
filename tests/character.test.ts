@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CLASSES, getClass } from '@/data/registry';
 import { ABILITY_KEYS } from '@/data/schema';
-import { armorClass, maxHpFor, maxResourceFor, proficiencyBonus, unlockedSkills } from '@/game/rules/character';
+import { maxHpFor, maxResourceFor, proficiencyBonus, unlockedSkills } from '@/game/rules/character';
+import { derive } from '@/game/rules/derived';
 import { CURRENT_SAVE_VERSION, migrate } from '@/game/save/migrations';
 import { recalcPlayer } from '@/game/state';
 import { OVERLAYS } from '@/gfx/sprites';
@@ -52,7 +53,7 @@ describe('reglas de personaje', () => {
     const m = getClass('mago');
     expect(maxHpFor(g, 5, g.baseStats.CON)).toBeGreaterThan(maxHpFor(m, 5, m.baseStats.CON));
     expect(maxResourceFor(m, 5, m.baseStats)).toBeGreaterThan(maxResourceFor(g, 5, g.baseStats));
-    expect(armorClass(g, g.baseStats)).toBeGreaterThan(armorClass(m, m.baseStats));
+    expect(derive(testState('guerrero').player).ac).toBeGreaterThan(derive(testState('mago').player).ac);
   });
 
   it('competencia y habilidades por nivel', () => {

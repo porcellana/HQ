@@ -6,7 +6,8 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { ClassDef, EnemyDef, TileDef, ZoneDef } from './schema';
+import type { ClassDef, EnemyDef, ItemDef, LootTableDef, Rarity, RarityDef, TileDef, ZoneDef } from './schema';
+import rarityList from './config/rarities';
 import tileList from './config/tiles';
 
 type Module = { default: unknown };
@@ -80,3 +81,20 @@ export const ENEMIES: ReadonlyMap<string, EnemyDef> = collect<EnemyDef>(
 export function getEnemy(id: string): EnemyDef | undefined {
   return ENEMIES.get(id);
 }
+
+// --- Objetos, rarezas y botín --------------------------------------------------
+export const ITEMS: ReadonlyMap<string, ItemDef> = collect<ItemDef>(
+  import.meta.glob('./items/*.{ts,json}', { eager: true }),
+  'objeto',
+);
+export function getItem(id: string): ItemDef | undefined {
+  return ITEMS.get(id);
+}
+
+export const RARITIES: readonly RarityDef[] = rarityList;
+export const RARITY: ReadonlyMap<Rarity, RarityDef> = new Map(rarityList.map((r) => [r.id, r]));
+
+export const LOOT_TABLES: ReadonlyMap<string, LootTableDef> = collect<LootTableDef>(
+  import.meta.glob('./loot_tables/*.{ts,json}', { eager: true }),
+  'tabla de botín',
+);
