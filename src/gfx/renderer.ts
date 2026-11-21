@@ -170,7 +170,8 @@ export class Renderer {
       const label = isGoal ? `★ ${e.label ?? e.to}` : (e.label ?? e.to);
       const pulse = (0.75 + 0.25 * Math.sin(this.time * 4)) * (goalTo && !isGoal ? 0.7 : 1);
       if (sx >= left && sx <= right && sy >= top && sy <= bottom) {
-        this.labelAt(label, sx, sy - TILE * zoom * 0.8, fontPx, pulse, color);
+        // En combate no se rotulan las salidas visibles: taparían a los enemigos.
+        if (!game.inCombat) this.labelAt(label, sx, sy - TILE * zoom * 0.8, fontPx, pulse, color);
         continue;
       }
       // Las puertas de edificios sólo se rotulan cuando se ven (salvo la del objetivo).
@@ -475,10 +476,10 @@ export class Renderer {
     const night = dayNight && outdoor ? nightAmount(game.state.turn) : 0;
     if (night > 0) {
       // Tinte azulado nocturno (sólo exteriores).
-      ctx.fillStyle = `rgba(20,30,80,${(night * 0.28).toFixed(3)})`;
+      ctx.fillStyle = `rgba(20,30,80,${(night * 0.22).toFixed(3)})`;
       ctx.fillRect(camX, camY, camera.viewW, camera.viewH);
     }
-    const dark = Math.max(game.zone.def.darkness ?? 0, night * 0.42);
+    const dark = Math.max(game.zone.def.darkness ?? 0, night * 0.33);
     if (dark <= 0) return;
     const v = game.view;
     const cx = (v.rx + 0.5) * TILE;

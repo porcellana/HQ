@@ -199,7 +199,7 @@ export class App {
           void this.autosave('nueva partida');
           this.hud?.pushMessage(`¡Que empiece la aventura, ${r.name}!`, 'good');
           this.hud?.pushMessage('Toca el mapa para caminar. Las flechas doradas llevan a las salidas.', 'info');
-          this.hud?.pushMessage('Consejo: toca el minimapa (arriba a la derecha) para ir directo a un sitio.', 'info');
+          this.hud?.pushMessage('Tu objetivo sale arriba. ¿Dudas? Menú → Cómo se juega.', 'info');
         },
         () => void this.showMainMenu(),
       ),
@@ -377,9 +377,19 @@ export class App {
     );
   }
 
+  /** Los márgenes del HUD cambian (barra de habilidades, objetivo): se revisan a menudo. */
+  private insetTimer = 0;
+
   private tick(dt: number): void {
     const game = this.game;
     if (!game) return;
+    this.insetTimer -= dt;
+    if (this.insetTimer <= 0 && this.hud) {
+      this.insetTimer = 0.5;
+      const ins = this.hud.insets();
+      const dpr = this.renderer.pixelRatio;
+      this.renderer.setInsets(ins.top * dpr, ins.bottom * dpr);
+    }
     const blocked = !!this.ui.querySelector('.modal-back, .dialog-back');
     if (!this.pauseClose && !this.screen && !blocked) game.update(dt);
     if (this.pendingVictory && !this.pauseClose && !this.screen && !blocked) {

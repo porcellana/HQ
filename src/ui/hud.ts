@@ -102,8 +102,15 @@ export class Hud {
 
   /** Altura en px CSS tapada por el panel superior y la barra de acciones. */
   insets(): { top: number; bottom: number } {
-    const top = this.root.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0;
-    const barTop = Math.min(this.actionBar.getBoundingClientRect().top, this.skillBar.el.getBoundingClientRect().top || Infinity);
+    // Arriba: panel de vida y, si hay, la fila de estados/objetivo.
+    const hudBottom = this.root.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0;
+    const row = this.skillBar.statusRow;
+    const rowBottom = row.childElementCount ? row.getBoundingClientRect().bottom : 0;
+    const top = Math.max(hudBottom, rowBottom);
+    // Abajo: la barra de acciones o, si tiene botones, la de habilidades.
+    const sk = this.skillBar.el;
+    const skTop = sk.childElementCount ? sk.getBoundingClientRect().top : Infinity;
+    const barTop = Math.min(this.actionBar.getBoundingClientRect().top, skTop);
     return { top: top + 4, bottom: Math.max(0, window.innerHeight - barTop) + 4 };
   }
 
