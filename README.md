@@ -16,7 +16,7 @@ Android en vertical (se juega con una mano) y probable en el navegador como PWA.
 | 2 | Creación de personaje, 4 clases y características | ✅ v0.0.2 |
 | 3 | Combate por turnos, enemigos, XP y niveles | ✅ v0.0.3 |
 | 4 | Inventario, equipo y botín | ✅ v0.0.4 |
-| 5 | Pueblos, tiendas, comercio y misiones | ⏳ |
+| 5 | Pueblos, tiendas, comercio y misiones | ✅ v0.0.5 |
 | 6 | Mazmorras procedurales, minería y jefes | ⏳ |
 | 7 | Historia principal, pulido y APK final (v0.1.0) | ⏳ |
 
@@ -60,12 +60,19 @@ Otros comandos:
 - Toca a un enemigo lejano para ver su nivel, vida y peligro. El número sobre su
   barra de vida es su nivel (rojo con ☠ = mortal para ti).
 - En PC: flechas/WASD para moverse, espacio para esperar, 1-5 habilidades, F huir,
-  C ficha, I mochila, Q poción, Esc pausa.
+  C ficha, I mochila, J diario, Q poción, Esc pausa.
 - Las casillas que brillan en dorado son **salidas** a otras zonas; si están fuera de la
   pantalla, una **flecha dorada** en el borde indica hacia dónde ir.
 - **Toca el minimapa** para caminar directamente a ese punto (o a la salida más cercana).
 - **Mochila**: equipo, objetos y comparación. 🧪 en la barra = beber poción de curación.
 - El botín cae al suelo (brilla con el color de su rareza): písalo para recogerlo.
+- **PNJ**: tócalos para hablar (si están lejos, caminas hasta ellos). ❗ = tiene una
+  misión para ti; ❓ = puedes entregarle una misión.
+- **Diario de misiones**: en la Ficha (o tecla J). La misión principal en curso se ve
+  arriba, bajo el panel de vida.
+- **Posada**: descansar cura todo y guarda. **Templo**: sanación por un donativo; si
+  caes, despiertas en el último templo donde pediste sanación (al principio, la capilla
+  de la aldea).
 - **Exportar/Importar partida** (en Ajustes): copia tu partida como código de texto para
   pasarla entre la web y el APK, o guardar una copia de seguridad.
 
@@ -328,6 +335,90 @@ nivel del enemigo.
 
 En la clase, `startingItems: [{ item: 'espada_larga', equip: true }, { item: 'pocion_curacion', qty: 2 }]`.
 
+### Añadir un pueblo, un lugar (interior) y un PNJ
+
+1. **Pueblo o ciudad**: igual que cualquier zona (`src/data/towns/`). Las puertas de los
+   edificios son salidas con dígito y `door: true`:
+   ```ts
+   exits: {
+     '3': { to: 'mi_tienda', arrive: '1', label: 'Tienda', tile: 'puerta', door: true },
+   },
+   ```
+2. **Interior**: usa el ayudante `interior()` de `src/data/helpers.ts` (mira
+   `aldea_interiores.ts`). La salida `1` del interior vuelve a la puerta del pueblo:
+   ```ts
+   interior('mi_tienda', 'Tienda de Rufo', 'mi_pueblo', '3', [
+     '###########',
+     '#EEEEEEEEE#',
+     '#:::::::::#',
+     '#KKKKKK:::#',
+     '#:::::::::#',
+     '#####1#####',
+   ]),
+   ```
+   Tiles de interior: `:` madera, `r` alfombra, `K` mostrador, `O` mesa, `X` barril,
+   `E` estantería, `A` altar, `H` chimenea, `Z` cama, `U` yunque, `D` muelle, `L` farola.
+   En un templo, `@` marca dónde reapareces al caer.
+3. **PNJ** (`src/data/npcs/`): zona, casilla (`x`, `y` desde 0, transitable), aspecto y
+   diálogo. Lo más cómodo es `npcDialog()`:
+   ```ts
+   {
+     id: 'rufo', name: 'Rufo', title: 'Tendero', zone: 'mi_tienda', x: 3, y: 2,
+     look: { cloth: '#3a6a4a', clothDark: '#1f3a2a', pants: '#3a3028', hair: '#3a2418' },
+     dialog: npcDialog({
+       greeting: '¡Bienvenido!',
+       shop: 'tienda_rufo',          // abre una tienda
+       // inn: 15,                   // posada: descansar por 15 de oro
+       // temple: 4,                 // templo: sanación por 4 × nivel de oro
+       quests: true,                 // muestra sus misiones
+       rumors: ['Dicen que...', 'He oído que...'],
+     }),
+   },
+   ```
+   Para un diálogo propio escribe los nodos a mano: `dialog: { inicio: { text, options: [...] } }`.
+   Cada opción puede ir a otro nodo (`goto`) o hacer algo (`action`: `shop`, `inn`,
+   `temple`, `quests`, `flag`, `end`), y mostrarse sólo si se cumple `ifFlag` o `ifQuest`.
+   Un PNJ tras un mostrador se puede hablar a 2 casillas.
+
+### Añadir una tienda
+
+En `src/data/shops/`:
+
+```ts
+{ id: 'tienda_rufo', name: 'Tienda de Rufo', priceMult: 1.05, restockTurns: 250, level: 2,
+  buys: ['consumible', 'material'],            // qué compra (omitir = todo)
+  stock: [
+    { item: 'pocion_curacion', qty: [3, 6] },
+    { item: 'pico_hierro', chance: 0.5 },
+    { pool: 'armas', count: [1, 2] },          // equipo aleatorio con rareza
+  ] }
+```
+
+- Precio de compra = valor del objeto × `priceMult` × (1 − 2 % por punto de modificador
+  de CAR, máx. −10 %).
+- Precio de venta = valor × `priceMult` × (35 % + 3 % por punto de CAR, entre 20 % y 50 %).
+- Lo que vendes queda a la venta en la tienda (puedes recomprarlo).
+- El stock se renueva cada `restockTurns` turnos (dormir en una posada pasa 100 turnos).
+
+### Añadir una misión
+
+En `src/data/quests/` (principal, secundarias o encargos del gremio):
+
+```ts
+{ id: 'cazar_ratas', name: 'Ratas', kind: 'secundaria', giver: 'rufo',
+  description: 'Rufo tiene ratas en el almacén.',
+  objectives: [{ type: 'kill', enemy: 'rata_gigante', count: 5, label: 'Mata ratas' }],
+  completeText: '¡Gracias!',
+  rewards: { xp: 50, gold: 20, items: [{ item: 'pocion_curacion', qty: 1 }] } }
+```
+
+- Objetivos: `kill` (`enemy` o `family`), `collect` (se consumen al entregar), `visit`
+  (zona) y `talk` (PNJ).
+- `turnIn`: a quién se entrega (por defecto, a quien la da). `requires`: misiones previas.
+  `minLevel`. `rewards.flag`: pone una bandera de historia.
+- `kind: 'repetible'` + `cooldownTurns`: vuelve a estar disponible tras ese tiempo.
+- Los PNJ con misión nueva muestran ❗ y con misión para entregar, ❓.
+
 *(Las secciones para objetos, enemigos, botín, misiones y mazmorras se
 añadirán a medida que lleguen sus hitos.)*
 
@@ -387,5 +478,13 @@ añadirán a medida que lleguen sus hitos.)*
   Hito 7 completo será la **v0.1.0**.
 - La interfaz deja libre el centro: la cámara centra al héroe en el hueco entre el
   HUD superior y la barra de botones inferior.
+- **Mundo del Hito 5**: Aldea de Brumaroja (alcalde, capilla, herrería, tienda y
+  taberna-posada), Bosque Sombrío al norte, Paso Gris al sur y la ciudad de Puerto
+  Ceniza (gremio, templo, Forja del Ancla, alquimista, posada y mercado). Para no repetir
+  lugares, la aldea tiene taberna-posada y capilla, y el gremio y el alquimista están en
+  la ciudad.
+- Los PNJ están quietos en su sitio (más fácil encontrarlos en móvil).
+- El stock de las tiendas y el estado de las misiones se guardan en la partida
+  (guardado v4). El botín del suelo no se guarda.
 - Ajustes: joystick, mano dominante (lado del joystick y los botones), velocidad,
   tamaño de interfaz, cuadrícula y vibración.

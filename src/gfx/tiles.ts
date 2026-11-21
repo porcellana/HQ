@@ -277,6 +277,16 @@ const lamp: Gen = (c, r) => {
   px(c, 7, 3, PAL.white, 2, 2);
 };
 
+/** Farola sobre adoquines (calles de ciudad). */
+const streetLamp: Gen = (c, r) => {
+  cobble(c, r);
+  px(c, 7, 6, PAL.black, 2, 9);
+  px(c, 6, 14, PAL.black, 4, 1);
+  px(c, 5, 1, PAL.black, 6, 6);
+  px(c, 6, 2, PAL.goldL, 4, 4);
+  px(c, 7, 3, PAL.white, 2, 2);
+};
+
 const grave: Gen = (c, r) => {
   grass(c, r);
   px(c, 4, 13, PAL.grassD, 8, 2);
@@ -411,7 +421,7 @@ const dock: Gen = (c, r) => {
 };
 
 export const TILE_GENERATORS: Readonly<Record<string, Gen>> = {
-  woodFloor, carpet, counter, table, barrel, shelf, altar, hearth, bed, anvil, dock,
+  streetLamp, woodFloor, carpet, counter, table, barrel, shelf, altar, hearth, bed, anvil, dock,
   grass, flowers, dirt, cobble, stoneFloor, stoneWall, water, tree, pine, bush, rock,
   roof: roofGen(PAL.roofD, PAL.roof, PAL.roofL),
   roofSlate: roofGen(PAL.slateD, PAL.slate, PAL.slateL),

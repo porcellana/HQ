@@ -14,8 +14,11 @@ nuevo con un `export default` (objeto o lista).
 | `enemies/`     | Enemigos y jefes                            | Hito 3           |
 | `items/`       | Armas, armaduras, consumibles, materiales   | Hito 4           |
 | `loot_tables/` | Tablas de botín                             | Hito 4           |
-| `quests/`      | Misiones principales y secundarias          | Hito 5           |
+| `quests/`      | Misiones principales, secundarias y repetibles | Hito 5        |
+| `npcs/`        | PNJ: posición, aspecto y diálogo            | Hito 5           |
+| `shops/`       | Tiendas: stock, precios y renovación        | Hito 5           |
 | `dungeons/`    | Mazmorras procedurales y salas de jefe      | Hito 6           |
 
-Los tipos de cada cosa están en `schema.ts`. Usa `satisfies TipoDef` en los
+`helpers.ts` contiene ayudantes (`interior()`, `npcDialog()`); no es una carpeta de
+datos. Los tipos de cada cosa están en `schema.ts`. Usa `satisfies TipoDef` en los
 archivos `.ts` para que el editor te marque errores al escribir.

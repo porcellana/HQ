@@ -2,6 +2,25 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.0.5 · 2026-11-21 — Hito 5: pueblos, comercio y misiones
+
+- Interiores: las puertas de la aldea llevan a la casa del alcalde, la capilla, la
+  herrería, la tienda y la taberna-posada La Jarra Roja.
+- Nueva ciudad, Puerto Ceniza (gremio de aventureros, templo, Forja del Ancla,
+  alquimista, posada El Faro y mercado en la plaza), unida a la aldea por el Paso Gris,
+  una zona salvaje de nivel 3 con encuentros (lobos, goblins, arañas, esqueletos y
+  cultistas).
+- 14 PNJ con diálogos en datos (saludo, rumores, misiones, servicios) y marcas ❗/❓.
+- Tiendas con stock propio que se renueva con el tiempo, precios distintos por ciudad,
+  compra y venta con descuento y mejor precio según el carisma, y ficha con comparación.
+- Posada (descansar cura todo, pasa la noche y guarda) y templo (sanación por donativo;
+  reapareces en el último templo).
+- Misiones: 2 de la trama principal (contra Velkar el Nigromante), 5 secundarias y 4
+  encargos repetibles del gremio. Objetivos de cazar, recoger, visitar y hablar.
+- Diario de misiones (en la Ficha o tecla J) y misión en curso visible en el HUD.
+- 12 tipos de casilla nuevos para interiores y la ciudad.
+- Guardado v4 con migración (misiones y tiendas). 212 tests.
+
 ## v0.0.4 · 2026-11-21 — Hito 4: inventario, equipo y botín
 
 - Mochila de 24 huecos con pilas de consumibles y materiales.

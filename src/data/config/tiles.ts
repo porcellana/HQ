@@ -39,6 +39,7 @@ const tiles: TileDef[] = [
   { id: 'chimenea', char: 'H', name: 'Chimenea', walkable: false, blocksSight: true, sprite: 'hearth', minimap: '#e0742c' },
   { id: 'cama', char: 'Z', name: 'Cama', walkable: false, blocksSight: false, sprite: 'bed', minimap: '#8a3a3a' },
   { id: 'yunque', char: 'U', name: 'Yunque', walkable: false, blocksSight: false, sprite: 'anvil', minimap: '#5e6470' },
+  { id: 'farola', char: 'L', name: 'Farola', walkable: false, blocksSight: false, sprite: 'streetLamp', minimap: '#d8b050' },
   { id: 'muelle', char: 'D', name: 'Muelle', walkable: true, blocksSight: false, sprite: 'dock', minimap: '#7a5a38' },
 ];
 
