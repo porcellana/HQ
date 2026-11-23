@@ -16,7 +16,7 @@ export default [
     look: { shape: 'esqueleto', main: '#c8c0a8', dark: '#7a7260', accent: '#6a4a2a', eye: '#a040ff' }, lootTable: 'no_muerto',
   },
   {
-    id: 'zombi', name: 'Zombi', family: 'no-muerto', level: 4, hp: '5d8+10', ac: 8, speed: 1, slow: true, sight: 5, ai: 'melee',
+    id: 'zombi', name: 'Zombi', family: 'no-muerto', level: 4, hp: '5d8+10', ac: 8, speed: 1, slow: true, movement: 2, sight: 5, ai: 'melee',
     attack: { name: 'Zarpazo', toHit: 4, dice: '1d8+2', damageType: 'contundente', range: 1 },
     vulnerable: ['sagrado', 'fuego'], immune: ['veneno', 'sangrado'],
     xp: 70, description: 'Lento pero incansable: actúa un turno de cada dos.',

@@ -30,6 +30,8 @@ export interface Enemy {
   flashT: number;
   /** Para enemigos lentos/ralentizados: alterna turnos. */
   skipNext: boolean;
+  /** Casillas pendientes de animar (movimiento de varias casillas por turno). */
+  trail?: Array<{ x: number; y: number }>;
 }
 
 let nextUid = 1;

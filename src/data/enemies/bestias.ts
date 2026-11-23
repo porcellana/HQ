@@ -8,7 +8,7 @@ export default [
     look: { shape: 'rata', main: '#6a5040', dark: '#3e2e24', accent: '#d08080', eye: '#e03030' }, lootTable: 'bestia',
   },
   {
-    id: 'lobo', name: 'Lobo', family: 'bestia', level: 2, hp: '2d8+2', ac: 13, speed: 2, sight: 8, ai: 'skirmisher',
+    id: 'lobo', name: 'Lobo', family: 'bestia', level: 2, hp: '2d8+2', ac: 13, speed: 2, movement: 7, sight: 8, ai: 'skirmisher',
     attack: { name: 'Mordisco', toHit: 4, dice: '2d4', damageType: 'perforante', range: 1 },
     xp: 35, description: 'Rápido: recorre dos casillas por turno.',
     look: { shape: 'lobo', main: '#6a6a72', dark: '#3e3e46', accent: '#d8d0c0', eye: '#f0c040' }, lootTable: 'bestia',

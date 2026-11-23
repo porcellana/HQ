@@ -7,12 +7,13 @@
  *     → inicio del turno del jugador (estados, regeneración, encuentros)
  * El combate ocurre en el mismo mapa, sin cambiar de pantalla.
  */
-import { COMPANIONS, NPCS, ORES, TRAPS, getClass, getEnemy, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
+import { COMPANIONS, NPCS, ORES, TRAPS, getBackground, getClass, getEnemy, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
 import type { CompanionDef, CompanionEvent, DamageType, DialogNode, EnemySpell, NpcDef, QuestDef, SkillDef, SkillEffect, SkillKey, StatusApply, StatusId, ZoneFeature } from '@/data/schema';
 import { Emitter } from '@/engine/events';
 import { findPath, type Point } from '@/engine/pathfinding';
 import { Rng, hashString } from '@/engine/rng';
 import { createEnemy, enemySave, type Enemy } from './combat/entities';
+import { advanceWalker, pushStep } from './combat/walk';
 import {
   applyDefenses,
   attackRoll,
@@ -86,6 +87,7 @@ export interface Ally {
   bumpDx: number;
   bumpDy: number;
   flashT: number;
+  trail?: Point[];
 }
 
 /** Mascota en el mapa (sus datos se guardan en state.pets.active). */
@@ -99,6 +101,7 @@ export interface PetUnit {
   bumpDx: number;
   bumpDy: number;
   flashT: number;
+  trail?: Point[];
 }
 
 /** Aviso de la mascota para la interfaz (subida de nivel, movimiento nuevo, evolución). */
@@ -227,6 +230,9 @@ export interface PlayerCombat {
 }
 
 const ENEMY_DELAY = 0.2;
+/** Casillas por turno en combate del compañero y de la mascota. */
+const ALLY_MOVE = 5;
+const PET_MOVE = 6;
 /** Pausa entre acciones con la velocidad «Lenta». */
 const SLOW_DELAY = 0.9;
 /** Probabilidad de que un encuentro sea una criatura salvaje (si la zona tiene). */
@@ -291,6 +297,15 @@ export class Game {
   currentActor: Actor | null = null;
   /** Acción «Defender»: +2 CA hasta el comienzo de tu próximo turno. */
   defending = false;
+  /**
+   * ECONOMÍA DEL TURNO EN COMBATE (estilo D&D 5e / Baldur's Gate 3):
+   * en tu turno tienes `turnMove` casillas de movimiento y UNA acción.
+   * Moverte no termina el turno; la acción sólo se puede usar una vez.
+   */
+  turnActive = false;
+  turnMove = 0;
+  turnMoveMax = 0;
+  actionUsed = false;
   /** Modo «Atacar»: se resaltan los enemigos a tu alcance hasta que tocas uno. */
   attackMode = false;
   /** Mensajes del actor en curso (para el cartel de acción). */
@@ -400,6 +415,95 @@ export class Game {
     return this.derived.toHit + this.buffTotal('ataque');
   }
 
+  /** Casillas de movimiento por turno: clase + talentos + trasfondo (ralentizado: la mitad). */
+  get movementBase(): number {
+    const p = this.state.player;
+    let m = this.cls.movement ?? 5;
+    for (const t of this.talentList('movement')) m += t.amount;
+    m += getBackground(p.background ?? '')?.movement ?? 0;
+    if (hasStatus(this.combat.statuses, 'ralentizado')) m = Math.floor(m / 2);
+    return Math.max(1, m);
+  }
+
+  /** ¿Estamos en un turno de combate con movimiento + acción? */
+  get combatTurn(): boolean {
+    return this.turnActive && this.phase === 'player' && this.inCombat;
+  }
+
+  /** Mensaje si ya gastaste la acción de este turno (null si puedes actuar). */
+  actionBlocked(): string | null {
+    return this.combatTurn && this.actionUsed ? 'Ya has usado tu acción este turno: muévete o pulsa «Terminar turno».' : null;
+  }
+
+  /**
+   * Tras usar la acción: en combate puedes seguir moviéndote (el turno acaba
+   * solo si no te queda nada que hacer); fuera de combate pasa el turno.
+   */
+  private afterAction(): void {
+    if (this.isDead || this.phase !== 'player') return;
+    if (this.combatTurn) {
+      this.actionUsed = true;
+      this.autoEndIfDone();
+      return;
+    }
+    this.endPlayerTurn();
+  }
+
+  /** Termina el turno solo si ya usaste la acción y no puedes moverte más. */
+  private autoEndIfDone(): void {
+    if (!this.combatTurn) return;
+    if (this.actionUsed && (this.turnMove <= 0 || this.reachableTiles().size === 0)) this.endPlayerTurn();
+  }
+
+  /** Casillas alcanzables con el movimiento que te queda (clave y*ancho+x → coste). */
+  reachableTiles(): Map<number, number> {
+    const out = new Map<number, number>();
+    if (!this.combatTurn || this.turnMove <= 0) return out;
+    const z = this.zone;
+    const start = this.playerPos;
+    const ok = (x: number, y: number) => this.playerCanWalk(x, y) && !this.allyAt(x, y) && !this.petAt(x, y);
+    let frontier: Point[] = [start];
+    const seen = new Set<number>([start.y * z.width + start.x]);
+    for (let step = 1; step <= this.turnMove && frontier.length; step++) {
+      const next: Point[] = [];
+      for (const c of frontier) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const x = c.x + dx;
+            const y = c.y + dy;
+            const k = y * z.width + x;
+            if (seen.has(k) || !ok(x, y)) continue;
+            // Sin cortar esquinas, igual que el A*.
+            if (dx && dy && (!ok(c.x + dx, c.y) || !ok(c.x, c.y + dy))) continue;
+            seen.add(k);
+            out.set(k, step);
+            next.push({ x, y });
+          }
+        }
+      }
+      frontier = next;
+    }
+    return out;
+  }
+
+  /** Acción «Correr»: gastas la acción y ganas otro tanto de movimiento. */
+  dash(): string | null {
+    if (!this.canAct) return 'Espera a tu turno.';
+    if (!this.combatTurn) return 'Sólo en combate.';
+    const blocked = this.actionBlocked();
+    if (blocked) return blocked;
+    this.actionUsed = true;
+    this.turnMove += this.movementBase;
+    this.turnMoveMax += this.movementBase;
+    this.targeting = null;
+    this.attackMode = false;
+    const p = this.playerPos;
+    this.floatText(p.x, p.y - 0.4, `👣 +${this.movementBase}`, '#9ad0ff');
+    this.msg(`Corres: +${this.movementBase} casillas este turno.`, 'good');
+    return null;
+  }
+
   /** CD de los hechizos del jugador con una característica. */
   spellDC(stat: keyof GameState['player']['stats']): number {
     return 8 + proficiencyBonus(this.state.player.level) + abilityModifier(this.derived.stats[stat]);
@@ -465,10 +569,16 @@ export class Game {
       const p = this.playerPos;
       const range = this.derived.weapon.range;
       if (dist(p.x, p.y, enemy.x, enemy.y) <= range && this.los(p, enemy)) {
+        const blocked = this.actionBlocked();
+        if (blocked) {
+          this.describeEnemy(enemy);
+          this.msg(blocked, 'warn');
+          return;
+        }
         this.cancelPath();
         this.attackMode = false;
         this.playerAttack(enemy, {});
-        this.endPlayerTurn();
+        this.afterAction();
         return;
       }
       this.describeEnemy(enemy);
@@ -495,8 +605,15 @@ export class Game {
       this.cancelPath();
       return;
     }
-    // En combate, cada toque mueve una sola casilla (un turno).
-    if (this.inCombat) path.length = Math.min(path.length, 1);
+    // En combate te mueves hasta lo que te quede de movimiento este turno.
+    if (this.combatTurn) {
+      if (this.turnMove <= 0) {
+        this.msg(this.actionUsed ? 'Sin movimiento ni acción: termina el turno.' : 'No te queda movimiento: usa tu acción o termina el turno.', 'warn');
+        this.cancelPath();
+        return;
+      }
+      path.length = Math.min(path.length, this.turnMove);
+    }
     this.view.path = path;
     this.view.target = { x, y };
   }
@@ -520,11 +637,13 @@ export class Game {
       this.attackMode = false;
       return 'Ningún enemigo a tu alcance: acércate tocando el suelo.';
     }
+    const blocked = this.actionBlocked();
+    if (blocked) return blocked;
     if (targets.length === 1) {
       this.attackMode = false;
       this.cancelPath();
       this.playerAttack(targets[0]!, {});
-      this.endPlayerTurn();
+      this.afterAction();
       return null;
     }
     this.attackMode = !this.attackMode;
@@ -535,6 +654,11 @@ export class Game {
   /** Acción «Defender»: +2 CA hasta tu próximo turno. */
   defend(): void {
     if (!this.canAct) return;
+    const blocked = this.actionBlocked();
+    if (blocked) {
+      this.msg(blocked, 'warn');
+      return;
+    }
     this.cancelPath();
     this.targeting = null;
     this.attackMode = false;
@@ -542,7 +666,7 @@ export class Game {
     const p = this.playerPos;
     this.floatText(p.x, p.y - 0.4, '🛡 +2 CA', '#9ad0ff');
     this.msg('Te pones a la defensiva (+2 CA hasta tu próximo turno).', 'good');
-    this.endPlayerTurn();
+    this.afterAction();
   }
 
   /** Paso a paso: continuar con el siguiente actor. */
@@ -605,6 +729,11 @@ export class Game {
   /** Elegir una habilidad desde la barra. Las de objetivo esperan a que toques el mapa. */
   selectSkill(skill: SkillDef): void {
     if (!this.canAct) return;
+    const blocked = this.actionBlocked();
+    if (blocked) {
+      this.msg(blocked, 'warn');
+      return;
+    }
     if (this.targeting?.id === skill.id) {
       this.targeting = null;
       return;
@@ -687,10 +816,10 @@ export class Game {
     const v = this.view;
     v.bumpT = Math.max(0, v.bumpT - dt * 5);
     v.flashT = Math.max(0, v.flashT - dt * 4);
+    if (this.ally) advanceWalker(this.ally, dt);
+    if (this.pet) advanceWalker(this.pet, dt);
     for (const e of this.enemies) {
-      const k = Math.min(1, dt * 14);
-      e.rx += (e.x - e.rx) * k;
-      e.ry += (e.y - e.ry) * k;
+      advanceWalker(e, dt);
       e.bumpT = Math.max(0, e.bumpT - dt * 5);
       e.flashT = Math.max(0, e.flashT - dt * 4);
     }
@@ -707,17 +836,24 @@ export class Game {
       const target = { x: pos.x + this.heldDir.dx, y: pos.y + this.heldDir.dy };
       const enemy = this.enemyAt(target.x, target.y);
       if (enemy) {
-        // Empujar el joystick contra un enemigo = atacarlo.
+        // Empujar el joystick contra un enemigo = atacarlo (si te queda la acción).
+        const blocked = this.actionBlocked();
+        if (blocked) {
+          this.msg(blocked, 'warn');
+          this.heldDir = null;
+          return;
+        }
         this.playerAttack(enemy, {});
-        this.endPlayerTurn();
+        this.afterAction();
         return;
       }
+      if (this.combatTurn && this.turnMove <= 0) return;
       next = this.resolveHeldStep(pos, this.heldDir);
       if (!next) return;
       v.path = [next];
     }
     if (!next) return;
-    if (!this.playerCanWalk(next.x, next.y)) {
+    if (!this.playerCanWalk(next.x, next.y) || (this.combatTurn && this.turnMove <= 0)) {
       this.cancelPath();
       return;
     }
@@ -804,7 +940,18 @@ export class Game {
     const exit = this.zone.exitAt(v.to.x, v.to.y);
     if (exit && !prevExit) {
       this.state.turn++;
+      this.turnActive = false;
       this.useExit(exit);
+      return;
+    }
+    // En combate, moverse gasta casillas pero no termina el turno.
+    if (this.combatTurn) {
+      this.turnMove = Math.max(0, this.turnMove - 1);
+      if (this.turnMove <= 0) {
+        this.cancelPath();
+        this.heldDir = null;
+        this.autoEndIfDone();
+      }
       return;
     }
     this.endPlayerTurn();
@@ -813,6 +960,9 @@ export class Game {
   /** Fin del turno del jugador: cuentas atrás y turno de los enemigos. */
   endPlayerTurn(): void {
     if (this.phase === 'dead') return;
+    // Al acabar un turno de combate se descarta la ruta pendiente.
+    if (this.turnActive) this.cancelPath();
+    this.turnActive = false;
     this.state.turn++;
     this.targeting = null;
     const c = this.combat;
@@ -941,14 +1091,11 @@ export class Game {
       this.endPlayerTurn();
       return;
     }
-    if (hasStatus(c.statuses, 'ralentizado')) {
-      c.skipNext = !c.skipNext;
-      if (c.skipNext) {
-        this.msg('Ralentizado: te cuesta moverte...', 'warn');
-        this.endPlayerTurn();
-        return;
-      }
-    }
+    // Turno de combate: movimiento + 1 acción (ralentizado: la mitad de movimiento).
+    this.turnActive = this.inCombat;
+    this.actionUsed = false;
+    this.turnMove = this.turnMoveMax = this.turnActive ? this.movementBase : 0;
+    if (this.turnActive && hasStatus(c.statuses, 'ralentizado')) this.msg(`Ralentizado: sólo ${this.turnMove} casillas este turno.`, 'warn');
   }
 
   // ==================================================================== zonas
@@ -1304,6 +1451,10 @@ export class Game {
     if (use.bind) return this.bindPet();
     const combat = this.inCombat;
     if (use.outOfCombatOnly && combat) return 'No puedes comer en pleno combate.';
+    if (combat) {
+      const blocked = this.actionBlocked();
+      if (blocked) return blocked;
+    }
     const pos = this.playerPos;
     if (use.heal) {
       const before = p.hp;
@@ -1327,7 +1478,7 @@ export class Game {
     }
     this.fx.push({ kind: 'burst', x: pos.x, y: pos.y, radius: 0.8, color: '#60e070', t: 0, life: 0.4 });
     removeQty(p, uid, 1);
-    if (combat) this.endPlayerTurn();
+    if (combat) this.afterAction();
     return null;
   }
 
@@ -1419,7 +1570,7 @@ export class Game {
     if (skill.cooldown > 0) this.combat.cooldowns[skill.id] = skill.cooldown + 1;
     this.msg(`${skill.icon} ${skill.name}`, 'combat');
     for (const eff of skill.effects) this.applySkillEffect(skill, eff, center);
-    this.endPlayerTurn();
+    this.afterAction();
   }
 
   private applySkillEffect(skill: SkillDef, eff: SkillEffect, center: Point): void {
@@ -1562,7 +1713,7 @@ export class Game {
       return;
     }
     this.msg('No consigues escapar...', 'warn');
-    this.endPlayerTurn();
+    this.afterAction();
   }
 
   // ================================================================ enemigos
@@ -1593,10 +1744,6 @@ export class Game {
     if (consumeStun(e.statuses)) {
       this.floatText(e.x, e.y - 0.4, '💫', '#f0e060');
       return true;
-    }
-    if (e.def.slow || hasStatus(e.statuses, 'ralentizado')) {
-      e.skipNext = !e.skipNext;
-      if (e.skipNext) return false;
     }
     for (const k of Object.keys(e.cooldowns)) e.cooldowns[k] = Math.max(0, (e.cooldowns[k] ?? 0) - 1);
 
@@ -1632,40 +1779,65 @@ export class Game {
     const inAtkRange = td <= atk.range && (atk.range === 1 || this.los(e, tgt));
     const ai = e.def.ai;
 
-    // Hechizos (casters y jefes)
-    if (ai === 'caster' || ai === 'boss') {
+    // Hechizos (casters y jefes) desde donde están
+    const trySpells = (): boolean => {
+      if (ai !== 'caster' && ai !== 'boss') return false;
       for (const sp of e.def.spells ?? []) {
         if ((e.cooldowns[sp.id] ?? 0) > 0) continue;
-        if (this.tryEnemySpell(e, sp, d)) {
+        if (this.tryEnemySpell(e, sp, dist(e.x, e.y, p.x, p.y))) {
           e.cooldowns[sp.id] = sp.cooldown + 1;
           return true;
         }
       }
-    }
-    // Arqueros: si estás pegado, intentan alejarse
-    if (ai === 'ranged' && d === 1 && this.rng.chance(0.3) && this.stepAway(e)) return true;
-    if (inAtkRange) {
+      return false;
+    };
+    const attackTarget = () => {
       if (tgt.pet) this.enemyAttackPet(e);
       else if (tgt.ally) this.enemyAttackAlly(e);
       else this.enemyAttack(e);
+    };
+    const canHit = () => {
+      const dd = dist(e.x, e.y, tgt.x, tgt.y);
+      return dd <= atk.range && (atk.range === 1 || this.los(e, tgt));
+    };
+    if (trySpells()) return true;
+
+    // MOVIMIENTO del turno (casillas) y luego UNA acción.
+    let budget = this.enemyMovement(e);
+    let moved = false;
+    // Arqueros pegados a ti: a veces retroceden un par de casillas antes de disparar.
+    if (ai === 'ranged' && td === 1 && this.rng.chance(0.4)) {
+      for (let i = 0; i < Math.min(2, budget) && this.stepAway(e); i++) {
+        budget--;
+        moved = true;
+      }
+    }
+    if (inAtkRange && !moved) {
+      attackTarget();
       return true;
     }
-    // Casters: mantienen la distancia si el hechizo se recarga
-    if (ai === 'caster' && d <= 4 && d > 1) return false;
-    // Acercarse (skirmisher: 2 pasos)
-    const steps = Math.max(1, e.def.speed);
-    let moved = false;
-    for (let i = 0; i < steps; i++) {
-      if (dist(e.x, e.y, tgt.x, tgt.y) <= atk.range && (atk.range === 1 || this.los(e, tgt))) break;
+    // Casters: si el hechizo se recarga, mantienen la distancia.
+    if (ai === 'caster' && d <= 4 && d > 1 && !moved) return false;
+    while (budget > 0 && !canHit()) {
       if (!this.approach(e, tgt)) break;
+      budget--;
       moved = true;
     }
-    if (moved && ai === 'skirmisher' && dist(e.x, e.y, tgt.x, tgt.y) <= 1) {
-      if (tgt.pet) this.enemyAttackPet(e);
-      else if (tgt.ally) this.enemyAttackAlly(e);
-      else this.enemyAttack(e);
+    // Tras moverse: hechizo si ya alcanza, o ataque si llega.
+    if (moved && trySpells()) return true;
+    if (canHit()) {
+      attackTarget();
+      return true;
     }
     return moved;
+  }
+
+  /** Casillas por turno de un enemigo (lentos y ralentizados: la mitad). */
+  enemyMovement(e: Enemy): number {
+    let m = e.def.movement ?? (e.def.speed >= 2 ? 7 : 4);
+    if (e.def.slow && e.def.movement === undefined) m = Math.floor(m / 2);
+    if (hasStatus(e.statuses, 'ralentizado')) m = Math.floor(m / 2);
+    return Math.max(1, m);
   }
 
   private tryEnemySpell(e: Enemy, sp: EnemySpell, d: number): boolean {
@@ -1853,6 +2025,7 @@ export class Game {
     if (to.x !== e.x) e.facing = to.x > e.x ? 'right' : 'left';
     e.x = to.x;
     e.y = to.y;
+    pushStep(e, to);
     return true;
   }
 
@@ -2025,13 +2198,18 @@ export class Game {
   /** Usar un cofre, una veta o una trampa conocida (estando al lado). Gasta el turno. */
   interact(f: ZoneFeature): void {
     if (!this.canAct) return;
+    const blocked = this.actionBlocked();
+    if (blocked) {
+      this.msg(blocked, 'warn');
+      return;
+    }
     const p = this.playerPos;
     if (f.x !== p.x) this.view.facing = f.x > p.x ? 'right' : 'left';
     if (f.kind === 'cofre') this.openChest(f);
     else if (f.kind === 'mineral') {
       if (!this.mine(f)) return;
     } else this.disarmTrap(f);
-    if (!this.isDead) this.endPlayerTurn();
+    if (!this.isDead) this.afterAction();
   }
 
   private openChest(f: Extract<ZoneFeature, { kind: 'cofre' }>): void {
@@ -2420,12 +2598,25 @@ export class Game {
       .sort((x, y) => dist(x.x, x.y, a.x, a.y) - dist(y.x, y.y, a.x, a.y));
     const target = foes[0];
     if (target) {
-      const d = dist(a.x, a.y, target.x, target.y);
-      if (d <= def.attack.range) {
+      const canHit = () => {
+        const dd = dist(a.x, a.y, target.x, target.y);
+        return dd <= def.attack.range && (def.attack.range === 1 || this.los(a, target));
+      };
+      if (canHit()) {
         this.allyAttack(target);
         return true;
       }
-      return this.stepAllyTowards(target, true);
+      // Se mueve hasta ALLY_MOVE casillas y, si llega, ataca en el mismo turno.
+      let moved = false;
+      for (let i = 0; i < ALLY_MOVE && !canHit(); i++) {
+        if (!this.stepAllyTowards(target, true)) break;
+        moved = true;
+      }
+      if (canHit()) {
+        this.allyAttack(target);
+        return true;
+      }
+      return moved;
     }
     // Seguir al jugador
     const dp = dist(a.x, a.y, p.x, p.y);
@@ -2449,6 +2640,7 @@ export class Game {
     if (next.x !== a.x) a.facing = next.x > a.x ? 'right' : 'left';
     a.x = next.x;
     a.y = next.y;
+    pushStep(a, next);
     return true;
   }
 
@@ -2578,12 +2770,25 @@ export class Game {
     if (target) {
       const move = ordered && ordered.kind === 'daño' ? ordered : this.pickDamageMove(target);
       if (move) {
-        const d = dist(u.x, u.y, target.x, target.y);
-        if (d <= move.range && (move.range === 1 || this.los(u, target))) {
+        const canHit = () => {
+          const dd = dist(u.x, u.y, target.x, target.y);
+          return dd <= move.range && (move.range === 1 || this.los(u, target));
+        };
+        if (canHit()) {
           this.usePetMove(move, target);
           return true;
         }
-        return this.stepPetTowards(target, true);
+        // Se mueve hasta PET_MOVE casillas y, si llega, usa el movimiento.
+        let moved = false;
+        for (let i = 0; i < PET_MOVE && !canHit(); i++) {
+          if (!this.stepPetTowards(target, true)) break;
+          moved = true;
+        }
+        if (canHit()) {
+          this.usePetMove(move, target);
+          return true;
+        }
+        return moved;
       }
     }
     // Seguir al jugador
@@ -2715,6 +2920,7 @@ export class Game {
     if (next.x !== u.x) u.facing = next.x > u.x ? 'right' : 'left';
     u.x = next.x;
     u.y = next.y;
+    pushStep(u, next);
     return true;
   }
 
@@ -2817,6 +3023,8 @@ export class Game {
    */
   bindPet(): string | null {
     if (!this.canAct) return 'Espera a tu turno.';
+    const blockedAction = this.actionBlocked();
+    if (blockedAction) return blockedAction;
     const runes = this.state.player.inventory.find((x) => x.id === 'runa_vinculo');
     if (!runes) return 'No tienes Runas de vínculo (se venden en la tienda y el alquimista).';
     const target = this.bindTargets().sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
@@ -2832,7 +3040,7 @@ export class Game {
     this.fx.push({ kind: 'burst', x: target.x, y: target.y, radius: 1, color: '#c080ff', t: 0, life: 0.6 });
     if (!ok) {
       this.msg(`La runa brilla... pero ${sp.name} se libera.`, 'warn');
-      this.endPlayerTurn();
+      this.afterAction();
       return null;
     }
     this.enemies = this.enemies.filter((e) => e !== target);
@@ -2850,7 +3058,7 @@ export class Game {
     this.events.emit('questsChanged', {});
     this.gainXp(Math.round(target.def.xp * 0.5), `vínculo con ${sp.name}`);
     this.sfx('mision');
-    this.endPlayerTurn();
+    this.afterAction();
     return null;
   }
 

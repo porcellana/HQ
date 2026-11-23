@@ -44,8 +44,8 @@ export default [
   {
     id: 'cazador', name: 'Cazador del bosque', icon: '🏹',
     description: 'Viviste solo en el Bosque Sombrío, cazando para la aldea, hasta que la niebla roja espantó a toda presa.',
-    feature: 'Sabes moverte sin ruido y leer las huellas. Las bestias no te pillan por sorpresa.',
-    statBonus: { CON: 1 }, proficiencies: ['sigilo', 'atletismo'],
+    feature: 'Sabes moverte sin ruido y leer las huellas. En combate te mueves 1 casilla más.',
+    statBonus: { CON: 1 }, proficiencies: ['sigilo', 'atletismo'], movement: 1,
     startingItems: [{ item: 'carne_seca', qty: 4 }, { item: 'arco_corto' }],
   },
   {

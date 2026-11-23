@@ -106,6 +106,7 @@ function gameIn(classId: string, zone = 'aldea_brumaroja'): Game {
 
 /** Avanza el tiempo hasta que vuelva a ser turno del jugador. */
 function settle(g: Game): void {
+  if (g.phase === 'player' && g.combatTurn && g.actionUsed) g.waitTurn(); // economía de turno: acción hecha → fin de turno
   for (let i = 0; i < 200 && g.phase === 'enemies'; i++) g.update(0.25);
 }
 

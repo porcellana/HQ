@@ -258,6 +258,8 @@ export interface ClassDef {
   resource: { name: string; short: string; base: number; perLevel: number; stat: AbilityKey | null; color: string };
   /** Bonificador fijo a la CA por entrenamiento de la clase (se suma al del equipo). */
   armorBonus: number;
+  /** Casillas que puede moverse por turno en combate (las diagonales cuentan 1). */
+  movement: number;
   /** Ataque desarmado (si no lleva arma equipada). */
   unarmed?: { name: string; dice: string; stat: AbilityKey; damageType: DamageType };
   /** Equipo y objetos con los que empieza. */
@@ -350,9 +352,11 @@ export interface EnemyDef {
   /** Vida en dados, p. ej. "2d6+2" (cada enemigo tira la suya). */
   hp: string;
   ac: number;
-  /** Casillas por turno (1 normal, 2 rápido). */
+  /** Velocidad antigua: 1 normal, 2 rápido (si no hay `movement`: 1 → 4 casillas, 2 → 7). */
   speed: number;
-  /** Lento: sólo actúa uno de cada dos turnos (zombis). */
+  /** Casillas que recorre por turno en combate (tiene prioridad sobre `speed`). */
+  movement?: number;
+  /** Lento: la mitad de movimiento (si no se fija `movement`). */
   slow?: boolean;
   /** Radio de visión en casillas. */
   sight: number;
@@ -704,6 +708,8 @@ export interface BackgroundDef {
   proficiencies: SkillKey[];
   startingItems?: StartingItem[];
   gold?: number;
+  /** Casillas de movimiento extra por turno en combate. */
+  movement?: number;
   /** No se ofrece al crear (p. ej. el de las partidas antiguas). */
   hidden?: boolean;
 }
@@ -757,7 +763,9 @@ export type TalentEffect =
       burnGround?: number;
     }
   /** Tus curaciones dañan a los no-muertos cercanos. */
-  | { type: 'healSmite'; dice: string; radius: number };
+  | { type: 'healSmite'; dice: string; radius: number }
+  /** Casillas de movimiento extra por turno en combate. */
+  | { type: 'movement'; amount: number };
 
 export interface TalentDef {
   id: string;

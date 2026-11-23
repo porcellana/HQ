@@ -10,6 +10,7 @@ export default {
   hitDie: 10,
   resource: { name: 'Vigor', short: 'VIG', base: 4, perLevel: 1, stat: 'CON', color: '#d08a3a' },
   armorBonus: 0,
+  movement: 5,
   skillProficiencies: ['atletismo', 'intimidacion'],
   startingItems: [
     { item: 'espada_larga', equip: true }, { item: 'cota_escamas', equip: true }, { item: 'escudo_madera', equip: true },

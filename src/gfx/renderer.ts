@@ -400,8 +400,33 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
+  /**
+   * Casillas a las que puedes moverte en tu turno de combate (azul) con el
+   * movimiento que te queda. Se cachean por posición y movimiento.
+   */
+  private reachCache: { key: string; tiles: Map<number, number> } | null = null;
+  private drawReachable(game: Game): void {
+    if (!game.combatTurn || game.turnMove <= 0 || game.isMoving || game.targeting || game.attackMode) return;
+    const p = game.playerPos;
+    const key = `${game.zone.id}:${p.x},${p.y}:${game.turnMove}:${game.enemies.map((e) => `${e.x},${e.y}`).join(';')}`;
+    if (this.reachCache?.key !== key) this.reachCache = { key, tiles: game.reachableTiles() };
+    const { ctx } = this;
+    const w = game.zone.width;
+    const a = 0.2 + 0.06 * Math.sin(this.time * 3);
+    ctx.fillStyle = `rgba(90,160,255,${a.toFixed(3)})`;
+    ctx.strokeStyle = 'rgba(150,200,255,0.55)';
+    ctx.lineWidth = 0.6;
+    for (const k of this.reachCache.tiles.keys()) {
+      const x = k % w;
+      const y = (k - x) / w;
+      ctx.fillRect(x * TILE + 1, y * TILE + 1, TILE - 2, TILE - 2);
+      ctx.strokeRect(x * TILE + 1.3, y * TILE + 1.3, TILE - 2.6, TILE - 2.6);
+    }
+  }
+
   /** Casillas al alcance de la habilidad elegida. */
   private drawTargeting(game: Game): void {
+    this.drawReachable(game);
     const sk = game.targeting;
     if (!sk) return;
     const { ctx } = this;
@@ -510,9 +535,6 @@ export class Renderer {
     const a = game.ally;
     if (!a) return;
     const { ctx } = this;
-    const k = Math.min(1, 0.25);
-    a.rx += (a.x - a.rx) * k;
-    a.ry += (a.y - a.ry) * k;
     a.bumpT = Math.max(0, a.bumpT - 0.08);
     a.flashT = Math.max(0, a.flashT - 0.06);
     const bump = Math.sin(a.bumpT * Math.PI) * 4;
@@ -551,8 +573,6 @@ export class Renderer {
     const sp = PET_SPECIES.get(pi.species);
     if (!sp) return;
     const { ctx } = this;
-    u.rx += (u.x - u.rx) * 0.25;
-    u.ry += (u.y - u.ry) * 0.25;
     u.bumpT = Math.max(0, u.bumpT - 0.08);
     u.flashT = Math.max(0, u.flashT - 0.06);
     const bump = Math.sin(u.bumpT * Math.PI) * 4;

@@ -114,6 +114,7 @@ describe('datos de mazmorras', () => {
 
 // ---------------------------------------------------------------- en partida
 function settle(g: Game) {
+  if (g.phase === 'player' && g.combatTurn && g.actionUsed) g.waitTurn(); // economía de turno: acción hecha → fin de turno
   for (let i = 0; i < 300 && g.phase === 'enemies'; i++) g.update(0.25);
 }
 

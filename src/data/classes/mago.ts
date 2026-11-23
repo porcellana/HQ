@@ -10,6 +10,7 @@ export default {
   hitDie: 6,
   resource: { name: 'Maná', short: 'PM', base: 8, perLevel: 3, stat: 'INT', color: '#3a6ad0' },
   armorBonus: 0,
+  movement: 5,
   skillProficiencies: ['arcanos', 'perspicacia'],
   startingItems: [
     { item: 'baston', equip: true }, { item: 'tunica', equip: true }, { item: 'pocion_curacion', qty: 1 },

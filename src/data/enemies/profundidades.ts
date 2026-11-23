@@ -3,7 +3,7 @@ import type { EnemyDef } from '../schema';
 
 export default [
   {
-    id: 'arana_cazadora', name: 'Araña cazadora', family: 'araña', level: 6, hp: '6d8+6', ac: 15, speed: 2, sight: 7, ai: 'skirmisher',
+    id: 'arana_cazadora', name: 'Araña cazadora', family: 'araña', level: 6, hp: '6d8+6', ac: 15, speed: 2, movement: 6, sight: 7, ai: 'skirmisher',
     attack: { name: 'Colmillos', toHit: 6, dice: '2d6+2', damageType: 'perforante', range: 1, applyStatus: { id: 'veneno', chance: 0.5, turns: 3 } },
     immune: ['veneno'], xp: 180, description: 'Rápida y silenciosa: salta dos casillas por turno.',
     look: { shape: 'arana', main: '#5a3a1a', dark: '#2a1a0a', accent: '#d08030', eye: '#ffe040' }, lootTable: 'arana',

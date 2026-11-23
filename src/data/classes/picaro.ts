@@ -10,6 +10,7 @@ export default {
   hitDie: 8,
   resource: { name: 'Energía', short: 'ENE', base: 5, perLevel: 1, stat: 'DES', color: '#4fae6a' },
   armorBonus: 0,
+  movement: 6,
   skillProficiencies: ['sigilo', 'juego_manos', 'engano'],
   startingItems: [
     { item: 'espada_corta', equip: true }, { item: 'armadura_cuero', equip: true }, { item: 'capucha_cuero', equip: true },
