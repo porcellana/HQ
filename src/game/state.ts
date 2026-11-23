@@ -71,6 +71,8 @@ export interface GameState {
   flags: Record<string, boolean | number | string>;
   /** Estado de las misiones por id. */
   quests: Record<string, QuestProgress>;
+  /** Misión elegida en el diario para seguir con la guía (null = la principal). */
+  trackedQuestId?: string | null;
   /** Stock de las tiendas visitadas (se renueva con el tiempo). */
   shops: Record<string, ShopState>;
   /** Mazmorras (reinicios, jefes) y elementos usados (cofres, trampas, vetas). */

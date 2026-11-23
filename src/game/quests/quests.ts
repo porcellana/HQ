@@ -22,6 +22,8 @@ export interface QuestHolder {
   flags: Record<string, boolean | number | string>;
   quests: Record<string, QuestProgress>;
   player: Carrier & { level: number };
+  /** Misión elegida para seguir en el diario (null/ausente = la principal). */
+  trackedQuestId?: string | null;
 }
 
 export function getQuest(id: string): QuestDef {
@@ -166,15 +168,31 @@ export function turnIn(h: QuestHolder, id: string, npcId: string): { error: stri
   return { quest: q };
 }
 
-/** Texto corto para el HUD: la misión activa más importante. */
-export function trackedQuest(h: QuestHolder): { quest: QuestDef; name: string; text: string; ready: boolean } | null {
+/** Misiones activas ordenadas: principal, secundarias, repetibles. */
+export function activeQuests(h: QuestHolder): QuestDef[] {
   const order = { principal: 0, secundaria: 1, repetible: 2 };
-  const active = Object.entries(h.quests)
+  return Object.entries(h.quests)
     .filter(([, s]) => s.status === 'activa')
     .map(([id]) => QUESTS.get(id))
     .filter((q): q is QuestDef => !!q)
     .sort((a, b) => order[a.kind] - order[b.kind]);
-  const q = active[0];
+}
+
+/** Marca una misión activa como la seguida (null = volver a la principal). */
+export function setTracked(h: QuestHolder, id: string | null): void {
+  h.trackedQuestId = id && h.quests[id]?.status === 'activa' ? id : null;
+}
+
+/** Misión seguida: la elegida en el diario si sigue activa; si no, la más importante. */
+export function trackedQuestDef(h: QuestHolder): QuestDef | null {
+  const chosen = h.trackedQuestId ? QUESTS.get(h.trackedQuestId) : undefined;
+  if (chosen && h.quests[chosen.id]?.status === 'activa') return chosen;
+  return activeQuests(h)[0] ?? null;
+}
+
+/** Texto corto para el HUD: la misión seguida. */
+export function trackedQuest(h: QuestHolder): { quest: QuestDef; name: string; text: string; ready: boolean } | null {
+  const q = trackedQuestDef(h);
   if (!q) return null;
   if (isReady(h, q)) {
     const who = NPCS.get(q.turnIn ?? q.giver)?.name ?? '';

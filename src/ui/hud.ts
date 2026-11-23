@@ -103,6 +103,7 @@ export class Hud {
     this.joystick.setSide(s.hand);
     this.actionBar.classList.toggle('izquierda', s.hand === 'izquierda');
     this.skillBar.el.classList.toggle('izquierda', s.hand === 'izquierda');
+    this.skillBar.questGuide = s.questGuide;
   }
 
   /** Altura en px CSS tapada por el panel superior y la barra de acciones. */

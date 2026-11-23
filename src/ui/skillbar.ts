@@ -4,6 +4,7 @@ import type { Game } from '@/game/game';
 import { unlockedSkills } from '@/game/rules/character';
 import { STATUS_INFO } from '@/game/combat/status';
 import { itemDef } from '@/game/items/items';
+import { GOAL_ICON } from '@/game/quests/guide';
 import { trackedQuest } from '@/game/quests/quests';
 import { h } from './dom';
 
@@ -11,6 +12,8 @@ export class SkillBar {
   readonly el: HTMLDivElement;
   private readonly statusEl: HTMLDivElement;
   private sig = '';
+  /** Si la guía de misión está desactivada no se muestra la línea de objetivo. */
+  questGuide = true;
 
   constructor(
     private readonly onSkill: (s: SkillDef) => void,
@@ -34,6 +37,7 @@ export class SkillBar {
     const potions = p.inventory.filter((x) => { const u = itemDef(x).use; return !!u?.heal && !u.outOfCombatOnly; }).reduce((a, x) => a + x.qty, 0);
     const tq = trackedQuest(game.state);
     const sig = [
+      this.questGuide,
       tq ? `${tq.name}${tq.text}${game.zone.id}` : '',
       potions,
       skills.map((s) => s.id).join(','), p.mp, JSON.stringify(c.cooldowns), game.targeting?.id ?? '', combat, game.canAct,
@@ -65,10 +69,11 @@ export class SkillBar {
     for (const b of c.buffs) chips.push(h('span', { class: 'chip good', text: `▲${b.stat} +${b.amount} (${b.turns})` }));
     if (c.stealth > 0) chips.push(h('span', { class: 'chip good', text: `🌑 oculto ${c.stealth}` }));
     if (combat) chips.push(h('span', { class: 'chip warn', text: '⚔ En combate' }));
-    if (tq && !combat) {
+    if (tq && !combat && this.questGuide) {
       const goal = game.questGoal;
       const where = goal?.zone && goal.zone !== game.zone.id ? ` · ${goal.zoneName}` : '';
-      chips.push(h('span', { class: `chip quest${tq.ready ? ' ready' : ''}`, text: `📜 Objetivo: ${tq.text}${where}` }));
+      const icon = goal ? GOAL_ICON[goal.kind] : '📜';
+      chips.push(h('span', { class: `chip quest${tq.ready ? ' ready' : ''}`, text: `${icon} ${tq.text}${where}` }));
     }
     this.statusEl.replaceChildren(...chips);
   }

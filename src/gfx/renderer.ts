@@ -12,6 +12,7 @@ import { STATUS_INFO } from '@/game/combat/status';
 import type { Enemy } from '@/game/combat/entities';
 import type { Game } from '@/game/game';
 import { monsterSprite } from './monsters';
+import { GOAL_ICON } from '@/game/quests/guide';
 import { itemIcon } from './items';
 import { itemDef, rarityOf } from '@/game/items/items';
 import type { Zone } from '@/game/world/zone';
@@ -28,6 +29,8 @@ export interface RenderOptions {
   grid: boolean;
   /** Ciclo de día y noche en exteriores. */
   dayNight?: boolean;
+  /** Guía de misión (flecha GPS). */
+  questGuide?: boolean;
 }
 
 /** Duración de un día completo en turnos. */
@@ -79,7 +82,9 @@ export class Renderer {
 
   /** Altura (px de canvas) tapada arriba por el HUD y abajo por los botones. */
   setInsets(topPx: number, bottomPx: number): void {
-    this.camera.insets = { top: topPx / this.zoom, bottom: bottomPx / this.zoom };
+    // Margen extra de media casilla abajo: así el jugador y el compañero que
+    // camina detrás nunca quedan medio tapados por la barra de habilidades.
+    this.camera.insets = { top: topPx / this.zoom, bottom: bottomPx / this.zoom + TILE * 0.75 };
   }
 
   /** Convierte un punto del canvas (px internos) en casilla del mapa. */
@@ -91,6 +96,11 @@ export class Renderer {
   }
 
   /** Dibuja la zona entera en un canvas (se hace una vez por zona). */
+  /** Imagen completa de la zona (16 px por casilla), para el mapa grande. */
+  zoneImage(zone: Zone): HTMLCanvasElement {
+    return this.getZoneCanvas(zone);
+  }
+
   private getZoneCanvas(zone: Zone): HTMLCanvasElement {
     if (this.zoneCache?.zone === zone) return this.zoneCache.canvas;
     const canvas = makeCanvas(zone.width * TILE, zone.height * TILE);
@@ -135,14 +145,130 @@ export class Renderer {
     this.drawLoot(game);
     this.drawEntities(game);
     this.drawFx(game);
-    this.drawExitPointers(game, camX, camY);
+    this.drawExitPointers(game, camX, camY, opts.questGuide ?? true);
+    if (opts.questGuide ?? true) this.drawQuestGuide(game, camX, camY);
+  }
+
+  /**
+   * GUÍA DE MISIÓN (GPS): si el punto del objetivo se ve, marcador flotante
+   * encima; si no, flecha grande en el borde con icono y distancia.
+   */
+  private drawQuestGuide(game: Game, camX: number, camY: number): void {
+    const goal = game.questGoal;
+    if (!goal?.point || game.inCombat) return;
+    const { ctx, canvas, zoom, camera } = this;
+    const dpr = this.pixelRatio;
+    const icon = GOAL_ICON[goal.kind];
+    const pt = goal.point;
+    const p = game.playerPos;
+    const distTiles = Math.max(Math.abs(pt.x - p.x), Math.abs(pt.y - p.y));
+    const sx = ((pt.x + 0.5) * TILE - camX) * zoom;
+    const sy = ((pt.y + 0.5) * TILE - camY) * zoom;
+    const top = camera.insets.top * zoom + 34 * dpr;
+    const bottom = canvas.height - camera.insets.bottom * zoom - 30 * dpr;
+    const left = 34 * dpr;
+    const right = canvas.width - 34 * dpr;
+    const t = this.time;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const green = '#a8f08a';
+    if (sx >= left && sx <= right && sy >= top && sy <= bottom) {
+      if (distTiles <= 1) return; // ya estás encima
+      // Marcador: rombo flotante con icono sobre el objetivo y halo en el suelo.
+      const float = Math.sin(t * 3) * 5 * dpr;
+      const my = sy - TILE * zoom * 0.95 + float;
+      ctx.save();
+      ctx.globalAlpha = 0.35 + 0.15 * Math.sin(t * 4);
+      ctx.strokeStyle = green;
+      ctx.lineWidth = 2 * dpr;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy + TILE * zoom * 0.35, TILE * zoom * 0.45, TILE * zoom * 0.18, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      this.guideBadge(sx, my, icon, null, dpr, 'down');
+      return;
+    }
+    // Flecha en el borde, en la dirección del objetivo.
+    const cx = canvas.width / 2;
+    const cy = (top + bottom) / 2;
+    const dx = sx - cx;
+    const dy = sy - cy;
+    const k = Math.min(Math.abs((dx > 0 ? right - cx : left - cx) / (dx || 1e-6)), Math.abs((dy > 0 ? bottom - cy : top - cy) / (dy || 1e-6)));
+    const ang = Math.atan2(dy, dx);
+    const pulse = 1 + Math.sin(t * 4) * 0.08;
+    const px = cx + dx * k - Math.cos(ang) * 6 * dpr * Math.sin(t * 4);
+    const py = cy + dy * k - Math.sin(ang) * 6 * dpr * Math.sin(t * 4);
+    const a = 22 * dpr * pulse;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(ang);
+    ctx.shadowColor = green;
+    ctx.shadowBlur = 14 * dpr;
+    const grad = ctx.createLinearGradient(-a, 0, a, 0);
+    grad.addColorStop(0, '#3f8a3a');
+    grad.addColorStop(1, '#d8ffb0');
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = '#0b0a10';
+    ctx.lineWidth = 3 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(a, 0);
+    ctx.lineTo(-a * 0.25, -a * 0.8);
+    ctx.lineTo(-a * 0.25, -a * 0.32);
+    ctx.lineTo(-a * 0.9, -a * 0.32);
+    ctx.lineTo(-a * 0.9, a * 0.32);
+    ctx.lineTo(-a * 0.25, a * 0.32);
+    ctx.lineTo(-a * 0.25, a * 0.8);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+    ctx.restore();
+    // Insignia con icono y distancia, hacia dentro de la pantalla.
+    const bx = Math.max(left + 30 * dpr, Math.min(right - 30 * dpr, px - Math.cos(ang) * 48 * dpr));
+    const by = Math.max(top + 22 * dpr, Math.min(bottom - 22 * dpr, py - Math.sin(ang) * 48 * dpr));
+    this.guideBadge(bx, by, icon, `${distTiles}`, dpr, null);
+  }
+
+  /** Círculo con icono (y distancia) para la guía. */
+  private guideBadge(x: number, y: number, icon: string, distText: string | null, dpr: number, pointer: 'down' | null): void {
+    const { ctx } = this;
+    const r = 15 * dpr;
+    ctx.save();
+    ctx.shadowColor = '#a8f08a';
+    ctx.shadowBlur = 10 * dpr;
+    ctx.fillStyle = 'rgba(16,30,16,0.92)';
+    ctx.strokeStyle = '#a8f08a';
+    ctx.lineWidth = 2.5 * dpr;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (pointer === 'down') {
+      ctx.moveTo(x - r * 0.5, y + r * 0.85);
+      ctx.lineTo(x, y + r * 1.6);
+      ctx.lineTo(x + r * 0.5, y + r * 0.85);
+    }
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.font = `${Math.round(16 * dpr)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(icon, x, y + 1 * dpr);
+    if (distText) {
+      ctx.font = `bold ${Math.round(11 * dpr)}px sans-serif`;
+      const w = ctx.measureText(distText).width + 8 * dpr;
+      ctx.fillStyle = '#0b0a10';
+      ctx.fillRect(x - w / 2, y + r - 2 * dpr, w, 14 * dpr);
+      ctx.fillStyle = '#a8f08a';
+      ctx.fillText(distText, x, y + r + 5 * dpr);
+    }
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
   }
 
   /**
    * Flechas doradas en el borde de la pantalla que señalan las salidas fuera de
    * la vista, y etiqueta con el destino sobre las salidas visibles.
    */
-  private drawExitPointers(game: Game, camX: number, camY: number): void {
+  private drawExitPointers(game: Game, camX: number, camY: number, guide: boolean): void {
     const { ctx, canvas, zoom, camera } = this;
     const dpr = this.pixelRatio;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -157,7 +283,7 @@ export class Renderer {
     ctx.font = `bold ${fontPx}px Georgia, serif`;
     ctx.textAlign = 'center';
     // La salida hacia el objetivo de la misión seguida se destaca en verde con ★.
-    const goalTo = game.questGoal?.exitTo ?? null;
+    const goalTo = guide ? (game.questGoal?.exitTo ?? null) : null;
     for (const e of game.zone.exits) {
       if (seen.has(e.digit)) continue;
       seen.add(e.digit);
@@ -175,6 +301,8 @@ export class Renderer {
         if (!game.inCombat) this.labelAt(label, sx, sy - TILE * zoom * 0.8, fontPx, pulse, color);
         continue;
       }
+      // La guía GPS ya dibuja su propia flecha hacia esta salida.
+      if (isGoal && game.questGoal?.point && !game.inCombat) continue;
       // Las puertas de edificios sólo se rotulan cuando se ven (salvo la del objetivo).
       if (e.door && !isGoal) continue;
       // Punto del borde en dirección a la salida

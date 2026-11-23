@@ -83,7 +83,9 @@ Otros comandos:
 ### Controles
 
 - **Tocar una casilla**: el personaje va hasta ella por el camino más corto.
-- **Joystick virtual** (opcional, en Ajustes): moverse casilla a casilla.
+- **Joystick virtual** (opcional, en Ajustes): moverse en 8 direcciones mientras lo
+  mantienes; empujarlo contra un enemigo le ataca. Va en el lado de tu mano dominante,
+  encima de la barra de habilidades.
 - **Esperar**: pasa un turno sin moverte.
 - **Menú**: pausa, guardar, ajustes y salir. En Android, el botón *Atrás* abre/cierra la pausa.
 - **Atacar**: toca a un enemigo pegado a ti (o empuja el joystick contra él).
@@ -96,13 +98,22 @@ Otros comandos:
   C ficha, I mochila, J diario, Q poción, Esc pausa.
 - Las casillas que brillan en dorado son **salidas** a otras zonas; si están fuera de la
   pantalla, una **flecha dorada** en el borde indica hacia dónde ir.
-- **Toca el minimapa** para caminar directamente a ese punto (o a la salida más cercana).
+- **Toca el minimapa** para abrir el **mapa grande** de la zona: arrastra para moverte,
+  pellizca o usa −/+ para el zoom, ◎ centra en ti. Toca un punto (o una salida, o un PNJ)
+  y pulsa **Ir**: el personaje camina solo hasta allí. En las mazmorras sólo se ve lo
+  explorado. Tecla M en PC.
+- **Guía de misión (GPS)**: una flecha verde con el icono del paso (💬 hablar, ⚔ cazar,
+  ✋ conseguir, 📍 ir) y la distancia en casillas te lleva al objetivo de la misión que
+  sigues; cuando lo tienes a la vista, un marcador flota encima del PNJ, enemigo o veta.
+  Se desactiva en **Ajustes → Guía de misión**.
 - **Mochila**: equipo, objetos y comparación. 🧪 en la barra = beber poción de curación.
 - El botín cae al suelo (brilla con el color de su rareza): písalo para recogerlo.
 - **PNJ**: tócalos para hablar (si están lejos, caminas hasta ellos). ❗ = tiene una
   misión para ti; ❓ = puedes entregarle una misión.
-- **Diario de misiones**: en la Ficha (o tecla J). La misión principal en curso se ve
-  arriba, bajo el panel de vida.
+- **Diario de misiones**: en la Ficha (o tecla J). Toca una misión para leer su historia,
+  objetivos, recompensas, quién la da, a quién se entrega y dónde se cumple. **Seguir
+  esta misión** la marca (★) para la guía y la línea de objetivo bajo el panel de vida;
+  por defecto se sigue la principal.
 - **Posada**: descansar cura todo y guarda. **Templo**: sanación por un donativo; si
   caes, despiertas en el último templo donde pediste sanación (al principio, la capilla
   de la aldea).

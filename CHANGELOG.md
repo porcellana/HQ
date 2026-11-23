@@ -2,6 +2,25 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.2.1 · 2026-11-23 — Arreglos, diario, guía GPS y mapa grande
+
+- **Joystick arreglado**: no recibía los toques (la capa del HUD los dejaba pasar al
+  mapa). Ahora mueve en 8 direcciones, ataca si empujas contra un enemigo, se para al
+  soltar, respeta la mano dominante y queda por encima de la barra de habilidades.
+- **Diario de misiones nuevo**: lista de misiones en curso y completadas; al tocar una,
+  ficha con historia, objetivos y progreso, recompensas, quién la da, a quién se entrega
+  y dónde está el siguiente paso. Botón **Seguir esta misión** (★).
+- **Guía de misión tipo GPS** (opcional en Ajustes): flecha verde animada con brillo,
+  icono del tipo de paso (💬 ⚔ ✋ 📍) y distancia en casillas; al tener el objetivo a la
+  vista, marcador flotante sobre el PNJ, el enemigo o la veta. Para «consigue X» guía a
+  donde se consigue (vetas o enemigos que lo sueltan) o, si no se sabe, a quien te dio
+  la misión. Sigue la misión elegida en el diario.
+- **Mapa grande interactivo** al tocar el minimapa: zoom con dos dedos o −/+, arrastrar,
+  salidas con nombre, PNJ con ❗/❓, cofres y vetas, enemigos en alerta, objetivo de la
+  misión; toca un punto y pulsa **Ir**. En las mazmorras sólo se ve lo explorado.
+- Cámara: margen extra abajo para que el jugador y su compañero no queden tapados por
+  la barra de habilidades.
+
 ## v0.2.0 · 2026-11-21 — Fase A: personaje con identidad
 
 - **Trasfondos** al crear el personaje (Soldado, Ladrón callejero, Erudito, Noble caído,

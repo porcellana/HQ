@@ -25,6 +25,7 @@ import { talentPicker } from '@/ui/talents';
 import { npcDialog } from '@/ui/npcDialog';
 import { shopScreen } from '@/ui/shop';
 import { journalScreen } from '@/ui/journal';
+import { zoneMapScreen } from '@/ui/zoneMap';
 import type { NpcDef } from '@/data/schema';
 import { confirmDialog, showDialog } from '@/ui/dialogs';
 import { buzz, h } from '@/ui/dom';
@@ -67,6 +68,7 @@ export class App {
         if (code === 'KeyC') this.showSheet();
         if (code === 'KeyI') this.showInventory();
         if (code === 'KeyJ') this.showJournal();
+        if (code === 'KeyM') this.showZoneMap();
         if (code === 'KeyQ') this.game?.quickPotion();
         if (code === 'KeyF') this.game?.flee();
         const n = Number(code.replace('Digit', ''));
@@ -237,9 +239,7 @@ export class App {
         const err = game.quickPotion();
         if (err) hud.pushMessage(err, 'warn');
       },
-      onMinimapTap: (x, y) => {
-        if (!this.pauseClose && !this.screen) game.tapTile(x, y);
-      },
+      onMinimapTap: () => this.showZoneMap(),
     });
     this.hud = hud;
     this.ui.prepend(hud.root);
@@ -354,6 +354,19 @@ export class App {
     );
   }
 
+  /** Mapa grande de la zona (al tocar el minimapa). */
+  private showZoneMap(): void {
+    const game = this.game;
+    if (!game || this.pauseClose || this.screen) return;
+    game.heldDir = null;
+    this.setScreen(
+      zoneMapScreen(game, this.renderer.zoneImage(game.zone), this.renderer.heroColors, () => this.setScreen(null), (x, y) => {
+        this.setScreen(null);
+        game.tapTile(x, y);
+      }),
+    );
+  }
+
   private showSheet(): void {
     const game = this.game;
     if (!game || this.pauseClose || this.screen) return;
@@ -413,7 +426,7 @@ export class App {
       this.pendingVictory = false;
       this.setScreen(victoryScreen(game.state, () => this.setScreen(null), () => void this.quitToMenu()));
     }
-    this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight });
+    this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, questGuide: this.settings.questGuide });
     this.hud?.update(game, dt);
   }
 

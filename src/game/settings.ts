@@ -22,6 +22,8 @@ export interface Settings {
   volume: 'bajo' | 'medio' | 'alto';
   /** Ciclo de día y noche en exteriores. */
   dayNight: boolean;
+  /** Guía de misión (flecha tipo GPS hacia el objetivo de la misión seguida). */
+  questGuide: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sound: true,
   volume: 'medio',
   dayNight: true,
+  questGuide: true,
 };
 
 const KEY = 'ecos.settings';

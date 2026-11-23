@@ -132,8 +132,8 @@ button.danger { border-color: var(--danger); color: #f0b0a8; }
 
 /* Joystick virtual */
 .joystick {
-  position: absolute; bottom: calc(var(--tap) + 30px + env(safe-area-inset-bottom)); width: 132px; height: 132px;
-  border-radius: 50%; background: rgba(22,20,29,0.55); border: 2px solid var(--border); touch-action: none;
+  position: absolute; bottom: calc(var(--tap) + 86px + env(safe-area-inset-bottom)); width: 132px; height: 132px;
+  border-radius: 50%; background: rgba(22,20,29,0.55); border: 2px solid var(--border); touch-action: none; pointer-events: auto;
 }
 .joystick.derecha { right: 18px; }
 .joystick.izquierda { left: 18px; }
@@ -361,3 +361,29 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .hud-ally .bar { flex: 1; }
 .bar.hp.ally > i { background: linear-gradient(#8ae08a, #3a9a3a); }
 .bg-meta { font-size: 0.75em; margin-top: 4px; }
+
+/* --------------------------- Diario de misiones -------------------------- */
+.quest-row { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 12px; margin-bottom: 6px; height: auto; }
+.quest-row.tracked { border-color: #a8f08a; box-shadow: 0 0 8px rgba(168,240,138,0.35); }
+.quest-row.ready { border-color: var(--gold); }
+.quest-row.done { opacity: 0.7; }
+.quest-row small { font-size: 0.75em; }
+.quest-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; }
+.quest-title b { font-weight: normal; color: var(--gold-l); }
+.quest-detail { border-color: var(--gold); }
+.quest-detail.tracked { border-color: #a8f08a; }
+.quest-story { font-style: italic; line-height: 1.4; margin: 6px 0; }
+.quest-objectives { margin: 0; padding-left: 4px; line-height: 1.6; list-style: none; }
+.quest-objectives li.done { color: #8ae08a; }
+.quest-facts { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 0.85em; }
+.reward { color: #8ae08a; }
+
+/* ------------------------------ Mapa grande ------------------------------ */
+.screen.map-screen { padding: 0; gap: 0; justify-content: stretch; align-items: stretch; background: #07060a; overflow: hidden; }
+.map-top { display: flex; justify-content: space-between; align-items: center; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; background: var(--panel-solid); border-bottom: 2px solid var(--border); }
+.map-top b { color: var(--gold-l); font-weight: normal; font-size: 1.1em; }
+.map-canvas { flex: 1; width: 100%; min-height: 0; touch-action: none; display: block; }
+.map-bottom { padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); background: var(--panel-solid); border-top: 2px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.map-info { font-size: 0.9em; color: var(--text); min-height: 1.3em; }
+.map-buttons { display: flex; gap: 8px; }
+.map-buttons .primary { flex: 1; }

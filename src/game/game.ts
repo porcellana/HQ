@@ -8,7 +8,7 @@
  * El combate ocurre en el mismo mapa, sin cambiar de pantalla.
  */
 import { COMPANIONS, NPCS, ORES, TRAPS, getClass, getEnemy, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
-import type { CompanionDef, CompanionEvent, DamageType, DialogNode, EnemySpell, NpcDef, SkillDef, SkillEffect, SkillKey, StatusApply, StatusId, ZoneFeature } from '@/data/schema';
+import type { CompanionDef, CompanionEvent, DamageType, DialogNode, EnemySpell, NpcDef, QuestDef, SkillDef, SkillEffect, SkillKey, StatusApply, StatusId, ZoneFeature } from '@/data/schema';
 import { Emitter } from '@/engine/events';
 import { findPath, type Point } from '@/engine/pathfinding';
 import { Rng, hashString } from '@/engine/rng';
@@ -32,7 +32,7 @@ import { levelForXp } from './rules/progression';
 import { emptyParty, emptyRecord, recalcPlayer, type GameState } from './state';
 import { skillMods, talentEffects } from './talents';
 import { SKILLS, skillBonus } from './rules/skills';
-import { nextHop, questGoalZone, zoneName } from './quests/guide';
+import { enemiesDropping, enemyMatches, nextHop, questGoalZone, questStep, zoneName, type GoalKind } from './quests/guide';
 import { addItem, equip, removeQty, unequip } from './items/inventory';
 import { itemDef, rarityOf, type ItemInstance } from './items/items';
 import { rollLoot } from './items/loot';
@@ -128,6 +128,10 @@ export interface QuestGoal {
   zoneName: string;
   /** Destino de la salida que acerca al objetivo (null si ya estás en la zona). */
   exitTo: string | null;
+  /** Tipo de paso (icono de la guía). */
+  kind: GoalKind;
+  /** Punto concreto en la zona actual: PNJ, enemigo, veta o salida a tomar. */
+  point: { x: number; y: number } | null;
 }
 
 export type SfxId = 'golpe' | 'critico' | 'fallo' | 'herido' | 'nivel' | 'moneda' | 'cofre' | 'muerte' | 'victoria' | 'mision';
@@ -183,6 +187,8 @@ export class Game {
   enemies: Enemy[] = [];
   /** PNJ de la zona actual (fijos en su casilla). */
   npcs: NpcDef[] = [];
+  /** Casillas vistas por zona (para el mapa grande de las mazmorras; no se guarda). */
+  private explored = new Map<string, Uint8Array>();
   /** PNJ al que vamos caminando para hablar. */
   private pendingTalk: string | null = null;
   /** Elemento (cofre, veta, trampa) hacia el que caminamos para usarlo. */
@@ -238,6 +244,7 @@ export class Game {
     state.party ??= emptyParty();
     this.populateZone();
     this.spawnAlly();
+    this.markExplored();
   }
 
   private loadZoneOrFallback(id: string): Zone {
@@ -548,11 +555,29 @@ export class Game {
     return ok(pos.x + dx, pos.y + dy) ? { x: pos.x + dx, y: pos.y + dy } : undefined;
   }
 
+  /** Marca como vistas las casillas alrededor del jugador. */
+  markExplored(radius = 6): void {
+    const z = this.zone;
+    let m = this.explored.get(z.id);
+    if (!m || m.length !== z.width * z.height) this.explored.set(z.id, (m = new Uint8Array(z.width * z.height)));
+    const p = this.playerPos;
+    for (let y = Math.max(0, p.y - radius); y <= Math.min(z.height - 1, p.y + radius); y++) {
+      for (let x = Math.max(0, p.x - radius); x <= Math.min(z.width - 1, p.x + radius); x++) m[y * z.width + x] = 1;
+    }
+  }
+
+  /** ¿Se ha visto esta casilla? Fuera de las mazmorras se ve todo el mapa. */
+  isExplored(x: number, y: number): boolean {
+    if (!this.zone.def.dungeon) return true;
+    return (this.explored.get(this.zone.id)?.[y * this.zone.width + x] ?? 0) === 1;
+  }
+
   private finishStep(): void {
     const v = this.view;
     const prevExit = this.zone.exitAt(v.from.x, v.from.y);
     this.state.player.pos.x = v.to.x;
     this.state.player.pos.y = v.to.y;
+    this.markExplored();
     v.rx = v.to.x;
     v.ry = v.to.y;
     v.stepT = -1;
@@ -733,6 +758,7 @@ export class Game {
     this.combat.stealth = 0;
     this.populateZone();
     this.spawnAlly();
+    this.markExplored();
     const dz = this.zone.def.dungeon;
     if (dz) {
       const prog = progressOf(this.state.world, dz.id);
@@ -1874,15 +1900,55 @@ export class Game {
    */
   get questGoal(): QuestGoal | null {
     const tq = Quests.trackedQuest(this.state);
-    const key = `${this.zone.id}|${tq?.quest.id ?? ''}|${tq?.text ?? ''}`;
-    if (key === this.goalCache.key) return this.goalCache.goal;
-    let goal: QuestGoal | null = null;
-    if (tq) {
-      const zone = questGoalZone(this.state, tq.quest);
-      goal = { text: tq.text, ready: tq.ready, zone, zoneName: zone ? zoneName(zone) : '', exitTo: zone ? nextHop(this.zone, zone) : null };
+    const key = `${this.zone.id}|${tq?.quest.id ?? ''}|${tq?.text ?? ''}|${this.state.trackedQuestId ?? ''}`;
+    if (key !== this.goalCache.key) {
+      let goal: QuestGoal | null = null;
+      if (tq) {
+        const zone = questGoalZone(this.state, tq.quest);
+        const step = questStep(this.state, tq.quest);
+        goal = {
+          text: tq.text, ready: tq.ready, zone, zoneName: zone ? zoneName(zone) : '',
+          exitTo: zone ? nextHop(this.zone, zone) : null, kind: step?.kind ?? 'ir', point: null,
+        };
+      }
+      this.goalCache = { key, goal };
     }
-    this.goalCache = { key, goal };
-    return goal;
+    const goal = this.goalCache.goal;
+    if (!goal || !tq) return goal;
+    // El punto se recalcula siempre: los enemigos se mueven.
+    return { ...goal, point: this.goalPoint(tq.quest, goal) };
+  }
+
+  /** Punto de la zona actual hacia el que guiar (objetivo o salida que acerca). */
+  private goalPoint(q: QuestDef, goal: QuestGoal): { x: number; y: number } | null {
+    const step = questStep(this.state, q);
+    const p = this.playerPos;
+    const nearest = <T extends { x: number; y: number }>(list: T[]): T | null =>
+      list.reduce<T | null>((best, it) => (!best || dist(it.x, it.y, p.x, p.y) < dist(best.x, best.y, p.x, p.y) ? it : best), null);
+    if (step) {
+      if (step.kind === 'hablar') {
+        const npc = this.npcs.find((n) => n.id === step.npc);
+        if (npc) return { x: npc.x, y: npc.y };
+      } else if (step.kind === 'cazar') {
+        const e = nearest(this.enemies.filter((x) => enemyMatches(step, x.def.id)));
+        if (e) return { x: e.x, y: e.y };
+      } else if (step.kind === 'recoger') {
+        const ore = [...ORES.values()].find((o) => o.item === step.item);
+        if (ore) {
+          const veins = (this.zone.def.features ?? []).filter((f) => f.kind === 'mineral' && f.ore === ore.id && !this.featureUsed(f));
+          const v = nearest(veins);
+          if (v) return { x: v.x, y: v.y };
+        }
+        const droppers = enemiesDropping(step.item);
+        const e = nearest(this.enemies.filter((x) => droppers.includes(x.def.id)));
+        if (e) return { x: e.x, y: e.y };
+      }
+    }
+    if (goal.exitTo) {
+      const ex = nearest(this.zone.exits.filter((e) => e.to === goal.exitTo));
+      if (ex) return { x: ex.x, y: ex.y };
+    }
+    return null;
   }
 
   private sfx(id: SfxId): void {

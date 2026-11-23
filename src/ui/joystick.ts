@@ -12,8 +12,13 @@ export class Joystick {
     this.el = h('div', { class: 'joystick' }, [this.knob]);
     this.el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       this.pointer = e.pointerId;
-      this.el.setPointerCapture(e.pointerId);
+      try {
+        this.el.setPointerCapture(e.pointerId);
+      } catch {
+        /* algunos navegadores no permiten capturar el puntero */
+      }
       this.move(e);
     });
     this.el.addEventListener('pointermove', (e) => {
@@ -27,6 +32,7 @@ export class Joystick {
     };
     this.el.addEventListener('pointerup', end);
     this.el.addEventListener('pointercancel', end);
+    this.el.addEventListener('lostpointercapture', end);
   }
 
   private move(e: PointerEvent): void {
