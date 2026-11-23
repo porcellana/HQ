@@ -57,6 +57,10 @@ export class Renderer {
   pixelRatio = 1;
   private zoneCache: { zone: Zone; canvas: HTMLCanvasElement } | null = null;
   private time = 0;
+  /** Foco suavizado de la cámara (en casillas). */
+  private camFX = 0;
+  private camFY = 0;
+  private camZone = '';
   heroColors: HumanoidColors = DEFAULT_HERO_COLORS;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -124,8 +128,30 @@ export class Renderer {
     const zc = this.getZoneCanvas(zone);
     const v = game.view;
 
-    // Cámara centrada en el jugador (posición interpolada).
-    camera.centerOn((v.rx + 0.5) * TILE, (v.ry + 0.5) * TILE, zone.width * TILE, zone.height * TILE);
+    // Cámara centrada en el jugador; en combate se desplaza suavemente hacia
+    // el actor en curso si está lejos, y vuelve al jugador después.
+    let tx = v.rx;
+    let ty = v.ry;
+    const ap = game.phase === 'enemies' ? game.actorPos() : null;
+    if (ap && Math.max(Math.abs(ap.x - v.rx), Math.abs(ap.y - v.ry)) > 3) {
+      tx = (v.rx + ap.x) / 2;
+      ty = (v.ry + ap.y) / 2;
+    }
+    if (this.camZone !== zone.id || Math.abs(this.camFX - tx) > 12 || Math.abs(this.camFY - ty) > 12) {
+      this.camFX = tx;
+      this.camFY = ty;
+      this.camZone = zone.id;
+    } else {
+      const k = Math.min(1, dt * 5);
+      this.camFX += (tx - this.camFX) * k;
+      this.camFY += (ty - this.camFY) * k;
+      // Fuera de combate la cámara sigue al jugador sin retraso.
+      if (!game.inCombat) {
+        this.camFX = tx;
+        this.camFY = ty;
+      }
+    }
+    camera.centerOn((this.camFX + 0.5) * TILE, (this.camFY + 0.5) * TILE, zone.width * TILE, zone.height * TILE);
     // Ajuste a píxel de pantalla para evitar costuras.
     const camX = Math.round(camera.x * zoom) / zoom;
     const camY = Math.round(camera.y * zoom) / zoom;
@@ -145,6 +171,7 @@ export class Renderer {
     this.drawFeatures(game);
     this.drawHazards(game);
     this.drawLoot(game);
+    this.drawCombatMarks(game);
     this.drawEntities(game);
     this.drawFx(game);
     this.drawExitPointers(game, camX, camY, opts.questGuide ?? true);
@@ -439,6 +466,45 @@ export class Renderer {
     for (const it of list) it.draw();
   }
 
+  /**
+   * Marcas del combate: anillo pulsante bajo el actor en curso y enemigos a
+   * tu alcance resaltados cuando eliges «Atacar».
+   */
+  private drawCombatMarks(game: Game): void {
+    const { ctx } = this;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 6);
+    if (game.attackMode) {
+      for (const e of game.attackTargets()) {
+        ctx.strokeStyle = `rgba(255,80,60,${(0.55 + 0.45 * pulse).toFixed(2)})`;
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(e.rx * TILE + 0.5, e.ry * TILE + 0.5, TILE - 1, TILE - 1);
+      }
+    }
+    if (!game.inCombat) return;
+    const a = game.currentActor;
+    const pos = a ? game.actorPos(a) : null;
+    if (!a || !pos) return;
+    // Usa la posición interpolada si existe, para que el anillo no salte.
+    let rx = pos.x;
+    let ry = pos.y;
+    if (a.kind === 'player') {
+      rx = game.view.rx;
+      ry = game.view.ry;
+    } else if (a.kind === 'enemy') {
+      const e = game.enemies.find((x) => x.uid === a.uid);
+      if (e) {
+        rx = e.rx;
+        ry = e.ry;
+      }
+    }
+    const color = a.kind === 'enemy' ? '255,90,70' : '160,240,140';
+    ctx.strokeStyle = `rgba(${color},${(0.5 + 0.5 * pulse).toFixed(2)})`;
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.ellipse(rx * TILE + 8, ry * TILE + 14.5, 6.5 + pulse, 2.6 + pulse * 0.4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   /** Compañero: sprite humanoide con barra de vida verde (gris si está caído). */
   private drawAlly(game: Game): void {
     const a = game.ally;
@@ -582,6 +648,19 @@ export class Renderer {
       ctx.drawImage(silhouette(img), Math.round(x), Math.round(y) - 1);
       ctx.globalAlpha = 1;
     }
+    // Criatura salvaje: huella flotante y etiqueta «salvaje» para reconocerla.
+    if (wild) {
+      const bob = Math.sin(this.time * 3 + e.uid) * 1.2;
+      ctx.font = '6px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🐾', Math.round(x) + 8, Math.round(y) - 6 + bob);
+      ctx.font = 'bold 3.5px sans-serif';
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#000';
+      ctx.strokeText('salvaje', Math.round(x) + 8, Math.round(y) + 19);
+      ctx.fillStyle = '#c8a0ff';
+      ctx.fillText('salvaje', Math.round(x) + 8, Math.round(y) + 19);
+    }
     // Barra de vida, nivel y estados
     if (e.alerted || e.hp < e.maxHp || e.def.boss) {
       const w = 12;
@@ -616,7 +695,8 @@ export class Renderer {
         const x = f.x * TILE + 8;
         const y = f.y * TILE + 2 - k * 10;
         ctx.globalAlpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
-        ctx.font = 'bold 7px sans-serif';
+        // Números de daño grandes; textos largos algo más pequeños.
+        ctx.font = `bold ${/^[-+¡]?\d/.test(f.text) ? 10 : 7}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.lineWidth = 2;
         ctx.strokeStyle = '#000';
@@ -709,6 +789,12 @@ export class Renderer {
       ctx.globalAlpha = v.flashT * 0.8;
       ctx.drawImage(silhouette(img, '#ff3030'), sx, sy);
       ctx.globalAlpha = 1;
+    }
+    // Defendiendo: escudo sobre la cabeza.
+    if (game.defending) {
+      ctx.font = '7px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🛡', sx + 8, sy - 2 + Math.sin(this.time * 3) * 0.8);
     }
   }
 

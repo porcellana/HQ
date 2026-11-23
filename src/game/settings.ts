@@ -24,6 +24,8 @@ export interface Settings {
   dayNight: boolean;
   /** Guía de misión (flecha tipo GPS hacia el objetivo de la misión seguida). */
   questGuide: boolean;
+  /** Velocidad del combate: paso a paso (pulsar «Siguiente»), lenta o normal. */
+  combatSpeed: 'paso' | 'lenta' | 'normal';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   volume: 'medio',
   dayNight: true,
   questGuide: true,
+  combatSpeed: 'paso',
 };
 
 const KEY = 'ecos.settings';

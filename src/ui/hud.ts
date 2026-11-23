@@ -13,6 +13,8 @@ import { DiceRoller } from './dice';
 import { Joystick } from './joystick';
 import { Minimap } from './minimap';
 import { SkillBar } from './skillbar';
+import { QuestTracker } from './questTracker';
+import { CombatUi } from './combatUi';
 
 export interface HudActions {
   onWait(): void;
@@ -26,6 +28,11 @@ export interface HudActions {
   onPotion(): void;
   onPetOrders(): void;
   onBind(): void;
+  onAttack(): void;
+  onDefend(): void;
+  onContinue(): void;
+  onItems(): void;
+  onOpenQuest(id: string | null): void;
 }
 
 function bar(kind: string, thin = false): { el: HTMLDivElement; fill: HTMLElement; label: HTMLElement } {
@@ -60,6 +67,10 @@ export class Hud {
   private readonly petEl: HTMLDivElement;
   private petSig = '';
   private layoutTick = 0;
+  readonly tracker: QuestTracker;
+  readonly combatUi: CombatUi;
+  /** Columna izquierda bajo el panel: barra de turnos, estados y misiones. */
+  private readonly leftCol: HTMLDivElement;
 
   constructor(actions: HudActions) {
     this.portrait = h('canvas', { class: 'hud-portrait' });
@@ -95,15 +106,34 @@ export class Hud {
 
     this.skillBar = new SkillBar(actions.onSkill, actions.onFlee, actions.onPotion, actions.onBind);
     this.minimap.onTapTile = actions.onMinimapTap;
+    this.tracker = new QuestTracker(actions.onOpenQuest, () => void 0);
+    this.combatUi = new CombatUi(document.getElementById('ui') ?? document.body, {
+      onAttack: actions.onAttack,
+      onToggleSkills: () => {
+        this.combatUi.skillsOpen = !this.combatUi.skillsOpen;
+      },
+      onDefend: actions.onDefend,
+      onWait: actions.onWait,
+      onFlee: actions.onFlee,
+      onBind: actions.onBind,
+      onPetOrders: actions.onPetOrders,
+      onContinue: actions.onContinue,
+    });
+    this.combatUi.onItems = actions.onItems;
+    this.leftCol = h('div', { class: 'hud-left' }, [this.combatUi.turnBar, this.skillBar.statusRow, this.tracker.el]);
     this.root = h('div', { class: 'hud passthrough' }, [
       h('div', { class: 'hud-top' }, [panel, this.minimap.el]),
-      this.skillBar.statusRow,
+      this.leftCol,
       this.banner,
       this.log,
       this.dice.el,
+      this.combatUi.caption,
+      this.combatUi.turnBanner,
       this.joystick.el,
       this.skillBar.el,
       this.actionBar,
+      this.combatUi.menu,
+      this.combatUi.nextBtn,
     ]);
   }
 
@@ -113,19 +143,25 @@ export class Hud {
     this.actionBar.classList.toggle('izquierda', s.hand === 'izquierda');
     this.skillBar.el.classList.toggle('izquierda', s.hand === 'izquierda');
     this.skillBar.questGuide = s.questGuide;
+    this.tracker.enabled = s.questGuide;
   }
 
   /** Altura en px CSS tapada por el panel superior y la barra de acciones. */
   insets(): { top: number; bottom: number } {
     // Arriba: panel de vida y, si hay, la fila de estados/objetivo.
+    // (El seguimiento de misiones es texto translúcido: no empuja la cámara.)
     const hudBottom = this.root.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0;
     const row = this.skillBar.statusRow;
     const rowBottom = row.childElementCount ? row.getBoundingClientRect().bottom : 0;
-    const top = Math.max(hudBottom, rowBottom);
-    // Abajo: la barra de acciones o, si tiene botones, la de habilidades.
-    const sk = this.skillBar.el;
-    const skTop = sk.childElementCount ? sk.getBoundingClientRect().top : Infinity;
-    const barTop = Math.min(this.actionBar.getBoundingClientRect().top, skTop);
+    const tb = this.combatUi.turnBar;
+    const tbBottom = tb.style.display !== 'none' && tb.childElementCount ? tb.getBoundingClientRect().bottom : 0;
+    const top = Math.max(hudBottom, rowBottom, tbBottom);
+    // Abajo: la barra de acciones, el menú de combate o la de habilidades (lo que esté visible más arriba).
+    const tops = [this.actionBar, this.combatUi.menu, this.combatUi.nextBtn, this.skillBar.el]
+      .filter((el) => el.style.display !== 'none' && el.childElementCount + (el.textContent ? 1 : 0) > 0)
+      .map((el) => el.getBoundingClientRect().top)
+      .filter((t) => t > 0);
+    const barTop = tops.length ? Math.min(...tops) : window.innerHeight;
     return { top: top + 4, bottom: Math.max(0, window.innerHeight - barTop) + 4 };
   }
 
@@ -178,6 +214,13 @@ export class Hud {
     }
     this.minimap.draw(game.zone, game.view.rx, game.view.ry, dt);
     this.skillBar.update(game);
+    this.tracker.update(game);
+    this.combatUi.update(game);
+    // En combate el menú de acciones sustituye a la barra normal; las habilidades se despliegan aparte.
+    const combat = game.inCombat && !game.isDead;
+    this.actionBar.style.display = combat ? 'none' : '';
+    this.skillBar.el.style.display = combat && !this.combatUi.skillsOpen ? 'none' : '';
+    this.root.classList.toggle('in-combat', combat);
     // Compañero: nombre y vida
     const cd = game.companionDef;
     const party = game.state.party;
@@ -186,7 +229,7 @@ export class Hud {
     // Los avisos de estado van justo debajo del panel (que crece con compañero y mascota).
     if (++this.layoutTick % 30 === 0) {
       const bottom = this.petEl.closest('.hud-panel')?.getBoundingClientRect().bottom ?? 0;
-      if (bottom > 0) this.skillBar.statusRow.style.top = `${Math.round(bottom + 4)}px`;
+      if (bottom > 0) this.leftCol.style.top = `${Math.round(bottom + 4)}px`;
     }
     // Mascota: nombre, nivel y vida (tócala para darle órdenes)
     const pi = game.petInstance;
@@ -209,7 +252,7 @@ export class Hud {
       // Los avisos de estado van justo debajo del panel (que crece con el compañero).
       requestAnimationFrame(() => {
         const bottom = this.petEl.closest('.hud-panel')?.getBoundingClientRect().bottom ?? 0;
-        if (bottom > 0) this.skillBar.statusRow.style.top = `${Math.round(bottom + 4)}px`;
+        if (bottom > 0) this.leftCol.style.top = `${Math.round(bottom + 4)}px`;
       });
       if (cd) {
         const ap = party.approval[cd.id] ?? 0;

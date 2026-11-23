@@ -75,6 +75,11 @@ export function settingsScreen(
   return h('div', { class: 'screen' }, [
     h('h2', { text: 'Ajustes' }),
     h('div', { class: 'settings-list' }, [
+      row('Velocidad del combate', 'combatSpeed', [
+        { value: 'paso', label: 'Paso a paso' },
+        { value: 'lenta', label: 'Lenta' },
+        { value: 'normal', label: 'Normal' },
+      ]),
       row('Joystick virtual', 'joystick', onOff),
       row('Mano dominante', 'hand', [
         { value: 'derecha', label: 'Derecha' },

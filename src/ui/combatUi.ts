@@ -1,0 +1,181 @@
+/**
+ * INTERFAZ DEL COMBATE POR TURNOS
+ *  - Barra de turnos (bajo el HUD): retratos en orden con el actor en curso
+ *    resaltado y su vida en miniatura.
+ *  - Cartel de acción centrado: qué ha hecho cada actor.
+ *  - «TU TURNO» al empezar tu turno.
+ *  - Menú de acciones en tu turno: Atacar, Habilidad, Objeto, Defender,
+ *    Esperar, Huir (+ Vincular y Órdenes a la mascota si procede).
+ *  - Botón grande «▶ Siguiente» en el modo paso a paso.
+ */
+import { PET_SPECIES } from '@/data/registry';
+import type { Actor, Game, TurnEntry } from '@/game/game';
+import { itemDef } from '@/game/items/items';
+import { monsterSprite } from '@/gfx/monsters';
+import { PAL } from '@/gfx/palette';
+import { petSprite } from '@/gfx/pets';
+import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
+import { showDialog } from './dialogs';
+import { h } from './dom';
+
+export interface CombatActions {
+  onAttack(): void;
+  onToggleSkills(): void;
+  onDefend(): void;
+  onWait(): void;
+  onFlee(): void;
+  onBind(): void;
+  onPetOrders(): void;
+  onContinue(): void;
+}
+
+export class CombatUi {
+  readonly turnBar: HTMLDivElement;
+  readonly caption: HTMLDivElement;
+  readonly turnBanner: HTMLDivElement;
+  readonly menu: HTMLDivElement;
+  readonly nextBtn: HTMLButtonElement;
+  /** Habilidades desplegadas (la barra de habilidades se muestra). */
+  skillsOpen = false;
+  heroColors: HumanoidColors | null = null;
+  private barSig = '';
+  private menuSig = '';
+  private captionTimer = 0;
+  private bannerTimer = 0;
+
+  constructor(private readonly root: HTMLElement, private readonly actions: CombatActions) {
+    this.turnBar = h('div', { class: 'turn-bar' });
+    this.caption = h('div', { class: 'action-caption' });
+    this.turnBanner = h('div', { class: 'turn-banner', text: 'TU TURNO' });
+    this.menu = h('div', { class: 'combat-menu' });
+    this.nextBtn = h('button', { class: 'next-btn primary', text: '▶ Siguiente', onClick: () => actions.onContinue() });
+  }
+
+  /** Cartel con la acción de un actor. Se queda hasta la siguiente acción. */
+  showAction(name: string, lines: string[], isFoe: boolean, holdMs: number): void {
+    window.clearTimeout(this.captionTimer);
+    const shown = lines.slice(-3);
+    this.caption.replaceChildren(
+      h('b', { class: isFoe ? 'foe' : 'friend', text: name }),
+      ...(shown.length ? shown.map((l) => h('div', { text: l })) : [h('div', { class: 'muted', text: '…' })]),
+    );
+    this.caption.classList.add('show');
+    this.captionTimer = window.setTimeout(() => this.caption.classList.remove('show'), holdMs);
+  }
+
+  hideAction(): void {
+    window.clearTimeout(this.captionTimer);
+    this.caption.classList.remove('show');
+  }
+
+  showTurnBanner(): void {
+    window.clearTimeout(this.bannerTimer);
+    this.turnBanner.classList.add('show');
+    this.bannerTimer = window.setTimeout(() => this.turnBanner.classList.remove('show'), 1100);
+  }
+
+  /** Abre la lista de objetos usables en combate. */
+  openItems(game: Game, onError: (msg: string) => void): void {
+    const p = game.state.player;
+    const usable = p.inventory.filter((x) => {
+      const u = itemDef(x).use;
+      return !!u && !u.outOfCombatOnly;
+    });
+    if (!usable.length) {
+      onError('No llevas objetos que se puedan usar en combate.');
+      return;
+    }
+    showDialog(this.root, 'Objetos', 'Usar un objeto gasta tu turno.', [
+      ...usable.map((it) => ({
+        label: `${itemDef(it).name}${it.qty > 1 ? ` ×${it.qty}` : ''}`,
+        action: () => {
+          const err = game.useItem(it.uid);
+          if (err) onError(err);
+        },
+      })),
+      { label: 'Cancelar' },
+    ]);
+  }
+
+  update(game: Game): void {
+    const combat = game.inCombat && !game.isDead;
+    // --- Barra de turnos
+    const order = combat ? game.turnOrder() : [];
+    const bsig = order.map((e) => `${e.actor.kind}${e.actor.uid ?? ''}:${e.hp}/${e.maxHp}:${e.current ? 1 : 0}`).join('|');
+    if (bsig !== this.barSig) {
+      this.barSig = bsig;
+      this.turnBar.style.display = combat ? '' : 'none';
+      this.turnBar.replaceChildren(...order.slice(0, 8).map((e) => this.turnCell(game, e)));
+    }
+    // --- Menú de acciones / Siguiente
+    const myTurn = combat && game.canAct;
+    // Tras la última acción el combate puede haber acabado: aún hay que pulsar «Siguiente».
+    const waiting = (combat && game.phase === 'enemies') || game.awaitingContinue;
+    const bindable = game.bindTargets().length > 0 && game.state.player.inventory.some((x) => x.id === 'runa_vinculo');
+    const msig = [myTurn, waiting, game.awaitingContinue, game.combatSpeed, game.attackMode, this.skillsOpen, bindable, !!game.petInstance].join('|');
+    if (msig === this.menuSig) return;
+    this.menuSig = msig;
+    if (!combat && !game.awaitingContinue) {
+      this.skillsOpen = false;
+      this.hideAction();
+    }
+    this.menu.style.display = myTurn ? '' : 'none';
+    const waitLabel = game.combatSpeed === 'paso' && game.awaitingContinue ? '▶ Siguiente' : 'Turno de los demás…';
+    this.nextBtn.style.display = waiting ? '' : 'none';
+    this.nextBtn.textContent = waitLabel;
+    this.nextBtn.disabled = !(game.combatSpeed === 'paso' && game.awaitingContinue);
+    if (!myTurn) return;
+    const b = (ico: string, label: string, fn: () => void, extra = '') =>
+      h('button', { class: `cbtn${extra}`, onClick: fn, attrs: { 'aria-label': label } }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
+    this.menu.replaceChildren(
+      b('⚔', 'Atacar', this.actions.onAttack, game.attackMode ? ' active' : ''),
+      b('✨', 'Habilidad', this.actions.onToggleSkills, this.skillsOpen ? ' active' : ''),
+      b('🧪', 'Objeto', () => this.onItems?.()),
+      b('🛡', 'Defender', this.actions.onDefend),
+      b('⏳', 'Esperar', this.actions.onWait),
+      b('🏃', 'Huir', this.actions.onFlee),
+      ...(bindable ? [b('🔮', 'Vincular', this.actions.onBind, ' bind')] : []),
+      ...(game.petInstance ? [b('🐾', 'Órdenes', this.actions.onPetOrders)] : []),
+    );
+  }
+
+  /** Lo fija la interfaz para abrir la lista de objetos. */
+  onItems: (() => void) | null = null;
+
+  private turnCell(game: Game, e: TurnEntry): HTMLElement {
+    const c = document.createElement('canvas');
+    c.width = 16;
+    c.height = 16;
+    c.className = 'turn-icon';
+    const ctx = c.getContext('2d')!;
+    ctx.imageSmoothingEnabled = false;
+    const img = this.spriteFor(game, e.actor);
+    if (img) ctx.drawImage(img, 0, 0);
+    const ratio = e.maxHp > 0 ? Math.max(0, e.hp) / e.maxHp : 0;
+    const foe = e.actor.kind === 'enemy';
+    return h('div', { class: `turn-cell${e.current ? ' current' : ''}${foe ? ' foe' : ''}`, attrs: { title: e.name } }, [
+      c,
+      h('div', { class: 'turn-hp' }, [h('i', { attrs: { style: `width:${Math.round(ratio * 100)}%` } })]),
+    ]);
+  }
+
+  private spriteFor(game: Game, a: Actor): HTMLCanvasElement | null {
+    if (a.kind === 'player') return this.heroColors ? humanoidSprite(this.heroColors).right : null;
+    if (a.kind === 'ally') {
+      const l = game.companionDef?.look;
+      if (!l) return null;
+      return humanoidSprite({
+        hair: l.hair ?? PAL.hair, skin: l.skin ?? PAL.skin, cloth: l.cloth, clothDark: l.clothDark, pants: l.pants,
+        ...(l.hat ? { hat: l.hat } : {}), ...(l.overlay ? { overlay: l.overlay } : {}),
+      }).right;
+    }
+    if (a.kind === 'pet') {
+      const sp = game.petInstance ? PET_SPECIES.get(game.petInstance.species) : undefined;
+      return sp ? petSprite(sp.look, sp.stage).right : null;
+    }
+    const en = game.enemies.find((x) => x.uid === a.uid);
+    if (!en) return null;
+    const wild = en.def.pet ? PET_SPECIES.get(en.def.pet.species) : undefined;
+    return (wild ? petSprite(wild.look, wild.stage) : monsterSprite(en.def.look)).left;
+  }
+}

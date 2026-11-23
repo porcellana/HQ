@@ -167,7 +167,10 @@ export class App {
   private applySettings(): void {
     document.documentElement.classList.toggle('ui-grande', this.settings.uiScale === 'grande');
     this.hud?.applySettings(this.settings);
-    if (this.game) this.game.stepDuration = this.settings.moveSpeed === 'rapida' ? 0.08 : 0.14;
+    if (this.game) {
+      this.game.stepDuration = this.settings.moveSpeed === 'rapida' ? 0.08 : 0.14;
+      this.game.combatSpeed = this.settings.combatSpeed;
+    }
     this.sfx.enabled = this.settings.sound;
     this.sfx.volume = this.settings.volume;
     // El tamaño de interfaz cambia el layout: recalculamos el canvas.
@@ -234,7 +237,10 @@ export class App {
       onMenu: () => this.togglePause(),
       onInventory: () => this.showInventory(),
       onJoystick: (d) => this.setHeldDir(d),
-      onSkill: (sk) => game.selectSkill(sk),
+      onSkill: (sk) => {
+        game.selectSkill(sk);
+        hud.combatUi.skillsOpen = false;
+      },
       onFlee: () => game.flee(),
       onPotion: () => {
         const err = game.quickPotion();
@@ -248,6 +254,16 @@ export class App {
         const err = game.bindPet();
         if (err) hud.pushMessage(err, 'warn');
       },
+      onAttack: () => {
+        const err = game.startAttack();
+        if (err) hud.pushMessage(err, 'warn');
+      },
+      onDefend: () => game.defend(),
+      onContinue: () => game.continueTurn(),
+      onItems: () => hud.combatUi.openItems(game, (m) => hud.pushMessage(m, 'warn')),
+      onOpenQuest: (id) => {
+        if (!this.screen && !this.pauseClose) this.showJournal(id);
+      },
     });
     this.hud = hud;
     this.ui.prepend(hud.root);
@@ -256,6 +272,17 @@ export class App {
 
     game.events.on('message', (m) => hud.pushMessage(m.text, m.kind));
     game.events.on('dice', (d) => hud.dice.show(d));
+    // Combate por turnos: cartel de cada acción y aviso de «TU TURNO».
+    game.events.on('actorAction', ({ actor, name, lines }) => {
+      const hold = game.combatSpeed === 'paso' ? 60000 : 1800;
+      hud.combatUi.showAction(actor.kind === 'player' ? `Tú (${name})` : name, lines, actor.kind === 'enemy', hold);
+    });
+    game.events.on('playerTurn', () => {
+      if (game.combatSpeed === 'normal') return;
+      hud.combatUi.showTurnBanner();
+      buzz(this.settings.vibration, 15);
+      window.setTimeout(() => hud.combatUi.hideAction(), 1400);
+    });
     game.events.on('playerHurt', ({ amount }) => buzz(this.settings.vibration, Math.min(80, 15 + amount * 4)));
     game.events.on('levelUp', (ev) => this.showLevelUp(ev));
     game.events.on('playerDied', () => this.showDeath());
@@ -298,6 +325,7 @@ export class App {
     const colors = heroColors(cls.look, p.portrait);
     this.renderer.heroColors = colors;
     this.hud.setPortrait(colors);
+    this.hud.combatUi.heroColors = colors;
     this.hud.setResource(cls.resource.short, cls.resource.color);
   }
 
@@ -431,11 +459,11 @@ export class App {
     evolutionScreen(this.ui, game, () => moveChoice(this.ui, game, finish));
   }
 
-  private showJournal(): void {
+  private showJournal(openId: string | null = null): void {
     const game = this.game;
     if (!game || this.pauseClose) return;
     game.heldDir = null;
-    this.setScreen(journalScreen(game, () => this.setScreen(null)));
+    this.setScreen(journalScreen(game, () => this.setScreen(null), openId));
   }
 
   private showNpcDialog(npc: NpcDef): void {
@@ -483,6 +511,11 @@ export class App {
 
   private onTap(sx: number, sy: number): void {
     if (!this.game || this.pauseClose || this.screen || this.ui.querySelector('.modal-back, .dialog-back')) return;
+    // Paso a paso: tocar la pantalla también sirve como «Siguiente».
+    if (this.game.awaitingContinue) {
+      this.game.continueTurn();
+      return;
+    }
     const t = this.renderer.screenToTile(sx, sy);
     this.game.tapTile(t.x, t.y);
   }

@@ -4,7 +4,6 @@ import type { Game } from '@/game/game';
 import { unlockedSkills } from '@/game/rules/character';
 import { STATUS_INFO } from '@/game/combat/status';
 import { itemDef } from '@/game/items/items';
-import { GOAL_ICON } from '@/game/quests/guide';
 import { trackedQuest } from '@/game/quests/quests';
 import { h } from './dom';
 
@@ -75,16 +74,8 @@ export class SkillBar {
     for (const b of c.buffs) chips.push(h('span', { class: 'chip good', text: `▲${b.stat} +${b.amount} (${b.turns})` }));
     if (c.stealth > 0) chips.push(h('span', { class: 'chip good', text: `🌑 oculto ${c.stealth}` }));
     if (combat) chips.push(h('span', { class: 'chip warn', text: '⚔ En combate' }));
-    if (tq && !combat && this.questGuide) {
-      const goal = game.questGoal;
-      // Lo mínimo: icono, qué/cuántos y zona.
-      const icon = goal ? GOAL_ICON[goal.kind] : '📜';
-      const zone = goal?.zoneName || game.zone.def.name;
-      chips.push(h('span', { class: `chip quest${tq.ready ? ' ready' : ''}`, attrs: { title: `${tq.name}: ${tq.text}` } }, [
-        `${icon} ${tq.short}`,
-        h('small', { class: 'quest-zone', text: ` · ${zone}` }),
-      ]));
-    }
+    // (El objetivo de misión ya no va aquí: lo muestra el seguimiento de misiones.)
+    void tq;
     this.statusEl.replaceChildren(...chips);
   }
 }

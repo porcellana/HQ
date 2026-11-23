@@ -13,9 +13,9 @@ import { h } from './dom';
 
 const KIND_LABEL: Record<QuestDef['kind'], string> = { principal: 'Principal', secundaria: 'Secundaria', repetible: 'Encargo' };
 
-export function journalScreen(game: Game, onClose: () => void): HTMLElement {
+export function journalScreen(game: Game, onClose: () => void, initialOpen: string | null = null): HTMLElement {
   const root = h('div', { class: 'screen journal' });
-  let openId: string | null = null;
+  let openId: string | null = initialOpen;
 
   const render = () => {
     const s = game.state;

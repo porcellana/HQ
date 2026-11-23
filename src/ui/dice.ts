@@ -27,7 +27,7 @@ export class DiceRoller {
   show(ev: DiceEvent): void {
     window.clearInterval(this.spin);
     window.clearTimeout(this.timer);
-    this.el.className = 'dice-roller passthrough show';
+    this.el.className = `dice-roller passthrough show${ev.small ? ' small' : ''}`;
     this.info.textContent = ev.label;
     let n = 0;
     this.spin = window.setInterval(() => {

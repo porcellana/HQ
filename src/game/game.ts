@@ -60,6 +60,8 @@ export interface DiceEvent {
   target: number | null;
   targetLabel: 'CA' | 'CD' | '';
   outcome: 'crit' | 'hit' | 'miss' | 'fumble' | 'success' | 'fail';
+  /** Tirada secundaria (ataques enemigos): se muestra más pequeña. */
+  small?: boolean;
 }
 
 export interface LevelUpEvent {
@@ -144,6 +146,30 @@ export interface GameEvents extends Record<string, unknown> {
   petEvent: PetEvent;
   /** Tocaste a tu mascota en el mapa (órdenes). */
   petTapped: Record<string, never>;
+  /** Un actor terminó su acción en combate (cartel de acción). */
+  actorAction: { actor: Actor; name: string; lines: string[] };
+  /** Empieza tu turno en combate (cartel «TU TURNO»). */
+  playerTurn: Record<string, never>;
+}
+
+/** Velocidad del combate: paso a paso (esperar a «Siguiente»), lenta o normal. */
+export type CombatSpeed = 'paso' | 'lenta' | 'normal';
+
+/** Quién está actuando en el combate. */
+export interface Actor {
+  kind: 'player' | 'ally' | 'pet' | 'enemy';
+  /** Para enemigos: su uid. */
+  uid?: number;
+}
+
+/** Entrada de la barra de turnos. */
+export interface TurnEntry {
+  actor: Actor;
+  name: string;
+  hp: number;
+  maxHp: number;
+  current: boolean;
+  enemy?: Enemy;
 }
 
 export interface QuestGoal {
@@ -201,8 +227,12 @@ export interface PlayerCombat {
 }
 
 const ENEMY_DELAY = 0.2;
+/** Pausa entre acciones con la velocidad «Lenta». */
+const SLOW_DELAY = 0.9;
 /** Probabilidad de que un encuentro sea una criatura salvaje (si la zona tiene). */
-const WILD_PET_CHANCE = 0.18;
+const WILD_PET_CHANCE = 0.25;
+/** Máximo de criaturas salvajes a la vez en una zona. */
+const WILD_PET_MAX = 3;
 /** Distingue partidas creadas en el mismo milisegundo (semillas distintas). */
 let gameCounter = 0;
 
@@ -253,6 +283,18 @@ export class Game {
   rng: Rng;
   private enemyQueue: Enemy[] = [];
   private enemyTimer = 0;
+  /** Velocidad del combate (la interfaz la fija desde Ajustes; por defecto instantánea para tests). */
+  combatSpeed: CombatSpeed = 'normal';
+  /** Paso a paso: el actor ya actuó y esperamos a que el jugador pulse «Siguiente». */
+  awaitingContinue = false;
+  /** Actor que está actuando (para resaltarlo en el mapa y en la barra de turnos). */
+  currentActor: Actor | null = null;
+  /** Acción «Defender»: +2 CA hasta el comienzo de tu próximo turno. */
+  defending = false;
+  /** Modo «Atacar»: se resaltan los enemigos a tu alcance hasta que tocas uno. */
+  attackMode = false;
+  /** Mensajes del actor en curso (para el cartel de acción). */
+  private caption: string[] | null = null;
   /** Algo importante pasó durante el turno enemigo: se detiene la ruta. */
   private interrupt = false;
 
@@ -346,7 +388,12 @@ export class Game {
   }
 
   playerAC(): number {
-    return this.derived.ac + this.buffTotal('ca') - (hasStatus(this.combat.statuses, 'ralentizado') ? 2 : 0);
+    return this.derived.ac + this.buffTotal('ca') - (hasStatus(this.combat.statuses, 'ralentizado') ? 2 : 0) + (this.defending ? 2 : 0);
+  }
+
+  /** Ritmo de las animaciones: más lentas fuera del modo normal en combate. */
+  get animRate(): number {
+    return this.combatSpeed !== 'normal' && this.inCombat ? 0.55 : 1;
   }
 
   playerToHit(): number {
@@ -360,6 +407,7 @@ export class Game {
 
   // ==================================================================== mensajes
   private msg(text: string, kind: MsgKind = 'info'): void {
+    if (this.caption && kind !== 'info') this.caption.push(text);
     this.events.emit('message', { text, kind });
   }
 
@@ -418,12 +466,18 @@ export class Game {
       const range = this.derived.weapon.range;
       if (dist(p.x, p.y, enemy.x, enemy.y) <= range && this.los(p, enemy)) {
         this.cancelPath();
+        this.attackMode = false;
         this.playerAttack(enemy, {});
         this.endPlayerTurn();
         return;
       }
       this.describeEnemy(enemy);
+      if (this.attackMode) {
+        this.msg('Ese enemigo está fuera de tu alcance: acércate.', 'warn');
+        return;
+      }
     }
+    this.attackMode = false;
     if (from.x === x && from.y === y) {
       this.cancelPath();
       return;
@@ -441,8 +495,100 @@ export class Game {
       this.cancelPath();
       return;
     }
+    // En combate, cada toque mueve una sola casilla (un turno).
+    if (this.inCombat) path.length = Math.min(path.length, 1);
     this.view.path = path;
     this.view.target = { x, y };
+  }
+
+  /** Enemigos a los que puedes atacar con tu arma desde donde estás. */
+  attackTargets(): Enemy[] {
+    const p = this.playerPos;
+    const range = this.derived.weapon.range;
+    return this.enemies.filter((e) => e.hp > 0 && dist(p.x, p.y, e.x, e.y) <= range && this.los(p, e));
+  }
+
+  /**
+   * Botón «Atacar»: si sólo hay un enemigo a tu alcance, le atacas; si hay
+   * varios, se resaltan y eliges tocando. Devuelve un aviso o null.
+   */
+  startAttack(): string | null {
+    if (!this.canAct) return 'Espera a tu turno.';
+    this.targeting = null;
+    const targets = this.attackTargets();
+    if (targets.length === 0) {
+      this.attackMode = false;
+      return 'Ningún enemigo a tu alcance: acércate tocando el suelo.';
+    }
+    if (targets.length === 1) {
+      this.attackMode = false;
+      this.cancelPath();
+      this.playerAttack(targets[0]!, {});
+      this.endPlayerTurn();
+      return null;
+    }
+    this.attackMode = !this.attackMode;
+    if (this.attackMode) this.msg('Toca al enemigo que quieres atacar.', 'info');
+    return null;
+  }
+
+  /** Acción «Defender»: +2 CA hasta tu próximo turno. */
+  defend(): void {
+    if (!this.canAct) return;
+    this.cancelPath();
+    this.targeting = null;
+    this.attackMode = false;
+    this.defending = true;
+    const p = this.playerPos;
+    this.floatText(p.x, p.y - 0.4, '🛡 +2 CA', '#9ad0ff');
+    this.msg('Te pones a la defensiva (+2 CA hasta tu próximo turno).', 'good');
+    this.endPlayerTurn();
+  }
+
+  /** Paso a paso: continuar con el siguiente actor. */
+  continueTurn(): void {
+    if (!this.awaitingContinue) return;
+    this.awaitingContinue = false;
+    this.enemyTimer = 0;
+  }
+
+  /** Posición del actor en curso (para el anillo y la cámara). */
+  actorPos(a: Actor | null = this.currentActor): Point | null {
+    if (!a) return null;
+    if (a.kind === 'player') return this.playerPos;
+    if (a.kind === 'ally') return this.ally ? { x: this.ally.x, y: this.ally.y } : null;
+    if (a.kind === 'pet') return this.pet ? { x: this.pet.x, y: this.pet.y } : null;
+    const e = this.enemies.find((x) => x.uid === a.uid);
+    return e ? { x: e.x, y: e.y } : null;
+  }
+
+  /** Orden de turnos visible: tú, aliados y enemigos en combate por cercanía. */
+  turnOrder(): TurnEntry[] {
+    const cur = this.currentActor;
+    const same = (a: Actor) => !!cur && cur.kind === a.kind && cur.uid === a.uid;
+    const p = this.state.player;
+    const out: TurnEntry[] = [];
+    const me: Actor = { kind: 'player' };
+    out.push({ actor: me, name: p.name, hp: p.hp, maxHp: p.maxHp, current: same(me) || (this.phase === 'player' && !cur) });
+    const cd = this.companionDef;
+    if (this.ally && cd) {
+      const a: Actor = { kind: 'ally' };
+      out.push({ actor: a, name: cd.name, hp: this.state.party.down ? 0 : this.state.party.hp, maxHp: this.allyStats().maxHp, current: same(a) });
+    }
+    const pi = this.petInstance;
+    if (this.pet && pi) {
+      const a: Actor = { kind: 'pet' };
+      out.push({ actor: a, name: Pets.petName(pi), hp: pi.down ? 0 : pi.hp, maxHp: this.petStatsNow().hp, current: same(a) });
+    }
+    const pos = this.playerPos;
+    const foes = this.enemies
+      .filter((e) => e.hp > 0 && e.alerted && dist(e.x, e.y, pos.x, pos.y) <= e.def.sight + 2)
+      .sort((a, b) => dist(a.x, a.y, pos.x, pos.y) - dist(b.x, b.y, pos.x, pos.y));
+    for (const e of foes) {
+      const a: Actor = { kind: 'enemy', uid: e.uid };
+      out.push({ actor: a, name: e.def.name, hp: e.hp, maxHp: e.maxHp, current: same(a), enemy: e });
+    }
+    return out;
   }
 
   describeEnemy(e: Enemy): void {
@@ -518,8 +664,9 @@ export class Game {
     this.state.playTimeSec += dt;
     this.updateAnimations(dt);
     if (this.phase === 'enemies') {
+      if (this.awaitingContinue) return;
       this.enemyTimer -= dt;
-      while (this.phase === 'enemies' && this.enemyTimer <= 0) this.processNextEnemy();
+      while (this.phase === 'enemies' && this.enemyTimer <= 0 && !this.awaitingContinue) this.processNextEnemy();
       return;
     }
     if (this.phase !== 'player') return;
@@ -535,7 +682,8 @@ export class Game {
     if (v.stepT < 0 && this.phase === 'player') this.tryStartStep();
   }
 
-  private updateAnimations(dt: number): void {
+  private updateAnimations(rawDt: number): void {
+    const dt = rawDt * this.animRate;
     const v = this.view;
     v.bumpT = Math.max(0, v.bumpT - dt * 5);
     v.flashT = Math.max(0, v.flashT - dt * 4);
@@ -684,22 +832,60 @@ export class Game {
     for (const b of this.petBuffs) b.turns--;
     this.petBuffs = this.petBuffs.filter((b) => b.turns > 0);
     this.enemyTimer = 0;
+    this.awaitingContinue = false;
+    this.attackMode = false;
+    // Cartel con lo que acabas de hacer y una pausa para verlo antes de que actúen los demás.
+    const myLines = this.caption;
+    this.caption = null;
+    if (myLines && this.inCombat && this.combatSpeed !== 'normal') {
+      this.events.emit('actorAction', { actor: { kind: 'player' }, name: this.state.player.name, lines: myLines });
+      this.enemyTimer = this.combatSpeed === 'paso' ? 0.8 : SLOW_DELAY;
+    }
     this.phase = 'enemies';
     // Sin enemigos cerca, todo ocurre en el acto para que caminar sea fluido.
     if (!this.inCombat) while (this.phase === 'enemies') this.processNextEnemy();
   }
 
+  /**
+   * Ejecuta el turno de un actor recogiendo sus mensajes para el cartel y,
+   * si estamos en combate y hizo algo visible, marca la pausa según la
+   * velocidad elegida (paso a paso = esperar a «Siguiente»).
+   */
+  private runActor(actor: Actor, name: string, fn: () => boolean): void {
+    const wasCombat = this.inCombat;
+    this.currentActor = actor;
+    this.caption = [];
+    const before = this.actorPos(actor);
+    let acted = false;
+    try {
+      acted = fn();
+    } finally {
+      const lines = this.caption ?? [];
+      // Si no dijo nada, al menos contamos si se movió.
+      if (!lines.length) {
+        const after = this.actorPos(actor);
+        const moved = !!before && !!after && (before.x !== after.x || before.y !== after.y);
+        lines.push(moved ? (actor.kind === 'enemy' ? 'Se acerca.' : 'Se coloca.') : 'Espera su momento.');
+      }
+      this.caption = null;
+      if (acted && (wasCombat || this.inCombat) && !this.isDead) {
+        this.events.emit('actorAction', { actor, name, lines });
+        if (this.combatSpeed === 'paso') this.awaitingContinue = true;
+        else this.enemyTimer = this.combatSpeed === 'lenta' ? SLOW_DELAY : ENEMY_DELAY;
+      }
+    }
+  }
+
   private processNextEnemy(): void {
     if (this.allyPending) {
       this.allyPending = false;
-      const acted = this.allyTurn();
-      if (acted && this.inCombat) this.enemyTimer = ENEMY_DELAY;
+      this.runActor({ kind: 'ally' }, this.companionDef?.name ?? 'Compañero', () => this.allyTurn());
       return;
     }
     if (this.petPending) {
       this.petPending = false;
-      const acted = this.petTurn();
-      if (acted && this.inCombat) this.enemyTimer = ENEMY_DELAY;
+      const pi = this.petInstance;
+      this.runActor({ kind: 'pet' }, pi ? Pets.petName(pi) : 'Mascota', () => this.petTurn());
       return;
     }
     const e = this.enemyQueue.shift();
@@ -708,14 +894,19 @@ export class Game {
       return;
     }
     if (e.hp <= 0 || !this.enemies.includes(e)) return;
-    const visible = this.enemyTurn(e);
-    if (visible && this.inCombat) this.enemyTimer = ENEMY_DELAY;
+    this.runActor({ kind: 'enemy', uid: e.uid }, e.def.name, () => this.enemyTurn(e));
   }
 
   /** Comienzo del turno del jugador: estados, regeneración y encuentros. */
   private startPlayerTurn(): void {
     if (this.phase === 'dead') return;
     this.phase = 'player';
+    this.defending = false;
+    this.awaitingContinue = false;
+    this.currentActor = this.inCombat ? { kind: 'player' } : null;
+    // Lo que hagas en tu turno se recoge para el cartel de acción.
+    this.caption = this.inCombat ? [] : null;
+    if (this.inCombat) this.events.emit('playerTurn', {});
     const p = this.state.player;
     const c = this.combat;
     if (this.interrupt) this.cancelPath();
@@ -865,6 +1056,9 @@ export class Game {
     const enc = this.zone.def.encounters;
     if (!enc) return;
     for (let i = 0; i < enc.initial; i++) this.spawnGroup();
+    // Siempre hay al menos una criatura salvaje si la zona es su hábitat.
+    const wild = wildSpeciesIn(this.zone.def.dungeon?.id ?? this.zone.id);
+    if (wild.length && !this.enemies.some((e) => e.def.pet)) this.spawnWildPet(this.rng.pick(wild));
   }
 
   private maybeSpawnEncounter(): void {
@@ -880,7 +1074,7 @@ export class Game {
     // A veces, en lugar de un grupo, aparece una criatura salvaje vinculable.
     const habitat = this.zone.def.dungeon?.id ?? this.zone.id;
     const wild = wildSpeciesIn(habitat);
-    if (wild.length && this.rng.chance(WILD_PET_CHANCE)) {
+    if (wild.length && this.enemies.filter((e) => e.def.pet).length < WILD_PET_MAX && this.rng.chance(WILD_PET_CHANCE)) {
       const w = this.spawnWildPet(this.rng.pick(wild));
       if (w) return [w];
     }
@@ -1528,6 +1722,12 @@ export class Game {
     const mode: RollMode = hasStatus(e.statuses, 'veneno') ? 'desventaja' : 'normal';
     const ac = this.playerAC();
     const r = attackRoll(this.rng, atk.toHit + e.toHitBonus, ac, mode);
+    if (this.combatSpeed !== 'normal') {
+      this.events.emit('dice', {
+        label: `${e.def.name}: ${atk.name}`, natural: r.natural, bonus: atk.toHit + e.toHitBonus, total: r.total, target: ac, targetLabel: 'CA',
+        outcome: r.fumble ? 'fumble' : r.crit ? 'crit' : r.hit ? 'hit' : 'miss', small: true,
+      });
+    }
     if (!r.hit) {
       this.floatText(p.x, p.y, r.fumble ? 'Pifia' : 'Esquivas', '#a49c8a');
       this.msg(`${e.def.name} falla su ${atk.name.toLowerCase()} (${r.total} vs tu CA ${ac}).`, 'combat');
@@ -1962,6 +2162,7 @@ export class Game {
       if (left > 0) this.dropLoot(this.playerPos.x, this.playerPos.y, [{ ...it, qty: left }], 0);
       this.msg(`Recibes: ${itemDef(it).name}${(r.qty ?? 1) > 1 ? ` ×${r.qty}` : ''}${left > 0 ? ' (en el suelo: mochila llena)' : ''}.`, 'good');
     }
+    if (q.rewards.pet) this.givePet(q.rewards.pet.species, q.rewards.pet.level, q.name);
     if (q.rewards.xp) this.gainXp(q.rewards.xp, q.name);
     this.events.emit('questsChanged', {});
     this.sfx('mision');
@@ -2016,7 +2217,8 @@ export class Game {
         const npc = this.npcs.find((n) => n.id === step.npc);
         if (npc) return { x: npc.x, y: npc.y };
       } else if (step.kind === 'cazar') {
-        const e = nearest(this.enemies.filter((x) => enemyMatches(step, x.def.id)));
+        const wild = step.wild;
+        const e = nearest(this.enemies.filter((x) => (wild ? !!x.def.pet && (wild === true || x.def.pet.species === wild) : enemyMatches(step, x.def.id))));
         if (e) return { x: e.x, y: e.y };
       } else if (step.kind === 'recoger') {
         const ore = [...ORES.values()].find((o) => o.item === step.item);
@@ -2644,10 +2846,28 @@ export class Game {
       this.events.emit('petEvent', { kind: 'vinculo', text: `¡${sp.name} se une a ti!` });
       if (where === 'activa') this.spawnPet();
     }
+    for (const m of Quests.onBind(this.state, sp.id)) this.msg(m, 'good');
+    this.events.emit('questsChanged', {});
     this.gainXp(Math.round(target.def.xp * 0.5), `vínculo con ${sp.name}`);
     this.sfx('mision');
     this.endPlayerTurn();
     return null;
+  }
+
+  /** Regala una mascota (recompensa de misión): activa si no llevas ninguna; si no, al establo. */
+  givePet(speciesId: string, level: number, reason: string): void {
+    const sp = Pets.getSpecies(speciesId);
+    const pet = Pets.createPet(sp.id, level);
+    Pets.markSeen(this.state.pets, sp.id);
+    const where = Pets.addPet(this.state.pets, pet, Date.now());
+    if (where === 'lleno') {
+      this.msg(`${reason}: ${sp.name} quería unirse a ti, pero tu establo está lleno.`, 'warn');
+      return;
+    }
+    const text = `¡${sp.name} se une a ti!${where === 'establo' ? ' Te espera en el establo de Brumaroja.' : ''}`;
+    this.msg(text, 'good');
+    this.events.emit('petEvent', { kind: 'vinculo', text: `🐾 ${text}` });
+    if (where === 'activa') this.spawnPet();
   }
 
   /** Elige la mascota inicial en el establo. */
@@ -2657,9 +2877,17 @@ export class Game {
     if (!sp.starter) return 'Esa criatura no se ofrece como inicial.';
     const pet = Pets.createPet(sp.id, 2);
     this.state.pets.starterChosen = true;
+    this.state.flags['mascota_inicial'] = true;
     Pets.addPet(this.state.pets, pet, Date.now());
     this.spawnPet();
     this.msg(`¡${sp.name} será tu compañera de aventuras!`, 'good');
+    // Regalo de Tobías: runas para la primera captura.
+    const runes = createItem('runa_vinculo', 'comun', this.rng, { qty: 3 });
+    const left = addItem(this.state.player, runes);
+    if (left > 0) this.dropLoot(this.playerPos.x, this.playerPos.y, [{ ...runes, qty: left }], 0);
+    this.msg('Tobías: «Toma, 3 Runas de vínculo. Debilita a una criatura salvaje y usa 🔮 cuando esté baja de vida.»', 'good');
+    this.msg('Tobías: «En el Bosque Sombrío viven guijarrines. Vuelve a hablar conmigo: tengo un encargo para ti.»', 'info');
+    this.events.emit('questsChanged', {});
     return null;
   }
 
