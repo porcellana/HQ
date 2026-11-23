@@ -2,6 +2,26 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.4.0 · 2026-11-23 — Combate turno a turno, misiones estilo WoW y mascotas a la vista
+
+- **Combate turno a turno**: nueva opción «Velocidad del combate» (Paso a paso por defecto,
+  Lenta, Normal). En paso a paso cada compañero, mascota y enemigo actúa de uno en uno y el
+  juego espera a que pulses **▶ Siguiente** (o toques la pantalla).
+- **Barra de turnos** bajo el HUD con retratos en orden, vida en miniatura y el actor en
+  curso resaltado; anillo bajo sus pies y cámara que se acerca si está lejos.
+- **Cartel de acción** centrado con lo que hace cada uno (con la tirada), dado animado
+  también para los ataques enemigos, animaciones más lentas y números de daño más grandes.
+- **Menú de acciones** en tu turno: Atacar (resalta a quién puedes golpear), Habilidad,
+  Objeto, **Defender** (nuevo: +2 CA hasta tu próximo turno), Esperar, Huir, Vincular y
+  Órdenes a la mascota. Aviso «TU TURNO». En combate, tocar el suelo mueve una casilla.
+- **Seguimiento de misiones estilo WoW**: sólo texto bajo el panel, plegable, una línea por
+  objetivo con progreso y zona; tocar sigue la misión, doble toque/mantener abre su ficha.
+- **Mascotas**: las criaturas salvajes llevan 🐾 y la etiqueta «salvaje», siempre hay al
+  menos una al entrar en su hábitat (hasta 3), Aurelión ya vive en la Cripta. Tobías regala
+  3 Runas de vínculo y la misión «Tu primera captura» (nuevo objetivo `bind`). Mascotas de
+  recompensa: Umbrín (Cueva), Destellín (Mórgala) y Aurelión (epílogo). El bestiario y la
+  ficha dicen dónde vive cada especie o cómo se consigue.
+
 ## v0.3.1 · 2026-11-23 — Retoques
 
 - Aviso de misión mínimo: una línea con icono, qué/cuántos y zona («⚔ Goblins 2/5 · Bosque Sombrío»).

@@ -34,6 +34,7 @@ v0.2 se centra en el estilo Baldur's Gate / D&D en tres fases:
 | B | **Mundo con sorpresas**: eventos al viajar (emboscadas, viajeros, mercaderes raros) resueltos con tiradas, misiones con varios finales, mapa del mundo con viaje rápido | ⏳ |
 | — | **v0.2.1**: joystick arreglado, diario con ficha y misión seguida, guía GPS opcional y mapa grande | ✅ |
 | — | **v0.3.0 Mascotas**: criaturas que luchan contigo, aprenden, evolucionan y entrenan en el establo | ✅ |
+| — | **v0.4.0**: combate turno a turno (paso a paso, barra de turnos, cartel de acción, menú de acciones, Defender), seguimiento de misiones estilo WoW, mascotas fáciles de encontrar y como recompensa | ✅ |
 | C | **Expediciones roguelike**: elegir camino entre salas (combate, tesoro, evento, tienda), recompensas a elegir y mejoras que se conservan aunque mueras | ⏳ |
 
 ### Mascotas (v0.3)
@@ -42,10 +43,27 @@ Criaturas originales que te acompañan, luchan, aprenden movimientos y evolucion
 
 - **Primera mascota**: habla con **Tobías**, el cuidador junto al corral de Brumaroja, y
   elige entre **Chispón** (fuego), **Gotín** (agua) o **Brotín** (planta).
-- **Más mascotas**: en el Bosque Sombrío, el Paso Gris y las mazmorras a veces aparece
-  una **criatura salvaje** en lugar de un grupo de enemigos. Debilítala y pulsa **🔮** (con
-  una **Runa de vínculo**, que venden Pim y el alquimista): la probabilidad sube cuanto
-  menos vida le quede. Si ya llevas una, la nueva va al establo.
+- **Cómo se capturan**: al elegir la inicial, Tobías te regala **3 Runas de vínculo** y te
+  da la misión **«Tu primera captura»**. Busca una **criatura salvaje** (lleva una 🐾 encima y
+  la etiqueta «salvaje»), debilítala peleando y pulsa **🔮 Vincular** cuando le quede poca
+  vida: la probabilidad (que ves en el botón) sube cuanto menos vida tenga. Más runas: Pim
+  (tienda de la aldea), el alquimista de Puerto Ceniza y algún botín de goblin. Si ya llevas
+  una mascota, la nueva va al establo.
+- **Dónde viven** (siempre hay al menos una al entrar en su zona, hasta 3 a la vez):
+
+  | Especie | Tipo | Dónde |
+  |---|---|---|
+  | Guijarrín | tierra | Bosque Sombrío, Paso Gris |
+  | Destellín | luz | Paso Gris, Galerías de Seda |
+  | Roquedón | tierra | Galerías de Seda |
+  | Umbrín | sombra | Cueva de los Colmillos, Cripta de Velkar |
+  | Umbracán | sombra | Cripta de Velkar |
+  | Aurelión | luz | Cripta de Velkar (y recompensa final) |
+
+  Las iniciales (Chispón, Gotín, Brotín) y sus evoluciones sólo se consiguen con Tobías.
+  El bestiario y la ficha de cada especie dicen «Dónde vive» o cómo se consigue.
+- **Mascotas de recompensa**: «La Cueva de los Colmillos» regala un **Umbrín**, «Hilos en la
+  oscuridad» un **Destellín** y el epílogo «Amanecer en Brumaroja» un **Aurelión** (épico).
 - **En combate** sólo llevas una. Actúa en su turno con su IA (elige el movimiento más
   eficaz según el tipo del enemigo, cura o protege si hace falta). Toca su barra 🐾 en el
   panel (o a ella en el mapa) para darle una **orden** para el siguiente turno. Si cae,
@@ -115,10 +133,24 @@ Otros comandos:
   encima de la barra de habilidades.
 - **Esperar**: pasa un turno sin moverte.
 - **Menú**: pausa, guardar, ajustes y salir. En Android, el botón *Atrás* abre/cierra la pausa.
-- **Atacar**: toca a un enemigo pegado a ti (o empuja el joystick contra él).
-- **Habilidades**: botones encima de la barra inferior; si piden objetivo, toca al
-  enemigo (las casillas a tu alcance se iluminan). El número es su coste; ⏳ = recarga.
-- **Huir** aparece durante el combate.
+- **Combate por turnos (v0.4)**: cuando un enemigo te ve, la barra inferior cambia al
+  **menú de acciones** y arriba aparece la **barra de turnos** (retratos en orden con el actor
+  en curso resaltado y su vida). En tu turno («TU TURNO»):
+  - **⚔ Atacar**: si sólo hay un enemigo a tu alcance, le atacas; si hay varios, se resaltan
+    en rojo y tocas uno. Si no hay ninguno, acércate tocando el suelo (en combate cada toque
+    mueve **una casilla = un turno**).
+  - **✨ Habilidad**: despliega tus habilidades (si piden objetivo, toca al enemigo).
+  - **🧪 Objeto**: pociones y consumibles usables en combate (gasta el turno).
+  - **🛡 Defender**: +2 CA hasta tu próximo turno (un escudo flota sobre ti).
+  - **⏳ Esperar**, **🏃 Huir**, **🔮 Vincular** (si hay una criatura salvaje debilitada) y
+    **🐾 Órdenes** a la mascota.
+- **Velocidad del combate** (Ajustes): **Paso a paso** (por defecto: cada compañero, mascota
+  y enemigo hace su acción, se muestra en un **cartel** con la tirada —«Goblin arquero falla
+  su arco corto (7 vs tu CA 16)»— y el juego espera a que pulses **▶ Siguiente** o toques la
+  pantalla), **Lenta** (pausa de ~1 s entre acciones) o **Normal** (rápida). Un anillo bajo los
+  pies marca quién actúa y la cámara se acerca a él si está lejos.
+- **Atacar** fuera del menú: toca a un enemigo pegado a ti (o empuja el joystick contra él).
+- **Habilidades** fuera de combate: botones encima de la barra inferior.
 - Toca a un enemigo lejano para ver su nivel, vida y peligro. El número sobre su
   barra de vida es su nivel (rojo con ☠ = mortal para ti).
 - En PC: flechas/WASD para moverse, espacio para esperar, 1-5 habilidades, F huir,
@@ -129,9 +161,8 @@ Otros comandos:
   pellizca o usa −/+ para el zoom, ◎ centra en ti. Toca un punto (o una salida, o un PNJ)
   y pulsa **Ir**: el personaje camina solo hasta allí. En las mazmorras sólo se ve lo
   explorado. Tecla M en PC.
-- **Guía de misión (GPS)**: una flecha verde con el icono del paso (💬 hablar, ⚔ cazar,
-  ✋ conseguir, 📍 ir) y la distancia en casillas te lleva al objetivo de la misión que
-  sigues; cuando lo tienes a la vista, un marcador flota encima del PNJ, enemigo o veta.
+- **Guía de misión (GPS)**: una brújula verde pequeña con el icono del paso (💬 hablar,
+  ⚔ cazar, ✋ conseguir, 📍 ir) señala el objetivo de la misión que sigues; cuando lo tienes a la vista, un marcador flota encima del PNJ, enemigo o veta.
   Se desactiva en **Ajustes → Guía de misión**.
 - **Mochila**: equipo, objetos y comparación. 🧪 en la barra = beber poción de curación.
 - El botín cae al suelo (brilla con el color de su rareza): písalo para recogerlo.
@@ -139,8 +170,14 @@ Otros comandos:
   misión para ti; ❓ = puedes entregarle una misión.
 - **Diario de misiones**: en la Ficha (o tecla J). Toca una misión para leer su historia,
   objetivos, recompensas, quién la da, a quién se entrega y dónde se cumple. **Seguir
-  esta misión** la marca (★) para la guía y la línea de objetivo bajo el panel de vida;
-  por defecto se sigue la principal.
+  esta misión** la marca (★) para la guía; por defecto se sigue la principal.
+- **Seguimiento de misiones (estilo WoW)**: bajo el panel de vida, sólo texto. «Misiones ▾»
+  pliega o despliega. Desplegado: todas las misiones activas (hasta 4; «+N más» abre el
+  diario), cada una con sus objetivos en una línea corta («⚔ Goblins 2/5 · Bosque Sombrío»,
+  ✓ en verde los cumplidos, «💬 Entregar · Alcalde Ortun» cuando está lista). Plegado: sólo la
+  seguida y su objetivo actual. **Toca el nombre** de una misión para seguirla; **doble toque
+  o mantener pulsado** abre su ficha. En combate se pliega sola. Se oculta si desactivas la
+  guía de misión.
 - **Posada**: descansar cura todo y guarda. **Templo**: sanación por un donativo; si
   caes, despiertas en el último templo donde pediste sanación (al principio, la capilla
   de la aldea).
@@ -598,7 +635,9 @@ En `src/data/quests/` (principal, secundarias o encargos del gremio):
 ```
 
 - Objetivos: `kill` (`enemy` o `family`), `collect` (se consumen al entregar), `visit`
-  (zona) y `talk` (PNJ).
+  (zona), `talk` (PNJ) y `bind` (vincular criaturas salvajes; `species` opcional).
+- `rewards.pet: { species: 'umbrin', level: 4 }`: regala una mascota (va al establo si
+  ya llevas una). `requiresFlag`: sólo disponible con esa bandera de historia.
 - `turnIn`: a quién se entrega (por defecto, a quien la da). `requires`: misiones previas.
   `minLevel`. `rewards.flag`: pone una bandera de historia.
 - `kind: 'repetible'` + `cooldownTurns`: vuelve a estar disponible tras ese tiempo.
