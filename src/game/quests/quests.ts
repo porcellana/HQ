@@ -4,7 +4,7 @@
  * se cuentan al ocurrir; los de recoger se comprueban mirando la mochila y se
  * consumen al entregar.
  */
-import { NPCS, QUESTS, getEnemy, getItem, getZoneDef } from '@/data/registry';
+import { NPCS, PET_SPECIES, QUESTS, getEnemy, getItem, getZoneDef } from '@/data/registry';
 import type { EnemyDef, QuestDef, QuestObjective } from '@/data/schema';
 import { countItem, type Carrier } from '../items/inventory';
 
@@ -33,7 +33,7 @@ export function getQuest(id: string): QuestDef {
 }
 
 function objectiveTarget(o: QuestObjective): number {
-  return o.type === 'kill' || o.type === 'collect' ? o.count : 1;
+  return o.type === 'kill' || o.type === 'collect' || o.type === 'bind' ? o.count : 1;
 }
 
 /** Progreso actual de un objetivo (recoger = lo que llevas en la mochila). */
@@ -119,6 +119,11 @@ export function onKill(h: QuestHolder, enemy: EnemyDef): string[] {
 
 export function onVisit(h: QuestHolder, zoneId: string): string[] {
   return bump(h, (o) => o.type === 'visit' && o.zone === zoneId);
+}
+
+/** Has vinculado una criatura salvaje de esta especie. */
+export function onBind(h: QuestHolder, speciesId: string): string[] {
+  return bump(h, (o) => o.type === 'bind' && (!o.species || o.species === speciesId));
 }
 
 export function onTalk(h: QuestHolder, npcId: string): string[] {
@@ -211,8 +216,13 @@ export function shortObjective(h: QuestHolder, q: QuestDef, i: number): string {
       return NPCS.get(o.npc)?.name ?? o.npc;
     case 'visit':
       return getZoneDef(o.zone)?.name ?? o.zone;
+    case 'bind':
+      return `Vincular ${o.species ? (PET_SPECIES.get(o.species)?.name ?? o.species) : 'criatura'}${count}`;
   }
 }
+
+/** Icono de cada tipo de objetivo (seguimiento de misiones). */
+export const OBJECTIVE_ICON: Record<QuestObjective['type'], string> = { kill: '⚔', collect: '✋', talk: '💬', visit: '📍', bind: '🔮' };
 
 export function trackedQuest(h: QuestHolder): { quest: QuestDef; name: string; text: string; short: string; ready: boolean } | null {
   const q = trackedQuestDef(h);
@@ -241,8 +251,10 @@ export function validateQuest(q: QuestDef, itemExists: (id: string) => boolean):
     if (o.type === 'kill' && !o.enemy && !o.family) errs.push('kill sin enemy ni family');
     if (o.type === 'collect' && !itemExists(o.item)) errs.push(`objeto desconocido ${o.item}`);
     if (o.type === 'talk' && !NPCS.has(o.npc)) errs.push(`PNJ desconocido ${o.npc}`);
+    if (o.type === 'bind' && o.species && !PET_SPECIES.has(o.species)) errs.push(`especie desconocida ${o.species}`);
   }
   for (const it of q.rewards.items ?? []) if (!itemExists(it.item)) errs.push(`recompensa desconocida ${it.item}`);
+  if (q.rewards.pet && !PET_SPECIES.has(q.rewards.pet.species)) errs.push(`mascota de recompensa desconocida ${q.rewards.pet.species}`);
   return errs;
 }
 

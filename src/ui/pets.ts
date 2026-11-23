@@ -7,7 +7,8 @@
  *    entrenamiento mientras no jugabas.
  *  - Elegir qué movimiento olvidar y pantalla de evolución animada.
  */
-import { PET_SPECIES, PET_TYPE_MAP } from '@/data/registry';
+import { PET_SPECIES, PET_TYPE_MAP, QUESTS } from '@/data/registry';
+import { zoneName } from '@/game/quests/guide';
 import type { PetSpeciesDef } from '@/data/schema';
 import type { Game } from '@/game/game';
 import * as Pets from '@/game/pets/pets';
@@ -20,6 +21,18 @@ const STAT_LABEL: Record<keyof import('@/data/schema').PetStats, string> = { hp:
 function typeBadge(sp: PetSpeciesDef): HTMLElement {
   const t = PET_TYPE_MAP.get(sp.type);
   return h('span', { class: 'pet-type', text: `${t?.icon ?? ''} ${t?.name ?? sp.type}`, attrs: { style: `border-color:${t?.color ?? '#888'};color:${t?.color ?? '#fff'}` } });
+}
+
+/** Dónde vive o cómo se consigue una especie (para el bestiario y la ficha). */
+export function speciesOrigin(sp: PetSpeciesDef): string {
+  const parts: string[] = [];
+  if (sp.catchable && sp.habitats.length) parts.push(`Vive en: ${sp.habitats.map((z) => zoneName(z)).join(', ')}`);
+  if (sp.starter) parts.push('Mascota inicial: pídesela a Tobías en Brumaroja');
+  const rewards = [...QUESTS.values()].filter((q) => q.rewards.pet?.species === sp.id).map((q) => `«${q.name}»`);
+  if (rewards.length) parts.push(`Recompensa de ${rewards.join(', ')}`);
+  const from = [...PET_SPECIES.values()].find((x) => x.evolvesTo?.species === sp.id);
+  if (from) parts.push(`Evoluciona de ${from.name} (nivel ${from.evolvesTo!.level})`);
+  return parts.join(' · ') || 'Origen desconocido';
 }
 
 function moveRow(id: string, extra?: HTMLElement | null): HTMLElement {
@@ -81,6 +94,7 @@ export function petScreen(game: Game, onClose: () => void, onChanged: () => void
           ]),
         ]),
         h('p', { class: 'class-desc', text: sp.description }),
+        h('p', { class: 'muted pet-origin', text: `📍 ${speciesOrigin(sp)}` }),
         h('div', { class: 'derived' }, (Object.keys(STAT_LABEL) as Array<keyof typeof STAT_LABEL>).map((k) =>
           h('div', { class: 'derived-item' }, [h('small', { text: STAT_LABEL[k] }), h('b', { text: `${st[k]}` })]))),
         h('div', { class: 'panel' }, [h('h3', { text: `Movimientos (${pi.moves.length}/${Pets.MAX_MOVES})` }), ...pi.moves.map((m) => moveRow(m))]),
@@ -121,7 +135,7 @@ function bestiary(game: Game): HTMLElement {
         petSpriteCanvas(s.look, s.stage, 'evo-canvas', !seen),
         h('b', { text: seen ? s.name : '???' }),
         h('small', { class: 'muted', text: seen ? `${t?.icon ?? ''} ${t?.name ?? ''}${caught ? ' · ✔' : ''}` : '' }),
-        seen && s.habitats.length ? h('small', { class: 'muted', text: `Vive en: ${s.habitats.length} lugar${s.habitats.length > 1 ? 'es' : ''}` }) : null,
+        h('small', { class: 'muted best-origin', text: seen ? speciesOrigin(s) : (s.catchable && s.habitats.length ? `Vive en: ${s.habitats.map((z) => zoneName(z)).join(', ')}` : '') }),
       ]);
     })),
   ]);

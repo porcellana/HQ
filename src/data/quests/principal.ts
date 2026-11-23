@@ -38,7 +38,7 @@ export default [
       { type: 'kill', enemy: 'rey_goblin', count: 1, label: 'Derrota a Gruñaz, el Rey Goblin' },
     ],
     completeText: '¡Gruñaz derrotado! La aldea por fin respira. Pero tu informe me inquieta: los goblins guardaban mapas de las Galerías de Seda y de unas criptas bajo Puerto Ceniza... Velkar sigue moviendo sus piezas.',
-    rewards: { xp: 400, gold: 120, items: [{ item: 'pocion_curacion_mayor', qty: 2 }], flag: 'mq3' },
+    rewards: { xp: 400, gold: 120, items: [{ item: 'pocion_curacion_mayor', qty: 2 }], flag: 'mq3', pet: { species: 'umbrin', level: 4 } },
   },
   {
     id: 'mq4_seda', name: 'Hilos en la oscuridad', kind: 'principal', giver: 'alcalde_ortun', turnIn: 'hermana_lysa',
@@ -49,7 +49,7 @@ export default [
       { type: 'kill', enemy: 'reina_arana', count: 1, label: 'Derrota a Mórgala, la Reina Araña' },
     ],
     completeText: 'Mórgala ha caído... y con ella el veneno que Velkar destilaba en sus galerías. Ahora sólo queda su guarida: la Cripta bajo Puerto Ceniza. Pero una reja de runas la sella, y sólo la Llama Blanca puede romperla.',
-    rewards: { xp: 2000, gold: 200, items: [{ item: 'pocion_curacion_mayor', qty: 2 }, { item: 'antidoto', qty: 2 }], flag: 'mq4' },
+    rewards: { xp: 2000, gold: 200, items: [{ item: 'pocion_curacion_mayor', qty: 2 }, { item: 'antidoto', qty: 2 }], flag: 'mq4', pet: { species: 'destellin', level: 6 } },
   },
   {
     id: 'mq5_runas', name: 'La reja de las runas', kind: 'principal', giver: 'hermana_lysa',
@@ -80,6 +80,6 @@ export default [
     description: 'Vuelve a la Aldea de Brumaroja y cuéntale al alcalde Ortun que Velkar ha caído.',
     objectives: [{ type: 'talk', npc: 'alcalde_ortun', label: 'Habla con el alcalde Ortun en Brumaroja' }],
     completeText: '¿Velkar... muerto? ¡Que suenen las campanas! La niebla roja se levanta por primera vez en años. Brumaroja te debe la vida, héroe. Quédate cuanto quieras: aquí siempre tendrás una jarra y un fuego.',
-    rewards: { xp: 500, gold: 300, items: [{ item: 'anillo_oro' }], flag: 'victoria' },
+    rewards: { xp: 500, gold: 300, items: [{ item: 'anillo_oro' }], flag: 'victoria', pet: { species: 'aurelion', level: 10 } },
   },
 ] satisfies QuestDef[];

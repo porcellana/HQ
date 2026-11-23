@@ -128,7 +128,7 @@ export default [
     look: { shape: 'hada', main: '#f2e080', dark: '#a08a30', accent: '#ffffff', eye: '#3a2a0a' },
   },
   {
-    id: 'aurelion', name: 'Aurelión', type: 'luz', stage: 2, rarity: 'epico', catchable: true, habitats: [],
+    id: 'aurelion', name: 'Aurelión', type: 'luz', stage: 2, rarity: 'epico', catchable: true, habitats: ['cripta_velkar'],
     description: 'Un espíritu de amanecer con plumas de oro. Donde vuela, los no-muertos se deshacen en ceniza.',
     base: { hp: 34, atk: 7, def: 10, spd: 12, mag: 17 }, growth: { hp: 4, atk: 0.6, def: 0.9, spd: 0.9, mag: 1.4 },
     learnset: [{ level: 12, move: 'burbuja_escudo' }],

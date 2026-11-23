@@ -649,7 +649,9 @@ export type QuestObjective =
   /** Visitar una zona. */
   | { type: 'visit'; zone: string; label: string }
   /** Hablar con un PNJ. */
-  | { type: 'talk'; npc: string; label: string };
+  | { type: 'talk'; npc: string; label: string }
+  /** Vincular criaturas salvajes con Runas de vínculo (de una especie concreta o cualquiera). */
+  | { type: 'bind'; species?: string; count: number; label: string };
 
 export interface QuestDef {
   id: string;
@@ -663,7 +665,14 @@ export interface QuestDef {
   /** Texto del PNJ al entregarla. */
   completeText?: string;
   objectives: QuestObjective[];
-  rewards: { xp: number; gold: number; items?: Array<{ item: string; qty?: number }>; flag?: string };
+  rewards: {
+    xp: number;
+    gold: number;
+    items?: Array<{ item: string; qty?: number }>;
+    flag?: string;
+    /** Mascota de regalo (va al establo si ya llevas una). */
+    pet?: { species: string; level: number };
+  };
   /** Misiones que hay que haber completado antes. */
   requires?: string[];
   /** Sólo disponible si esta bandera de historia está puesta. */

@@ -4,7 +4,7 @@
  * actual lleva hacia allí (búsqueda en anchura sobre el grafo de salidas).
  * La flecha dorada de esa salida se dibuja destacada.
  */
-import { DUNGEONS, ENEMIES, LOOT_TABLES, NPCS, ORES, ZONES } from '@/data/registry';
+import { DUNGEONS, ENEMIES, LOOT_TABLES, NPCS, ORES, PET_SPECIES, ZONES } from '@/data/registry';
 import type { QuestDef, QuestObjective } from '@/data/schema';
 import { parseDungeonZone } from '../world/dungeons';
 import type { Zone } from '../world/zone';
@@ -18,7 +18,7 @@ export const GOAL_ICON: Record<GoalKind, string> = { hablar: '💬', cazar: '⚔
 /** Siguiente paso concreto de una misión. */
 export type QuestStep =
   | { kind: 'hablar'; npc: string }
-  | { kind: 'cazar'; enemy?: string; family?: string }
+  | { kind: 'cazar'; enemy?: string; family?: string; wild?: string | true }
   | { kind: 'recoger'; item: string }
   | { kind: 'ir'; zone: string };
 
@@ -40,7 +40,17 @@ export function questStep(h: QuestHolder, q: QuestDef): QuestStep | null {
       return { kind: 'cazar', ...(o.enemy ? { enemy: o.enemy } : {}), ...(o.family ? { family: o.family } : {}) };
     case 'collect':
       return { kind: 'recoger', item: o.item };
+    case 'bind':
+      return { kind: 'cazar', wild: o.species ?? true };
   }
+}
+
+/** Primera zona donde vive una criatura salvaje (de una especie o cualquiera). */
+export function wildZone(species: string | true): string | null {
+  const list = [...PET_SPECIES.values()].filter((s) => s.catchable && (species === true || s.id === species));
+  for (const s of list) for (const hId of s.habitats) if (ZONES.has(hId)) return hId;
+  for (const s of list) for (const hId of s.habitats) if (DUNGEONS.has(hId)) return hId;
+  return null;
 }
 
 /** ¿Este enemigo cuenta para un paso de caza? */
@@ -85,6 +95,7 @@ export function questGoalZone(h: QuestHolder, q: QuestDef): string | null {
     case 'hablar':
       return NPCS.get(step.npc)?.zone ?? null;
     case 'cazar': {
+      if (step.wild) return wildZone(step.wild);
       if (step.enemy) {
         const d = [...DUNGEONS.values()].find((x) => x.boss.enemy === step.enemy);
         if (d) return `${d.id}__jefe`;

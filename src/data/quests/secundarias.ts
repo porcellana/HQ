@@ -3,6 +3,13 @@ import type { QuestDef } from '../schema';
 
 export default [
   {
+    id: 'sq_primera_captura', name: 'Tu primera captura', kind: 'secundaria', giver: 'cuidador_tobias', requiresFlag: 'mascota_inicial',
+    description: 'Tobías quiere ver si sabes usar una Runa de vínculo. Debilita a una criatura salvaje (las de 🐾 en el Bosque Sombrío o el Paso Gris) y usa 🔮 cuando le quede poca vida.',
+    objectives: [{ type: 'bind', count: 1, label: 'Vincula una criatura salvaje' }],
+    completeText: '¡Mírala qué contenta! Tienes buena mano. Toma, para las próximas.',
+    rewards: { xp: 120, gold: 40, items: [{ item: 'runa_vinculo', qty: 3 }, { item: 'pocion_curacion', qty: 2 }] },
+  },
+  {
     id: 'sq_mineral', name: 'Hierro para la forja', kind: 'secundaria', giver: 'herrera_brunna',
     description: 'Brunna necesita mineral de hierro. Equipa un pico y busca vetas en el bosque, el Paso Gris o las mazmorras.',
     objectives: [{ type: 'collect', item: 'mineral_hierro', count: 5, label: 'Consigue mineral de hierro' }],
