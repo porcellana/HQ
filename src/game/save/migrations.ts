@@ -13,7 +13,7 @@
  * Nunca borres migraciones antiguas.
  */
 
-export const CURRENT_SAVE_VERSION = 7;
+export const CURRENT_SAVE_VERSION = 8;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
@@ -62,6 +62,11 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     player['talentChoices'] ??= Math.max(0, Number(player['level'] ?? 1) - 1);
     return { ...s, player, party: s['party'] ?? { active: null, hp: 0, down: false, approval: {} } };
   },
+  /** v7 → v8 (v0.3): mascotas. Sin mascota, establo vacío y sin bestiario. */
+  7: (s) => ({
+    ...s,
+    pets: s['pets'] ?? { active: null, stable: [], starterChosen: false, seen: [], caught: [] },
+  }),
 };
 
 export class SaveMigrationError extends Error {}

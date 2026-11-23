@@ -2,6 +2,30 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.3.0 · 2026-11-23 — Mascotas
+
+- **15 criaturas originales** en 6 líneas evolutivas: Chispón → Brasalón → Volcandor
+  (fuego), Gotín → Marejón → Tritonal (agua), Brotín → Ramaleón → Bosquerón (planta),
+  Guijarrín → Roquedón (tierra), Umbrín → Umbracán (sombra) y Destellín → Aurelión (luz).
+  Sprites pixel art propios, más grandes y con brillo en cada etapa.
+- **6 tipos** con tabla de eficacia (x2 / x0,5); cada familia de enemigos tiene tipo.
+- **23 movimientos**: daño a distancia o en área, estados, curar al jugador o a sí misma,
+  escudos (+CA) y mejoras. Máximo 4; al aprender el quinto eliges cuál olvidar.
+- **Tobías y el establo** junto al corral de Brumaroja: elige tu mascota inicial (fuego,
+  agua o planta), deja o recoge hasta 8 mascotas, cúralas gratis. **Las que se quedan
+  entrenan con el tiempo real** (tope de 8 horas por día y hasta tu nivel) y al volver ves
+  cuánto han subido.
+- **Criaturas salvajes** en el Bosque Sombrío, el Paso Gris y las mazmorras. **Runa de
+  vínculo** (tienda, alquimista y botín de goblins): debilita a la criatura y pulsa 🔮; la
+  probabilidad se muestra y sube cuanto menos vida le quede.
+- **Combate**: la mascota lucha a tu lado con IA por tipos, los enemigos también la atacan,
+  y si cae se recupera fuera de combate. Toca su barra 🐾 (o a ella) para darle órdenes.
+- **Progresión**: XP por combate (tú ganas un 10 % menos mientras te acompaña), subida de
+  nivel, movimientos nuevos y **evolución animada** que se puede detener.
+- **Ficha de mascota** (mote editable, estadísticas, movimientos, línea evolutiva con
+  siluetas) y **bestiario** de especies vistas y vinculadas.
+- Guardado v8 con migración (sin mascotas y establo vacío para partidas antiguas).
+
 ## v0.2.1 · 2026-11-23 — Arreglos, diario, guía GPS y mapa grande
 
 - **Joystick arreglado**: no recibía los toques (la capa del HUD los dejaba pasar al

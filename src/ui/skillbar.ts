@@ -19,6 +19,7 @@ export class SkillBar {
     private readonly onSkill: (s: SkillDef) => void,
     private readonly onFlee: () => void,
     private readonly onPotion: () => void,
+    private readonly onBind: () => void,
   ) {
     this.statusEl = h('div', { class: 'status-row' });
     this.el = h('div', { class: 'skill-bar' });
@@ -36,7 +37,11 @@ export class SkillBar {
     const c = game.combat;
     const potions = p.inventory.filter((x) => { const u = itemDef(x).use; return !!u?.heal && !u.outOfCombatOnly; }).reduce((a, x) => a + x.qty, 0);
     const tq = trackedQuest(game.state);
+    const runes = p.inventory.filter((x) => x.id === 'runa_vinculo').reduce((a, x) => a + x.qty, 0);
+    const bindable = runes > 0 ? game.bindTargets() : [];
+    const bestBind = bindable.reduce((b, e) => Math.max(b, game.bindChance(e)), 0);
     const sig = [
+      runes, bindable.length, Math.round(bestBind * 100),
       this.questGuide,
       tq ? `${tq.name}${tq.text}${game.zone.id}` : '',
       potions,
@@ -60,6 +65,7 @@ export class SkillBar {
         ]);
         return b;
       }),
+      ...(bindable.length ? [h('button', { class: 'skill bind', onClick: this.onBind, attrs: { 'aria-label': 'Vincular criatura' } }, [h('span', { class: 'ico', text: '🔮' }), h('small', { text: `${Math.round(bestBind * 100)}%` })])] : []),
       ...(potions > 0 ? [h('button', { class: 'skill potion', onClick: this.onPotion, attrs: { 'aria-label': 'Poción de curación' } }, [h('span', { class: 'ico', text: '🧪' }), h('small', { text: `×${potions}` })])] : []),
       ...(combat ? [h('button', { class: 'skill flee', onClick: this.onFlee, attrs: { 'aria-label': 'Huir' } }, [h('span', { class: 'ico', text: '🏃' }), h('small', { text: 'Huir' })])] : []),
     );

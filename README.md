@@ -32,7 +32,34 @@ v0.2 se centra en el estilo Baldur's Gate / D&D en tres fases:
 |------|-----------|--------|
 | A | **Personaje con identidad**: trasfondos, tiradas de habilidad en diálogos con consecuencias, dilemas morales, talentos al subir de nivel y compañeros | ✅ **v0.2.0** |
 | B | **Mundo con sorpresas**: eventos al viajar (emboscadas, viajeros, mercaderes raros) resueltos con tiradas, misiones con varios finales, mapa del mundo con viaje rápido | ⏳ |
+| — | **v0.2.1**: joystick arreglado, diario con ficha y misión seguida, guía GPS opcional y mapa grande | ✅ |
+| — | **v0.3.0 Mascotas**: criaturas que luchan contigo, aprenden, evolucionan y entrenan en el establo | ✅ |
 | C | **Expediciones roguelike**: elegir camino entre salas (combate, tesoro, evento, tienda), recompensas a elegir y mejoras que se conservan aunque mueras | ⏳ |
+
+### Mascotas (v0.3)
+
+Criaturas originales que te acompañan, luchan, aprenden movimientos y evolucionan:
+
+- **Primera mascota**: habla con **Tobías**, el cuidador junto al corral de Brumaroja, y
+  elige entre **Chispón** (fuego), **Gotín** (agua) o **Brotín** (planta).
+- **Más mascotas**: en el Bosque Sombrío, el Paso Gris y las mazmorras a veces aparece
+  una **criatura salvaje** en lugar de un grupo de enemigos. Debilítala y pulsa **🔮** (con
+  una **Runa de vínculo**, que venden Pim y el alquimista): la probabilidad sube cuanto
+  menos vida le quede. Si ya llevas una, la nueva va al establo.
+- **En combate** sólo llevas una. Actúa en su turno con su IA (elige el movimiento más
+  eficaz según el tipo del enemigo, cura o protege si hace falta). Toca su barra 🐾 en el
+  panel (o a ella en el mapa) para darle una **orden** para el siguiente turno. Si cae,
+  queda debilitada y se recupera fuera de combate.
+- **Crece**: gana XP (el jugador gana un 10 % menos mientras te acompaña), sube de nivel
+  (máximo: tu nivel + 2), aprende movimientos (máximo 4: al quinto eliges cuál olvidar) y
+  **evoluciona** con una animación que puedes detener (se vuelve a ofrecer al subir otro nivel).
+- **Establo**: deja hasta 8 mascotas con Tobías. **Siguen entrenando con el tiempo real**
+  aunque no juegues (XP por hora con un tope de 8 horas por día y sin pasar de tu nivel).
+- **Tipos**: fuego, agua, planta, tierra, sombra y luz (x2 contra lo que son fuertes, x0,5
+  contra lo que son débiles). Cada familia de enemigos tiene un tipo (no-muertos = sombra,
+  arañas = planta, bestias y goblins = tierra, humanos = sombra, orcos = fuego).
+- **Ficha y bestiario**: en la Ficha → «Mascotas y bestiario» (mote editable, estadísticas,
+  movimientos, línea evolutiva con siluetas de lo que no has visto).
 
 ### La historia (sin destripes)
 
@@ -374,6 +401,23 @@ diálogo de su PNJ (`npc`), que tiene `hideIfFlag: 'reclutado_<id>'` y opciones 
 `ifCompanion` para cuando te acompaña (opinión, misión personal, separarse). Sólo uno a
 la vez. Sube contigo de nivel, cae (no muere) a 0 PV y se levanta al acabar el combate;
 descansar le cura. Su **aprobación** (−10..10) cambia con los efectos `approval`.
+
+### Mascotas: especies, movimientos, tipos y zonas de captura (v0.3)
+
+- **Especies** en `src/data/pets/` (`PetSpeciesDef`): `type`, `stage` (1-3), `base` y
+  `growth` (PV, ataque, defensa, velocidad, magia; valor = base + crecimiento × (nivel − 1)),
+  `learnset` (`{ level, move }`), `evolvesTo` (`{ species, level }`), `rarity`
+  (`comun`/`raro`/`epico`, afecta a la captura), `habitats` (ids de zona o de mazmorra
+  donde aparece salvaje), `catchable`, `starter` y `look` (forma de `src/gfx/pets.ts`:
+  `lagarto`, `nutria`, `brote`, `armadillo`, `murcielago`, `hada`, y colores).
+- **Movimientos** en `src/data/pet_moves/` (`PetMoveDef`): `kind` `daño` (`dice` + 1/3 de
+  `stat`, `range`, `radius`, `accuracy`, `applyStatus`), `curar` (`heal`, `self`), `proteger`
+  (`shield`: +CA al jugador) o `mejora` (`buff` de la mascota); `cooldown` en turnos.
+- **Tipos y eficacia** en `src/data/config/pet_types.ts` (`strong`/`weak`) y el tipo de cada
+  familia de enemigos en `FAMILY_TYPE`.
+- **Probabilidad de aparición** de criaturas salvajes: `WILD_PET_CHANCE` en `game.ts` (18 %
+  de los encuentros de una zona con hábitat). Fórmula de vínculo y del establo en
+  `src/game/pets/pets.ts` (`captureChance`, `stableXpPerHour`, `STABLE_HOURS_PER_DAY`).
 
 ### Añadir un enemigo
 
@@ -741,3 +785,20 @@ Ideas pendientes para próximas versiones:
   baja hacia el jefe o sube hacia la salida.
 - **APK**: pantalla de inicio oscura con el héroe (generada en `prepare-android.mjs`, sin
   plugins) y el botón Atrás cierra cualquier pantalla abierta o vuelve al menú principal.
+- **v0.2.1**: el joystick no recibía toques porque el HUD deja pasar los toques al mapa
+  (`pointer-events: none`); ahora el joystick los captura y va encima de la barra de
+  habilidades. El **mapa grande** sustituye al antiguo «tocar el minimapa para ir»: se abre
+  con un toque y desde él se elige el destino. La **guía GPS** se calcula a partir de la
+  misión seguida (diario → «Seguir esta misión»; por defecto, la principal): primero la
+  salida que acerca a la zona del objetivo y, dentro de ella, el PNJ, el enemigo más
+  cercano del tipo pedido o la veta. Para «consigue X» busca vetas de ese mineral o
+  enemigos cuya tabla de botín lo incluya; si no lo encuentra, guía a quien dio la misión.
+  En mazmorras el mapa grande sólo muestra lo explorado (no se guarda: al recargar se
+  vuelve a explorar).
+- **Mascotas (v0.3)**: todas las criaturas, nombres y sprites son originales. Solo se lleva
+  una a la vez, reutilizando el sistema de aliados del compañero (pueden ir compañero y
+  mascota juntos). Las criaturas salvajes son enemigos normales con una marca `pet`, así
+  que todo el combate se reutiliza. La captura se muestra con el d20 animado contra una
+  CD equivalente a la probabilidad. La mascota no supera tu nivel + 2 (y en el establo, tu
+  nivel). El entrenamiento del establo usa la hora real del dispositivo (`Date.now`) y se
+  aplica al cargar la partida y al abrir el establo. Los **huevos** quedan pendientes.

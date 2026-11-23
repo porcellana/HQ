@@ -12,6 +12,8 @@ import { STATUS_INFO } from '@/game/combat/status';
 import type { Enemy } from '@/game/combat/entities';
 import type { Game } from '@/game/game';
 import { monsterSprite } from './monsters';
+import { petSprite } from './pets';
+import { PET_SPECIES } from '@/data/registry';
 import { GOAL_ICON } from '@/game/quests/guide';
 import { itemIcon } from './items';
 import { itemDef, rarityOf } from '@/game/items/items';
@@ -409,6 +411,8 @@ export class Renderer {
     list.push({ y: game.view.ry, draw: () => this.drawPlayer(game) });
     const ally = game.ally;
     if (ally) list.push({ y: ally.ry, draw: () => this.drawAlly(game) });
+    const pu = game.pet;
+    if (pu) list.push({ y: pu.ry, draw: () => this.drawPet(game) });
     list.sort((a, b) => a.y - b.y);
     for (const it of list) it.draw();
   }
@@ -449,6 +453,41 @@ export class Renderer {
     ctx.fillRect(Math.round(x) + 1.5, Math.round(y) - 3.5, 13, 2.5);
     ctx.fillStyle = '#5ad05a';
     ctx.fillRect(Math.round(x) + 2, Math.round(y) - 3, (12 * hp) / Math.max(1, max), 1.5);
+  }
+
+  /** Mascota: su sprite con barra de vida azul (transparente si está debilitada). */
+  private drawPet(game: Game): void {
+    const u = game.pet;
+    const pi = game.petInstance;
+    if (!u || !pi) return;
+    const sp = PET_SPECIES.get(pi.species);
+    if (!sp) return;
+    const { ctx } = this;
+    u.rx += (u.x - u.rx) * 0.25;
+    u.ry += (u.y - u.ry) * 0.25;
+    u.bumpT = Math.max(0, u.bumpT - 0.08);
+    u.flashT = Math.max(0, u.flashT - 0.06);
+    const bump = Math.sin(u.bumpT * Math.PI) * 4;
+    const hop = pi.down ? 0 : Math.abs(Math.sin(this.time * 4 + u.x)) * 0.8;
+    const x = u.rx * TILE + u.bumpDx * bump;
+    const y = u.ry * TILE + u.bumpDy * bump - hop;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(u.rx * TILE + 8, u.ry * TILE + 15, 4.5, 1.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const spr = petSprite(sp.look, sp.stage);
+    ctx.globalAlpha = pi.down ? 0.4 : 1;
+    ctx.drawImage(u.facing === 'right' ? spr.right : spr.left, Math.round(x), Math.round(y));
+    ctx.globalAlpha = 1;
+    if (u.flashT > 0) {
+      ctx.fillStyle = `rgba(255,80,60,${(u.flashT * 0.4).toFixed(2)})`;
+      ctx.fillRect(Math.round(x) + 3, Math.round(y) + 4, 10, 11);
+    }
+    const max = Math.max(1, game.petStatsNow().hp);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(Math.round(x) + 1.5, Math.round(y) - 1.5, 13, 2.5);
+    ctx.fillStyle = '#5aa8f0';
+    ctx.fillRect(Math.round(x) + 2, Math.round(y) - 1, (12 * (pi.down ? 0 : pi.hp)) / max, 1.5);
   }
 
   /** Suelo ardiendo (talentos). */
@@ -512,7 +551,8 @@ export class Renderer {
     ctx.beginPath();
     ctx.ellipse(x + 8, y + 15, 5, 2, 0, 0, Math.PI * 2);
     ctx.fill();
-    const spr = monsterSprite(e.def.look);
+    const wild = e.def.pet ? PET_SPECIES.get(e.def.pet.species) : undefined;
+    const spr = wild ? petSprite(wild.look, wild.stage) : monsterSprite(e.def.look);
     const img = e.facing === 'right' ? spr.right : spr.left;
     ctx.drawImage(img, Math.round(x), Math.round(y) - 1);
     if (e.flashT > 0) {

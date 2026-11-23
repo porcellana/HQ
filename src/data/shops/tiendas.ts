@@ -26,6 +26,7 @@ export default [
       { item: 'pan', qty: [5, 10] },
       { item: 'carne_seca', qty: [3, 6] },
       { item: 'pico_hierro', chance: 0.5 },
+      { item: 'runa_vinculo', qty: [2, 4] },
       { pool: 'accesorios', count: [0, 1] },
     ],
   },
@@ -48,6 +49,7 @@ export default [
       { item: 'pocion_mana', qty: [3, 6] },
       { item: 'antidoto', qty: [2, 4] },
       { item: 'elixir_fuerza', qty: [1, 2] },
+      { item: 'runa_vinculo', qty: [3, 6] },
     ],
   },
   {

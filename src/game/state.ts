@@ -7,6 +7,7 @@
  */
 import { START_ZONE_ID, getBackground, getClass, getZoneDef } from '@/data/registry';
 import type { StatBlock } from '@/data/schema';
+import { emptyPets, type PetsState } from './pets/pets';
 import { addItem, equip, type Equipment } from './items/inventory';
 import { createItem, type ItemInstance } from './items/items';
 import { Rng } from '@/engine/rng';
@@ -81,6 +82,8 @@ export interface GameState {
   record: GameRecord;
   /** Compañeros: quién va contigo, su vida y su aprobación. */
   party: PartyState;
+  /** Mascotas: la que te acompaña, el establo y el bestiario. */
+  pets: PetsState;
   playTimeSec: number;
   createdAt: string;
 }
@@ -165,6 +168,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
     world: emptyWorld(),
     record: emptyRecord(),
     party: emptyParty(),
+    pets: emptyPets(),
     playTimeSec: 0,
     createdAt: new Date().toISOString(),
   };

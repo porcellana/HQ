@@ -13,7 +13,7 @@ import { heroColors, spriteCanvas } from '@/gfx/sprites';
 import { skillList } from './creation';
 import { h } from './dom';
 
-export function characterSheet(p: PlayerState, onClose: () => void, onChanged: () => void, onJournal?: () => void, onTalents?: () => void): HTMLElement {
+export function characterSheet(p: PlayerState, onClose: () => void, onChanged: () => void, onJournal?: () => void, onTalents?: () => void, onPets?: () => void): HTMLElement {
   const root = h('div', { class: 'screen sheet' });
   const render = () => {
     const cls = getClass(p.classId);
@@ -77,6 +77,7 @@ export function characterSheet(p: PlayerState, onClose: () => void, onChanged: (
       ]),
       h('div', { class: 'menu-buttons' }, [
         onJournal ? h('button', { text: '📖 Diario de misiones', onClick: onJournal }) : null,
+        onPets ? h('button', { text: '🐾 Mascotas y bestiario', onClick: onPets }) : null,
         h('button', { class: 'primary', text: 'Cerrar', onClick: onClose }),
       ]),
     );

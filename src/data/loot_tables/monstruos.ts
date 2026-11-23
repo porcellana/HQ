@@ -13,6 +13,7 @@ export default [
     entries: [
       { nothing: true, weight: 40 },
       { item: 'colmillo_goblin', weight: 25, min: 1, max: 2 },
+      { item: 'runa_vinculo', weight: 5 },
       { item: 'pocion_curacion', weight: 8 },
       { item: 'carne_seca', weight: 8 },
       { pool: 'armas', weight: 7 },

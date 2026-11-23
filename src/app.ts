@@ -26,6 +26,7 @@ import { npcDialog } from '@/ui/npcDialog';
 import { shopScreen } from '@/ui/shop';
 import { journalScreen } from '@/ui/journal';
 import { zoneMapScreen } from '@/ui/zoneMap';
+import { evolutionScreen, moveChoice, petOrders, petScreen, stableScreen } from '@/ui/pets';
 import type { NpcDef } from '@/data/schema';
 import { confirmDialog, showDialog } from '@/ui/dialogs';
 import { buzz, h } from '@/ui/dom';
@@ -240,6 +241,13 @@ export class App {
         if (err) hud.pushMessage(err, 'warn');
       },
       onMinimapTap: () => this.showZoneMap(),
+      onPetOrders: () => {
+        if (!this.screen && !this.pauseClose) petOrders(this.ui, game, () => this.showPets());
+      },
+      onBind: () => {
+        const err = game.bindPet();
+        if (err) hud.pushMessage(err, 'warn');
+      },
     });
     this.hud = hud;
     this.ui.prepend(hud.root);
@@ -251,6 +259,14 @@ export class App {
     game.events.on('playerHurt', ({ amount }) => buzz(this.settings.vibration, Math.min(80, 15 + amount * 4)));
     game.events.on('levelUp', (ev) => this.showLevelUp(ev));
     game.events.on('playerDied', () => this.showDeath());
+    game.events.on('petTapped', () => {
+      if (!this.screen && !this.pauseClose) petOrders(this.ui, game, () => this.showPets());
+    });
+    game.events.on('petEvent', (ev) => {
+      if (ev.kind === 'vinculo') buzz(this.settings.vibration, 40);
+    });
+    // Entrenamiento del establo mientras no jugabas
+    for (const r of game.trainStable()) hud.pushMessage(`🐾 ${r.name} ha subido ${r.levels} nivel${r.levels > 1 ? 'es' : ''} en el establo mientras no estabas.`, 'good');
     game.events.on('sfx', ({ id }) => this.sfx.play(id));
     game.events.on('victory', () => {
       this.pendingVictory = true;
@@ -378,8 +394,41 @@ export class App {
         () => void this.autosave('ficha'),
         () => this.showJournal(),
         () => this.showTalents(),
+        () => this.showPets(),
       ),
     );
+  }
+
+  /** Ficha de la mascota y bestiario. */
+  private showPets(): void {
+    const game = this.game;
+    if (!game || this.pauseClose) return;
+    this.ui.querySelectorAll('.modal-back').forEach((m) => m.remove());
+    this.setScreen(petScreen(game, () => this.setScreen(null), () => void this.autosave('mascota')));
+  }
+
+  /** Establo: entrena por el tiempo pasado y muestra el resumen. */
+  private showStable(): void {
+    const game = this.game;
+    if (!game) return;
+    const report = game.trainStable();
+    this.setScreen(stableScreen(game, report, () => this.setScreen(null), () => void this.autosave('establo')));
+  }
+
+  /** Muestra la evolución y la elección de movimientos pendientes de la mascota. */
+  private resolvingPet = false;
+  private checkPetPending(): void {
+    const game = this.game;
+    const pi = game?.petInstance;
+    if (!game || !pi || this.resolvingPet || this.screen || this.pauseClose || this.ui.querySelector('.modal-back')) return;
+    if (!game.canAct || game.inCombat) return;
+    if (!pi.pendingEvolution && !pi.pendingMoves.length) return;
+    this.resolvingPet = true;
+    const finish = () => {
+      this.resolvingPet = false;
+      void this.autosave('mascota');
+    };
+    evolutionScreen(this.ui, game, () => moveChoice(this.ui, game, finish));
   }
 
   private showJournal(): void {
@@ -402,6 +451,7 @@ export class App {
           );
         },
         afterService: () => void this.autosave('servicio'),
+        openStable: () => this.showStable(),
         close: () => void 0,
       }),
     );
@@ -413,6 +463,7 @@ export class App {
   private tick(dt: number): void {
     const game = this.game;
     if (!game) return;
+    this.checkPetPending();
     this.insetTimer -= dt;
     if (this.insetTimer <= 0 && this.hud) {
       this.insetTimer = 0.5;

@@ -7,6 +7,7 @@ import { levelProgress } from '@/game/rules/progression';
 import type { Settings } from '@/game/settings';
 import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
 import { h } from './dom';
+import { petName } from '@/game/pets/pets';
 import type { SkillDef } from '@/data/schema';
 import { DiceRoller } from './dice';
 import { Joystick } from './joystick';
@@ -23,6 +24,8 @@ export interface HudActions {
   onFlee(): void;
   onMinimapTap(x: number, y: number): void;
   onPotion(): void;
+  onPetOrders(): void;
+  onBind(): void;
 }
 
 function bar(kind: string, thin = false): { el: HTMLDivElement; fill: HTMLElement; label: HTMLElement } {
@@ -54,6 +57,9 @@ export class Hud {
   /** Mini barra del compañero. */
   private readonly allyEl: HTMLDivElement;
   private allySig = '';
+  private readonly petEl: HTMLDivElement;
+  private petSig = '';
+  private layoutTick = 0;
 
   constructor(actions: HudActions) {
     this.portrait = h('canvas', { class: 'hud-portrait' });
@@ -63,6 +69,8 @@ export class Hud {
     this.nameEl = h('b');
     this.goldEl = h('span', { class: 'hud-gold' });
     this.allyEl = h('div', { class: 'hud-ally' });
+    this.petEl = h('div', { class: 'hud-ally hud-pet', attrs: { role: 'button', 'aria-label': 'Órdenes de la mascota' } });
+    this.petEl.addEventListener('click', () => actions.onPetOrders());
     const panel = h('div', { class: 'hud-panel' }, [
       this.portrait,
       h('div', { class: 'hud-name' }, [this.nameEl, this.goldEl]),
@@ -70,6 +78,7 @@ export class Hud {
       this.mp.el,
       this.xp.el,
       this.allyEl,
+      this.petEl,
     ]);
     this.banner = h('div', { class: 'zone-banner' });
     this.log = h('div', { class: 'log' });
@@ -84,7 +93,7 @@ export class Hud {
       btn('☰', 'Menú', actions.onMenu),
     ]);
 
-    this.skillBar = new SkillBar(actions.onSkill, actions.onFlee, actions.onPotion);
+    this.skillBar = new SkillBar(actions.onSkill, actions.onFlee, actions.onPotion, actions.onBind);
     this.minimap.onTapTile = actions.onMinimapTap;
     this.root = h('div', { class: 'hud passthrough' }, [
       h('div', { class: 'hud-top' }, [panel, this.minimap.el]),
@@ -174,12 +183,32 @@ export class Hud {
     const party = game.state.party;
     const max = cd ? game.allyStats().maxHp : 0;
     const asig = cd ? `${cd.id}|${party.hp}|${max}|${party.down}|${party.approval[cd.id] ?? 0}` : '';
+    // Los avisos de estado van justo debajo del panel (que crece con compañero y mascota).
+    if (++this.layoutTick % 30 === 0) {
+      const bottom = this.petEl.closest('.hud-panel')?.getBoundingClientRect().bottom ?? 0;
+      if (bottom > 0) this.skillBar.statusRow.style.top = `${Math.round(bottom + 4)}px`;
+    }
+    // Mascota: nombre, nivel y vida (tócala para darle órdenes)
+    const pi = game.petInstance;
+    const pmax = pi ? game.petStatsNow().hp : 0;
+    const psig = pi ? `${pi.uid}|${pi.species}|${pi.nickname ?? ''}|${pi.hp}|${pmax}|${pi.down}|${pi.level}|${game.petOrder ?? ''}` : '';
+    if (psig !== this.petSig) {
+      this.petSig = psig;
+      this.allySig = '';
+      this.petEl.style.display = pi ? '' : 'none';
+      if (pi) {
+        this.petEl.replaceChildren(
+          h('span', { class: 'ally-name pet-name', text: `🐾 ${petName(pi)} Nv${pi.level}${pi.down ? ' 💤' : ''}${game.petOrder ? ' ⚑' : ''}` }),
+          h('div', { class: 'bar hp thin petbar' }, [h('i', { attrs: { style: `width:${pi.down ? 0 : (100 * pi.hp) / Math.max(1, pmax)}%` } })]),
+        );
+      }
+    }
     if (asig !== this.allySig) {
       this.allySig = asig;
       this.allyEl.style.display = cd ? '' : 'none';
       // Los avisos de estado van justo debajo del panel (que crece con el compañero).
       requestAnimationFrame(() => {
-        const bottom = this.allyEl.closest('.hud-panel')?.getBoundingClientRect().bottom ?? 0;
+        const bottom = this.petEl.closest('.hud-panel')?.getBoundingClientRect().bottom ?? 0;
         if (bottom > 0) this.skillBar.statusRow.style.top = `${Math.round(bottom + 4)}px`;
       });
       if (cd) {

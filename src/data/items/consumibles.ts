@@ -16,4 +16,7 @@ export default [
     icon: { shape: 'pan', color: '#c8964a' }, use: { heal: '1d6', outOfCombatOnly: true }, description: 'Recupera 1d6 PV. No se puede comer en combate.' },
   { id: 'carne_seca', name: 'Carne seca', kind: 'consumible', level: 1, value: 4, stackable: true, maxStack: 20, plain: true,
     icon: { shape: 'carne', color: '#8a3a2a' }, use: { heal: '2d6', outOfCombatOnly: true }, description: 'Recupera 2d6 PV. No se puede comer en combate.' },
+  { id: 'runa_vinculo', name: 'Runa de vínculo', kind: 'consumible', level: 1, value: 30, stackable: true, maxStack: 20, plain: true,
+    icon: { shape: 'gema', color: '#a060ff' }, use: { bind: true },
+    description: 'Úsala (o pulsa 🔮 en combate) cerca de una criatura salvaje debilitada para que se una a ti. Cuanta menos vida le quede, más fácil.' },
 ] satisfies ItemDef[];

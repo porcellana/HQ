@@ -375,6 +375,8 @@ export interface EnemyDef {
   look: EnemyLook;
   /** Tabla de botín (Hito 4). */
   lootTable?: string;
+  /** Criatura salvaje que se puede vincular como mascota (v0.3; lo rellena el motor). */
+  pet?: { species: string; level: number };
 }
 
 /** Encuentros aleatorios de una zona salvaje. */
@@ -453,6 +455,8 @@ export interface ItemDef {
     buff?: { stat: 'ataque' | 'daño' | 'ca'; amount: number; turns: number };
     /** No se puede usar en combate (comida). */
     outOfCombatOnly?: boolean;
+    /** Runa de vínculo: intenta vincular a la criatura salvaje más debilitada cerca. */
+    bind?: boolean;
   };
   /** Nivel de pico (minería, Hito 6). */
   pickaxeTier?: number;
@@ -521,6 +525,8 @@ export type DialogAction =
   | { type: 'flag'; flag: string }
   /** El compañero que te acompaña se separa de ti. */
   | { type: 'dismiss' }
+  /** Abre el establo de mascotas (y la elección de la mascota inicial). */
+  | { type: 'stable' }
   /** Cierra el diálogo. */
   | { type: 'end' };
 
@@ -782,4 +788,92 @@ export interface CompanionDef {
   comments: Partial<Record<CompanionEvent, string[]>>;
   /** Qué le gusta y qué no (texto para el jugador). */
   likes: string;
+}
+
+// ===========================================================================
+// MASCOTAS (v0.3): criaturas que te acompañan, aprenden y evolucionan
+// ===========================================================================
+
+/** Tipos elementales de las mascotas (ver data/config/pet_types.ts). */
+export type PetType = 'fuego' | 'agua' | 'planta' | 'tierra' | 'sombra' | 'luz';
+
+/** Estadísticas de una mascota: vida, ataque, defensa, velocidad y magia. */
+export interface PetStats {
+  hp: number;
+  atk: number;
+  def: number;
+  spd: number;
+  mag: number;
+}
+
+/** Aspecto: forma de src/gfx/pets.ts + colores. */
+export interface PetLook {
+  shape: string;
+  main: string;
+  dark: string;
+  accent: string;
+  eye?: string;
+}
+
+export interface PetSpeciesDef {
+  id: string;
+  name: string;
+  type: PetType;
+  /** Etapa evolutiva (1 = cría). */
+  stage: 1 | 2 | 3;
+  description: string;
+  /** Estadísticas a nivel 1 y crecimiento por nivel. */
+  base: PetStats;
+  growth: PetStats;
+  /** Movimientos que aprende al llegar a cada nivel (los de nivel 1 los sabe de serie). */
+  learnset: Array<{ level: number; move: string }>;
+  /** Evoluciona a esta especie al llegar a este nivel. */
+  evolvesTo?: { species: string; level: number };
+  rarity: 'comun' | 'raro' | 'epico';
+  /** Zonas (ids de zona o de mazmorra) donde aparece en estado salvaje. */
+  habitats: string[];
+  /** ¿Se puede vincular con una Runa de vínculo? */
+  catchable: boolean;
+  /** Se ofrece como mascota inicial en el establo. */
+  starter?: boolean;
+  look: PetLook;
+}
+
+/** Movimiento de mascota. */
+export interface PetMoveDef {
+  id: string;
+  name: string;
+  icon: string;
+  type: PetType;
+  kind: 'daño' | 'curar' | 'proteger' | 'mejora';
+  description: string;
+  /** Daño: dados + 1/3 de `stat`; multiplicado por la eficacia de tipo. */
+  dice?: string;
+  stat?: 'atk' | 'mag';
+  /** Alcance en casillas (1 = cuerpo a cuerpo). */
+  range: number;
+  /** Radio de área alrededor del objetivo. */
+  radius?: number;
+  /** Probabilidad de acertar 0..1 (por defecto 0,9). */
+  accuracy?: number;
+  applyStatus?: StatusApply;
+  /** Curar: dados + 1/3 de la magia, al jugador (o a la mascota si `self`). */
+  heal?: string;
+  self?: boolean;
+  /** Proteger: +CA al jugador durante unos turnos. */
+  shield?: { amount: number; turns: number };
+  /** Mejora temporal de la propia mascota. */
+  buff?: { stat: keyof PetStats; amount: number; turns: number };
+  /** Turnos de recarga. */
+  cooldown: number;
+}
+
+/** Tabla de tipos: contra qué es fuerte (x2) y débil (x0,5) cada tipo. */
+export interface PetTypeDef {
+  id: PetType;
+  name: string;
+  icon: string;
+  color: string;
+  strong: PetType[];
+  weak: PetType[];
 }

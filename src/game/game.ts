@@ -27,9 +27,11 @@ import {
 import { STATUS_INFO, consumeStun, hasStatus, tickStatuses, tryApplyStatus, type StatusInstance } from './combat/status';
 import { attributePointsAtLevel, proficiencyBonus, unlockedSkills } from './rules/character';
 import { derive, type Derived } from './rules/derived';
-import { abilityModifier, roll, rollD20 } from './rules/dice';
+import { abilityModifier, averageDice, roll, rollD20 } from './rules/dice';
 import { levelForXp } from './rules/progression';
 import { emptyParty, emptyRecord, recalcPlayer, type GameState } from './state';
+import * as Pets from './pets/pets';
+import { wildEnemyDef, wildSpeciesIn } from './pets/wild';
 import { skillMods, talentEffects } from './talents';
 import { SKILLS, skillBonus } from './rules/skills';
 import { enemiesDropping, enemyMatches, nextHop, questGoalZone, questStep, zoneName, type GoalKind } from './quests/guide';
@@ -84,6 +86,25 @@ export interface Ally {
   flashT: number;
 }
 
+/** Mascota en el mapa (sus datos se guardan en state.pets.active). */
+export interface PetUnit {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  facing: 'left' | 'right';
+  bumpT: number;
+  bumpDx: number;
+  bumpDy: number;
+  flashT: number;
+}
+
+/** Aviso de la mascota para la interfaz (subida de nivel, movimiento nuevo, evolución). */
+export interface PetEvent {
+  kind: 'nivel' | 'movimiento' | 'evolucion' | 'vinculo' | 'establo';
+  text: string;
+}
+
 /** Casilla peligrosa temporal (suelo ardiendo). No se guarda. */
 export interface Hazard {
   x: number;
@@ -119,6 +140,10 @@ export interface GameEvents extends Record<string, unknown> {
   victory: Record<string, never>;
   /** Sonido sugerido para la interfaz (el juego no reproduce audio). */
   sfx: { id: SfxId };
+  /** Novedades de la mascota (la interfaz muestra elecciones pendientes). */
+  petEvent: PetEvent;
+  /** Tocaste a tu mascota en el mapa (órdenes). */
+  petTapped: Record<string, never>;
 }
 
 export interface QuestGoal {
@@ -176,6 +201,8 @@ export interface PlayerCombat {
 }
 
 const ENEMY_DELAY = 0.2;
+/** Probabilidad de que un encuentro sea una criatura salvaje (si la zona tiene). */
+const WILD_PET_CHANCE = 0.18;
 /** Distingue partidas creadas en el mismo milisegundo (semillas distintas). */
 let gameCounter = 0;
 
@@ -202,6 +229,14 @@ export class Game {
   ground: GroundLoot[] = [];
   /** Compañero que te acompaña en esta zona (null si no hay). */
   ally: Ally | null = null;
+  /** Mascota activa en el mapa. */
+  pet: PetUnit | null = null;
+  private petPending = false;
+  /** Movimiento ordenado por el jugador para el siguiente turno de la mascota (null = IA). */
+  petOrder: string | null = null;
+  /** Recargas de los movimientos de la mascota (no se guardan). */
+  petCooldowns: Record<string, number> = {};
+  private petBuffs: Array<{ stat: keyof import('@/data/schema').PetStats; amount: number; turns: number }> = [];
   /** Suelo ardiendo y similares. */
   hazards: Hazard[] = [];
   private allyPending = false;
@@ -242,8 +277,10 @@ export class Game {
       path: [], target: null, bumpT: 0, bumpDx: 0, bumpDy: 0, flashT: 0,
     };
     state.party ??= emptyParty();
+    state.pets ??= Pets.emptyPets();
     this.populateZone();
     this.spawnAlly();
+    this.spawnPet();
     this.markExplored();
   }
 
@@ -340,6 +377,12 @@ export class Game {
     }
     const from = this.isMoving ? this.view.to : this.playerPos;
     this.pendingTalk = null;
+    // Tocar a la mascota = abrir sus órdenes.
+    if (this.petAt(x, y) && this.canAct) {
+      this.cancelPath();
+      this.events.emit('petTapped', {});
+      return;
+    }
     // Tocar al compañero (fuera de combate) = hablar con él.
     if (this.allyAt(x, y) && !this.inCombat && this.canAct) {
       const cn = this.companionNpc();
@@ -537,6 +580,11 @@ export class Game {
       al.x = pos.x;
       al.y = pos.y;
     }
+    const pu = this.petAt(next.x, next.y);
+    if (pu) {
+      pu.x = pos.x;
+      pu.y = pos.y;
+    }
     v.from = pos;
     v.to = { x: next.x, y: next.y };
     if (next.x !== pos.x) v.facing = next.x > pos.x ? 'right' : 'left';
@@ -631,6 +679,10 @@ export class Game {
     for (const h of this.hazards) h.turns--;
     this.hazards = this.hazards.filter((h) => h.turns > 0);
     this.allyPending = !!this.ally;
+    this.petPending = !!this.pet;
+    for (const k of Object.keys(this.petCooldowns)) this.petCooldowns[k] = Math.max(0, (this.petCooldowns[k] ?? 0) - 1);
+    for (const b of this.petBuffs) b.turns--;
+    this.petBuffs = this.petBuffs.filter((b) => b.turns > 0);
     this.enemyTimer = 0;
     this.phase = 'enemies';
     // Sin enemigos cerca, todo ocurre en el acto para que caminar sea fluido.
@@ -641,6 +693,12 @@ export class Game {
     if (this.allyPending) {
       this.allyPending = false;
       const acted = this.allyTurn();
+      if (acted && this.inCombat) this.enemyTimer = ENEMY_DELAY;
+      return;
+    }
+    if (this.petPending) {
+      this.petPending = false;
+      const acted = this.petTurn();
       if (acted && this.inCombat) this.enemyTimer = ENEMY_DELAY;
       return;
     }
@@ -681,6 +739,7 @@ export class Game {
     if (!this.inCombat) {
       if (this.state.turn % 5 === 0 && p.hp < p.maxHp) p.hp++;
       if (this.state.turn % 3 === 0 && p.mp < p.maxMp) p.mp++;
+      this.petRegen();
       this.maybeSpawnEncounter();
     }
     this.scanTraps();
@@ -758,6 +817,7 @@ export class Game {
     this.combat.stealth = 0;
     this.populateZone();
     this.spawnAlly();
+    this.spawnPet();
     this.markExplored();
     const dz = this.zone.def.dungeon;
     if (dz) {
@@ -817,6 +877,13 @@ export class Game {
   spawnGroup(): Enemy[] {
     const enc = this.zone.def.encounters;
     if (!enc || enc.groups.length === 0) return [];
+    // A veces, en lugar de un grupo, aparece una criatura salvaje vinculable.
+    const habitat = this.zone.def.dungeon?.id ?? this.zone.id;
+    const wild = wildSpeciesIn(habitat);
+    if (wild.length && this.rng.chance(WILD_PET_CHANCE)) {
+      const w = this.spawnWildPet(this.rng.pick(wild));
+      if (w) return [w];
+    }
     const g = this.rng.weighted(enc.groups, (x) => x.weight);
     const def = getEnemy(g.enemy);
     if (!def) {
@@ -857,7 +924,7 @@ export class Game {
 
   freeForEnemy(x: number, y: number): boolean {
     const p = this.playerPos;
-    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(p.x === x && p.y === y) && !this.allyAt(x, y);
+    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(p.x === x && p.y === y) && !this.allyAt(x, y) && !this.petAt(x, y);
   }
 
   private freeSpotNear(c: Point, r: number): Point | null {
@@ -966,8 +1033,10 @@ export class Game {
     if (ctx === 'ally') this.companionSay('mata', 0.25);
     this.fx.push({ kind: 'burst', x: enemy.x, y: enemy.y, radius: 0.8, color: '#e05050', t: 0, life: 0.4 });
     // Con compañero, él se lleva parte del mérito (compensa la ayuda).
-    const share = this.state.party?.active ? 0.85 : 1;
+    const petOn = !!this.pet && !!this.state.pets?.active && !this.state.pets.active.down;
+    const share = (this.state.party?.active ? 0.85 : 1) * (petOn ? 0.9 : 1);
     const xp = Math.max(1, Math.round(xpForKill(enemy.def.xp, enemy.def.level, this.state.player.level) * share));
+    if (petOn) this.givePetXp(Math.round(xpForKill(enemy.def.xp, enemy.def.level, this.state.pets.active!.level) * 0.6));
     this.msg(`${enemy.def.name} cae derrotado.`, 'good');
     const rec = (this.state.record ??= emptyRecord());
     rec.kills++;
@@ -1038,6 +1107,7 @@ export class Game {
     const def = itemDef(it);
     const use = def.use;
     if (!use) return 'Eso no se puede usar.';
+    if (use.bind) return this.bindPet();
     const combat = this.inCombat;
     if (use.outOfCombatOnly && combat) return 'No puedes comer en pleno combate.';
     const pos = this.playerPos;
@@ -1381,7 +1451,8 @@ export class Game {
     // Arqueros: si estás pegado, intentan alejarse
     if (ai === 'ranged' && d === 1 && this.rng.chance(0.3) && this.stepAway(e)) return true;
     if (inAtkRange) {
-      if (tgt.ally) this.enemyAttackAlly(e);
+      if (tgt.pet) this.enemyAttackPet(e);
+      else if (tgt.ally) this.enemyAttackAlly(e);
       else this.enemyAttack(e);
       return true;
     }
@@ -1396,7 +1467,8 @@ export class Game {
       moved = true;
     }
     if (moved && ai === 'skirmisher' && dist(e.x, e.y, tgt.x, tgt.y) <= 1) {
-      if (tgt.ally) this.enemyAttackAlly(e);
+      if (tgt.pet) this.enemyAttackPet(e);
+      else if (tgt.ally) this.enemyAttackAlly(e);
       else this.enemyAttack(e);
     }
     return moved;
@@ -1522,24 +1594,38 @@ export class Game {
     const p = this.playerPos;
     const path = findPath(
       this.zone.width, this.zone.height, e, target,
-      (x, y) => this.zone.isWalkable(x, y) && !this.enemies.some((o) => o !== e && o.x === x && o.y === y) && !this.npcAt(x, y) && !this.allyAt(x, y),
+      (x, y) => this.zone.isWalkable(x, y) && !this.enemies.some((o) => o !== e && o.x === x && o.y === y) && !this.npcAt(x, y) && !this.allyAt(x, y) && !this.petAt(x, y),
       { allowGoalBlocked: true, maxNodes: 600 },
     );
     const next = path?.[0];
-    if (!next || (next.x === p.x && next.y === p.y) || this.allyAt(next.x, next.y)) return false;
+    if (!next || (next.x === p.x && next.y === p.y) || this.allyAt(next.x, next.y) || this.petAt(next.x, next.y)) return false;
     return this.stepEnemy(e, next, false);
   }
 
   /** El objetivo de un enemigo: el jugador o el compañero (el más cercano). */
-  private enemyTarget(e: Enemy): Point & { ally: boolean } {
+  private enemyTarget(e: Enemy): Point & { ally: boolean; pet?: boolean } {
     const p = this.playerPos;
-    const a = this.ally;
-    if (!a || this.state.party.down) return { ...p, ally: false };
+    const a = this.ally && !this.state.party.down ? this.ally : null;
+    const pu = this.pet && this.state.pets.active && !this.state.pets.active.down ? this.pet : null;
     const dp = dist(e.x, e.y, p.x, p.y);
-    const da = dist(e.x, e.y, a.x, a.y);
     const hidden = this.combat.stealth > 0 && dp > 1;
-    if (hidden || da < dp || (da === dp && this.rng.chance(0.35))) return { x: a.x, y: a.y, ally: true };
-    return { ...p, ally: false };
+    let best: Point & { ally: boolean; pet?: boolean } = { ...p, ally: false };
+    let bestD = hidden ? Infinity : dp;
+    if (a) {
+      const da = dist(e.x, e.y, a.x, a.y);
+      if (da < bestD || (da === bestD && this.rng.chance(0.35))) {
+        best = { x: a.x, y: a.y, ally: true };
+        bestD = da;
+      }
+    }
+    if (pu) {
+      const dm = dist(e.x, e.y, pu.x, pu.y);
+      if (dm < bestD || (dm === bestD && this.rng.chance(0.35))) {
+        best = { x: pu.x, y: pu.y, ally: false, pet: true };
+        bestD = dm;
+      }
+    }
+    return best;
   }
 
   private stepAway(e: Enemy): boolean {
@@ -1985,6 +2071,7 @@ export class Game {
       this.state.party.down = false;
       this.state.party.hp = this.allyStats().maxHp;
     }
+    this.healPet();
     this.state.turn += 100; // pasa la noche: las tiendas pueden renovar su stock
     this.msg('Duermes de un tirón. Te levantas como nuevo.', 'good');
     return null;
@@ -2217,6 +2304,410 @@ export class Game {
     }
   }
 
+  // ================================================================ mascotas
+  /** Mascota activa (datos guardados) o null. */
+  get petInstance(): Pets.PetInstance | null {
+    return this.state.pets?.active ?? null;
+  }
+
+  petAt(x: number, y: number): PetUnit | null {
+    return this.pet && this.pet.x === x && this.pet.y === y ? this.pet : null;
+  }
+
+  /** Estadísticas de la mascota con sus mejoras temporales. */
+  petStatsNow(): import('@/data/schema').PetStats {
+    const pi = this.petInstance;
+    const st = pi ? Pets.petStats(pi) : { hp: 1, atk: 0, def: 0, spd: 0, mag: 0 };
+    for (const b of this.petBuffs) st[b.stat] += b.amount;
+    return st;
+  }
+
+  petAC(): number {
+    return 10 + Math.floor(this.petStatsNow().def / 2);
+  }
+
+  /** Coloca a la mascota junto a ti (al cargar o cambiar de zona). */
+  private spawnPet(): void {
+    this.pet = null;
+    const pi = this.petInstance;
+    if (!pi) return;
+    Pets.markSeen(this.state.pets, pi.species);
+    const p = this.playerPos;
+    for (let r = 1; r <= 3; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const x = p.x + dx;
+          const y = p.y + dy;
+          if ((dx === 0 && dy === 0) || !this.zone.isWalkable(x, y) || this.enemyAt(x, y) || this.npcAt(x, y) || this.zone.exitAt(x, y) || this.allyAt(x, y)) continue;
+          this.pet = { x, y, rx: x, ry: y, facing: 'right', bumpT: 0, bumpDx: 0, bumpDy: 0, flashT: 0 };
+          return;
+        }
+      }
+    }
+  }
+
+  /** Ordena el movimiento del siguiente turno (null = que decida ella). */
+  setPetOrder(moveId: string | null): void {
+    const pi = this.petInstance;
+    this.petOrder = moveId && pi?.moves.includes(moveId) ? moveId : null;
+    if (pi) this.msg(this.petOrder ? `${Pets.petName(pi)} usará ${Pets.getMove(this.petOrder)?.name ?? ''} en su turno.` : `${Pets.petName(pi)} decidirá por su cuenta.`, 'info');
+  }
+
+  /** Turno de la mascota. Devuelve true si hizo algo visible. */
+  private petTurn(): boolean {
+    const u = this.pet;
+    const pi = this.petInstance;
+    if (!u || !pi) return false;
+    if (pi.down) return false;
+    const p = this.playerPos;
+    const foes = this.enemies
+      .filter((e) => (e.alerted || dist(e.x, e.y, u.x, u.y) <= 3) && dist(e.x, e.y, u.x, u.y) <= 8 && this.los(u, e))
+      .sort((a, b) => dist(a.x, a.y, u.x, u.y) - dist(b.x, b.y, u.x, u.y));
+    const order = this.petOrder;
+    this.petOrder = null;
+    const ordered = order ? Pets.getMove(order) : undefined;
+    // Movimientos de apoyo (no necesitan objetivo)
+    const support = ordered && ordered.kind !== 'daño' ? ordered : this.pickSupportMove(foes.length > 0);
+    if (support && (this.petCooldowns[support.id] ?? 0) <= 0 && (ordered === support || foes.length > 0 || support.kind === 'curar')) {
+      this.usePetMove(support, null);
+      return true;
+    }
+    const target = foes[0];
+    if (target) {
+      const move = ordered && ordered.kind === 'daño' ? ordered : this.pickDamageMove(target);
+      if (move) {
+        const d = dist(u.x, u.y, target.x, target.y);
+        if (d <= move.range && (move.range === 1 || this.los(u, target))) {
+          this.usePetMove(move, target);
+          return true;
+        }
+        return this.stepPetTowards(target, true);
+      }
+    }
+    // Seguir al jugador
+    const dp = dist(u.x, u.y, p.x, p.y);
+    if (dp > 2) {
+      this.stepPetTowards(p, true);
+      if (dp > 5) this.stepPetTowards(p, true);
+    }
+    return false;
+  }
+
+  /** Curar o proteger si hace falta. */
+  private pickSupportMove(inCombat: boolean): import('@/data/schema').PetMoveDef | null {
+    const pi = this.petInstance!;
+    const pl = this.state.player;
+    const ready = pi.moves.map((m) => Pets.getMove(m)).filter((m): m is NonNullable<typeof m> => !!m && (this.petCooldowns[m.id] ?? 0) <= 0);
+    const petHp = pi.hp / Math.max(1, Pets.petStats(pi).hp);
+    const selfHeal = ready.find((m) => m.kind === 'curar' && m.self);
+    if (selfHeal && petHp < 0.45) return selfHeal;
+    const heal = ready.find((m) => m.kind === 'curar' && !m.self);
+    if (heal && pl.hp < pl.maxHp * 0.45) return heal;
+    if (!inCombat) return null;
+    const shield = ready.find((m) => m.kind === 'proteger');
+    const adjacent = this.enemies.some((e) => e.alerted && dist(e.x, e.y, this.playerPos.x, this.playerPos.y) <= 1);
+    if (shield && adjacent && pl.hp < pl.maxHp * 0.7 && !this.combat.buffs.some((b) => b.stat === 'ca')) return shield;
+    const buff = ready.find((m) => m.kind === 'mejora');
+    if (buff && !this.petBuffs.length && this.rng.chance(0.3)) return buff;
+    return null;
+  }
+
+  /** El movimiento de daño más eficaz disponible contra un objetivo. */
+  private pickDamageMove(target: Enemy): import('@/data/schema').PetMoveDef | null {
+    const pi = this.petInstance!;
+    const u = this.pet!;
+    const st = this.petStatsNow();
+    const d = dist(u.x, u.y, target.x, target.y);
+    const defType = target.def.pet ? Pets.getSpecies(target.def.pet.species).type : Pets.familyType(target.def.family);
+    let best: { m: import('@/data/schema').PetMoveDef; score: number } | null = null;
+    for (const id of pi.moves) {
+      const m = Pets.getMove(id);
+      if (!m || m.kind !== 'daño' || (this.petCooldowns[id] ?? 0) > 0) continue;
+      const avg = (m.dice ? averageDice(m.dice) : 2) + Math.floor(st[m.stat ?? 'atk'] / 3);
+      let score = avg * Pets.typeMultiplier(m.type, defType) * (m.accuracy ?? 0.9);
+      if (d > m.range) score *= 0.6; // habría que acercarse
+      if (m.radius) score *= 1 + 0.3 * this.enemies.filter((e) => e !== target && dist(e.x, e.y, target.x, target.y) <= m.radius!).length;
+      if (!best || score > best.score) best = { m, score };
+    }
+    return best?.m ?? null;
+  }
+
+  /** Ejecuta un movimiento de la mascota. */
+  private usePetMove(m: import('@/data/schema').PetMoveDef, target: Enemy | null): void {
+    const pi = this.petInstance!;
+    const u = this.pet!;
+    const st = this.petStatsNow();
+    const name = Pets.petName(pi);
+    if (m.cooldown > 0) this.petCooldowns[m.id] = m.cooldown + 1;
+    const color = PET_TYPE_COLOR[m.type] ?? '#ffffff';
+    if (m.kind === 'curar') {
+      const amount = roll(this.rng, m.heal ?? '1d6').total + Math.floor(st.mag / 3);
+      if (m.self) {
+        const max = Pets.petStats(pi).hp;
+        const before = pi.hp;
+        pi.hp = Math.min(max, pi.hp + amount);
+        this.floatText(u.x, u.y, `+${pi.hp - before}`, '#60e070');
+      } else {
+        const pl = this.state.player;
+        const before = pl.hp;
+        pl.hp = Math.min(pl.maxHp, pl.hp + amount);
+        this.floatText(this.playerPos.x, this.playerPos.y, `+${pl.hp - before}`, '#60e070');
+        this.fx.push({ kind: 'bolt', fx: u.x, fy: u.y, tx: this.playerPos.x, ty: this.playerPos.y, color: '#60e070', t: 0, life: 0.3 });
+      }
+      this.msg(`${name} usa ${m.icon} ${m.name}.`, 'good');
+      return;
+    }
+    if (m.kind === 'proteger' && m.shield) {
+      this.combat.buffs.push({ stat: 'ca', amount: m.shield.amount, turns: m.shield.turns + 1 });
+      this.fx.push({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 0.9, color, t: 0, life: 0.5 });
+      this.msg(`${name} usa ${m.icon} ${m.name}: +${m.shield.amount} a tu CA.`, 'good');
+      return;
+    }
+    if (m.kind === 'mejora' && m.buff) {
+      this.petBuffs.push({ ...m.buff, turns: m.buff.turns + 1 });
+      this.floatText(u.x, u.y, `▲${m.buff.amount}`, '#f2d888');
+      this.msg(`${name} usa ${m.icon} ${m.name}.`, 'good');
+      return;
+    }
+    if (!target) return;
+    u.facing = target.x >= u.x ? 'right' : 'left';
+    if (m.range > 1) this.fx.push({ kind: 'bolt', fx: u.x, fy: u.y, tx: target.x, ty: target.y, color, t: 0, life: 0.3 });
+    else {
+      u.bumpT = 1;
+      u.bumpDx = Math.sign(target.x - u.x);
+      u.bumpDy = Math.sign(target.y - u.y);
+    }
+    if (m.radius) this.fx.push({ kind: 'burst', x: target.x, y: target.y, radius: m.radius + 0.5, color, t: 0, life: 0.5 });
+    const targets = m.radius ? this.enemies.filter((e) => dist(e.x, e.y, target.x, target.y) <= m.radius! && this.los(target, e)) : [target];
+    pi.bond = Math.min(100, pi.bond + 0.2);
+    for (const t of targets) {
+      t.alerted = true;
+      if (!this.rng.chance(m.accuracy ?? 0.9)) {
+        this.floatText(t.x, t.y, 'Fallo', '#a49c8a');
+        continue;
+      }
+      const defType = t.def.pet ? Pets.getSpecies(t.def.pet.species).type : Pets.familyType(t.def.family);
+      const mult = Pets.typeMultiplier(m.type, defType);
+      const raw = roll(this.rng, m.dice ?? '1d4').total + Math.floor(st[m.stat ?? 'atk'] / 3);
+      const dmg = Math.max(1, Math.round(raw * mult));
+      if (mult > 1) this.floatText(t.x, t.y - 0.6, '¡Eficaz!', '#a8f08a');
+      else if (mult < 1) this.floatText(t.x, t.y - 0.6, 'Poco eficaz', '#a0a0b0');
+      this.msg(`${name} usa ${m.icon} ${m.name} contra ${t.def.name}${mult > 1 ? ' (¡muy eficaz!)' : mult < 1 ? ' (poco eficaz)' : ''}.`, 'combat');
+      this.killContext = 'ally';
+      this.damageEnemy(t, dmg, PET_DAMAGE[m.type] ?? 'contundente');
+      this.killContext = 'other';
+      if (t.hp > 0 && m.applyStatus) this.applyStatusToEnemy(t, m.applyStatus);
+    }
+  }
+
+  private stepPetTowards(t: Point, goalBlocked: boolean): boolean {
+    const u = this.pet!;
+    const p = this.playerPos;
+    const path = findPath(
+      this.zone.width, this.zone.height, u, t,
+      (x, y) => this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(x === p.x && y === p.y) && !this.zone.exitAt(x, y) && !this.allyAt(x, y),
+      { allowGoalBlocked: goalBlocked, maxNodes: 800 },
+    );
+    const next = path?.[0];
+    if (!next || this.enemyAt(next.x, next.y) || (next.x === p.x && next.y === p.y) || this.allyAt(next.x, next.y)) return false;
+    if (next.x !== u.x) u.facing = next.x > u.x ? 'right' : 'left';
+    u.x = next.x;
+    u.y = next.y;
+    return true;
+  }
+
+  /** Un enemigo ataca a la mascota. */
+  private enemyAttackPet(e: Enemy): void {
+    const u = this.pet!;
+    const pi = this.petInstance!;
+    const atk = e.def.attack;
+    e.facing = u.x >= e.x ? 'right' : 'left';
+    if (atk.range === 1) {
+      e.bumpT = 1;
+      e.bumpDx = Math.sign(u.x - e.x);
+      e.bumpDy = Math.sign(u.y - e.y);
+    } else this.fx.push({ kind: 'bolt', fx: e.x, fy: e.y, tx: u.x, ty: u.y, color: '#d8d0bc', t: 0, life: 0.25 });
+    const r = attackRoll(this.rng, atk.toHit + e.toHitBonus, this.petAC());
+    if (!r.hit) {
+      this.floatText(u.x, u.y, 'Esquiva', '#a49c8a');
+      return;
+    }
+    const dmg = damageRoll(this.rng, atk.dice, e.damageBonus, r.crit).total;
+    pi.hp = Math.max(0, pi.hp - dmg);
+    u.flashT = 1;
+    this.floatText(u.x, u.y, `-${dmg}`, '#ff9a60');
+    this.msg(`${e.def.name} hiere a ${Pets.petName(pi)}: ${dmg} de daño.`, 'combat');
+    if (pi.hp <= 0) {
+      pi.down = true;
+      this.msg(`${Pets.petName(pi)} está debilitada. Se recuperará fuera de combate.`, 'warn');
+    }
+  }
+
+  /** Fuera de combate la mascota se recupera poco a poco. */
+  private petRegen(): void {
+    const pi = this.petInstance;
+    if (!pi) return;
+    const max = Pets.petStats(pi).hp;
+    if (this.state.turn % 3 === 0 && pi.hp < max) pi.hp++;
+    if (pi.down && pi.hp >= Math.ceil(max * 0.25)) {
+      pi.down = false;
+      this.msg(`${Pets.petName(pi)} se recupera y vuelve a tu lado.`, 'good');
+    }
+  }
+
+  /** Curación completa de la mascota activa (posada, templo, establo). */
+  healPet(): void {
+    const pi = this.petInstance;
+    if (!pi) return;
+    pi.down = false;
+    pi.hp = Pets.petStats(pi).hp;
+  }
+
+  /** Experiencia para la mascota activa (y avisos de nivel, movimientos y evolución). */
+  givePetXp(amount: number): void {
+    const pi = this.petInstance;
+    if (!pi || amount <= 0) return;
+    const name = Pets.petName(pi);
+    pi.bond = Math.min(100, pi.bond + 1);
+    const gain = Pets.gainPetXp(pi, amount, Math.max(this.state.player.level + 2, 3));
+    if (gain.levels > 0) {
+      this.events.emit('petEvent', { kind: 'nivel', text: `¡${name} sube al nivel ${pi.level}!` });
+      this.msg(`¡${name} sube al nivel ${pi.level}!`, 'good');
+      if (this.pet) this.fx.push({ kind: 'burst', x: this.pet.x, y: this.pet.y, radius: 1, color: '#80c0ff', t: 0, life: 0.6 });
+    }
+    for (const m of gain.learned) this.msg(`${name} aprende ${Pets.getMove(m)?.name ?? m}.`, 'good');
+    if (pi.pendingMoves.length) this.events.emit('petEvent', { kind: 'movimiento', text: `${name} quiere aprender un movimiento nuevo.` });
+    if (pi.pendingEvolution) this.events.emit('petEvent', { kind: 'evolucion', text: `¡${name} está evolucionando!` });
+  }
+
+  /** Aparece una criatura salvaje lejos del jugador. */
+  spawnWildPet(speciesId: string, at?: Point): Enemy | null {
+    const p = this.playerPos;
+    let spot: Point | null = at ?? null;
+    for (let i = 0; i < 60 && !spot; i++) {
+      const x = this.rng.int(0, this.zone.width - 1);
+      const y = this.rng.int(0, this.zone.height - 1);
+      if (!this.freeForEnemy(x, y) || dist(x, y, p.x, p.y) < 6 || this.zone.exitAt(x, y)) continue;
+      spot = { x, y };
+    }
+    if (!spot || !this.freeForEnemy(spot.x, spot.y)) return null;
+    const lvl = Math.max(1, this.zone.def.level + this.rng.int(-1, 1));
+    const e = createEnemy(wildEnemyDef(speciesId, lvl), spot.x, spot.y, this.rng);
+    this.enemies.push(e);
+    return e;
+  }
+
+  /** Criaturas salvajes que se pueden intentar vincular ahora (cerca y a la vista). */
+  bindTargets(): Enemy[] {
+    const p = this.playerPos;
+    return this.enemies.filter((e) => e.def.pet && dist(e.x, e.y, p.x, p.y) <= 4 && this.los(p, e));
+  }
+
+  /** Probabilidad de vincular a una criatura. */
+  bindChance(e: Enemy): number {
+    if (!e.def.pet) return 0;
+    return Pets.captureChance(Pets.getSpecies(e.def.pet.species).rarity, e.hp / e.maxHp);
+  }
+
+  /**
+   * Usa una Runa de vínculo sobre la criatura salvaje más debilitada a tu alcance.
+   * Gasta el turno. Devuelve un error o null.
+   */
+  bindPet(): string | null {
+    if (!this.canAct) return 'Espera a tu turno.';
+    const runes = this.state.player.inventory.find((x) => x.id === 'runa_vinculo');
+    if (!runes) return 'No tienes Runas de vínculo (se venden en la tienda y el alquimista).';
+    const target = this.bindTargets().sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+    if (!target || !target.def.pet) return 'No hay ninguna criatura salvaje cerca.';
+    removeQty(this.state.player, runes.uid, 1);
+    const chance = this.bindChance(target);
+    const sp = Pets.getSpecies(target.def.pet.species);
+    // Se muestra como una tirada de d20 contra una CD equivalente a la probabilidad.
+    const dc = Math.max(2, Math.min(20, 21 - Math.round(chance * 20)));
+    const natural = this.rng.int(1, 20);
+    const ok = natural >= dc;
+    this.events.emit('dice', { label: `Vínculo (${Math.round(chance * 100)} %)`, natural, bonus: 0, total: natural, target: dc, targetLabel: 'CD', outcome: ok ? 'success' : 'fail' });
+    this.fx.push({ kind: 'burst', x: target.x, y: target.y, radius: 1, color: '#c080ff', t: 0, life: 0.6 });
+    if (!ok) {
+      this.msg(`La runa brilla... pero ${sp.name} se libera.`, 'warn');
+      this.endPlayerTurn();
+      return null;
+    }
+    this.enemies = this.enemies.filter((e) => e !== target);
+    const pet = Pets.createPet(sp.id, target.def.pet.level);
+    pet.hp = Math.max(1, Math.round(Pets.petStats(pet).hp * Math.max(0.3, target.hp / target.maxHp)));
+    const where = Pets.addPet(this.state.pets, pet, Date.now());
+    if (where === 'lleno') {
+      this.msg(`¡Vínculo logrado! Pero tu establo está lleno: ${sp.name} vuelve a la naturaleza.`, 'warn');
+    } else {
+      this.msg(`¡${sp.name} se une a ti!${where === 'establo' ? ' Te espera en el establo de Brumaroja.' : ''}`, 'good');
+      this.events.emit('petEvent', { kind: 'vinculo', text: `¡${sp.name} se une a ti!` });
+      if (where === 'activa') this.spawnPet();
+    }
+    this.gainXp(Math.round(target.def.xp * 0.5), `vínculo con ${sp.name}`);
+    this.sfx('mision');
+    this.endPlayerTurn();
+    return null;
+  }
+
+  /** Elige la mascota inicial en el establo. */
+  chooseStarter(speciesId: string): string | null {
+    if (this.state.pets.starterChosen) return 'Ya elegiste tu primera mascota.';
+    const sp = Pets.getSpecies(speciesId);
+    if (!sp.starter) return 'Esa criatura no se ofrece como inicial.';
+    const pet = Pets.createPet(sp.id, 2);
+    this.state.pets.starterChosen = true;
+    Pets.addPet(this.state.pets, pet, Date.now());
+    this.spawnPet();
+    this.msg(`¡${sp.name} será tu compañera de aventuras!`, 'good');
+    return null;
+  }
+
+  /** Deja la mascota activa en el establo. */
+  depositPet(): string | null {
+    const err = Pets.depositActive(this.state.pets, Date.now());
+    if (!err) this.pet = null;
+    return err;
+  }
+
+  /** Saca una mascota del establo (la activa entra a descansar). */
+  withdrawPet(uid: string): string | null {
+    const err = Pets.withdraw(this.state.pets, uid);
+    if (!err) this.spawnPet();
+    return err;
+  }
+
+  /** Aplica el entrenamiento del establo por el tiempo real transcurrido. */
+  trainStable(now = Date.now()): Pets.TrainingReport[] {
+    return Pets.trainStable(this.state.pets, now, this.state.player.level);
+  }
+
+  resolvePetMove(move: string, forget: string | null): void {
+    const pi = this.petInstance;
+    if (!pi) return;
+    Pets.resolveMove(pi, move, forget);
+    if (forget) this.msg(`${Pets.petName(pi)} olvida ${Pets.getMove(forget)?.name ?? forget} y aprende ${Pets.getMove(move)?.name ?? move}.`, 'good');
+  }
+
+  evolvePet(): Pets.PetInstance | null {
+    const pi = this.petInstance;
+    if (!pi) return null;
+    const before = Pets.getSpecies(pi.species).name;
+    const sp = Pets.evolve(pi);
+    if (sp) {
+      Pets.markSeen(this.state.pets, sp.id);
+      if (!this.state.pets.caught.includes(sp.id)) this.state.pets.caught.push(sp.id);
+      this.msg(`¡${before} ha evolucionado en ${sp.name}!`, 'good');
+      this.sfx('nivel');
+    }
+    return pi;
+  }
+
+  declinePetEvolution(): void {
+    const pi = this.petInstance;
+    if (pi) Pets.declineEvolution(pi);
+  }
+
   // ================================================================ talentos
   private talentList<T extends Parameters<typeof talentEffects>[1]>(type: T) {
     return talentEffects(this.state.player, type);
@@ -2382,6 +2873,13 @@ export class Game {
     return def ? (NPCS.get(def.npc) ?? null) : null;
   }
 }
+
+const PET_TYPE_COLOR: Record<string, string> = {
+  fuego: '#ff8030', agua: '#60b0ff', planta: '#80d040', tierra: '#c8a060', sombra: '#a060ff', luz: '#fff0a0',
+};
+const PET_DAMAGE: Record<string, DamageType> = {
+  fuego: 'fuego', agua: 'frio', planta: 'veneno', tierra: 'contundente', sombra: 'necrotico', luz: 'sagrado',
+};
 
 const SPELL_COLORS: Partial<Record<DamageType, string>> = {
   fuego: '#ff8030', frio: '#80d0ff', rayo: '#f0f060', veneno: '#80d040', sagrado: '#fff0a0',

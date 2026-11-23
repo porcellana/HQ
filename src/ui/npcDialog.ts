@@ -14,6 +14,8 @@ import { h } from './dom';
 
 export interface DialogHandlers {
   openShop(shopId: string): void;
+  /** Abre el establo de mascotas. */
+  openStable(): void;
   /** Tras descansar o sanar (guardar partida, etc.). */
   afterService(): void;
   close(): void;
@@ -155,6 +157,9 @@ export function npcDialog(game: Game, npc: NpcDef, handlers: DialogHandlers): HT
         return showNode('inicio');
       case 'quests':
         return showQuests();
+      case 'stable':
+        back.remove();
+        return handlers.openStable();
       case 'dismiss':
         game.dismissCompanion();
         handlers.afterService();

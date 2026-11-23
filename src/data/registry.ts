@@ -6,7 +6,8 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef } from './schema';
+import type { DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef, PetMoveDef, PetSpeciesDef, PetType, PetTypeDef } from './schema';
+import { FAMILY_TYPE, PET_TYPES } from './config/pet_types';
 import rarityList from './config/rarities';
 import trapList from './config/traps';
 import oreList from './config/ores';
@@ -147,3 +148,15 @@ export const DUNGEONS: ReadonlyMap<string, DungeonDef> = collect<DungeonDef>(
 );
 export const TRAPS: ReadonlyMap<string, TrapDef> = new Map(trapList.map((t) => [t.id, t]));
 export const ORES: ReadonlyMap<string, OreDef> = new Map(oreList.map((o) => [o.id, o]));
+
+// --- Mascotas (v0.3) -----------------------------------------------------------
+export const PET_SPECIES: ReadonlyMap<string, PetSpeciesDef> = collect<PetSpeciesDef>(
+  import.meta.glob('./pets/*.{ts,json}', { eager: true }),
+  'especie de mascota',
+);
+export const PET_MOVES: ReadonlyMap<string, PetMoveDef> = collect<PetMoveDef>(
+  import.meta.glob('./pet_moves/*.{ts,json}', { eager: true }),
+  'movimiento de mascota',
+);
+export const PET_TYPE_MAP: ReadonlyMap<PetType, PetTypeDef> = new Map(PET_TYPES.map((t) => [t.id, t]));
+export { FAMILY_TYPE, PET_TYPES };

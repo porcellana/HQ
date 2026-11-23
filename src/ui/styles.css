@@ -387,3 +387,41 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .map-info { font-size: 0.9em; color: var(--text); min-height: 1.3em; }
 .map-buttons { display: flex; gap: 8px; }
 .map-buttons .primary { flex: 1; }
+.hud-pet { pointer-events: auto; cursor: pointer; }
+.hud-pet .pet-name { color: #8ac8ff; }
+.bar.hp.petbar > i { background: linear-gradient(#8ac8ff, #3a7ad0); }
+.skill-bar button.bind { border-color: #a060ff; }
+
+/* ------------------------------- Mascotas -------------------------------- */
+.screen.pet-screen, .screen.stable { justify-content: flex-start; gap: 10px; }
+.tabs { display: flex; gap: 8px; width: min(460px, 100%); }
+.tabs button { flex: 1; }
+.pet-head { display: flex; gap: 12px; align-items: center; }
+.pet-big { width: 112px; height: 112px; border-radius: 12px; border: 2px solid var(--border-l); background: radial-gradient(circle, #2a3a2a, #0b0a10); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.pet-canvas { width: 96px; height: 96px; image-rendering: pixelated; }
+.pet-headinfo { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.pet-species { color: var(--gold-l); font-weight: normal; font-size: 1.15em; }
+.pet-type { align-self: flex-start; border: 1px solid; border-radius: 10px; padding: 0 8px; font-size: 0.75em; background: rgba(0,0,0,0.4); }
+.pet-nick { font: inherit; font-size: 0.95em; width: 9em; color: var(--text); background: #000; border: 1px solid var(--border-l); border-radius: 6px; padding: 4px 6px; user-select: text; -webkit-user-select: text; }
+.pet-move { display: flex; gap: 10px; align-items: flex-start; margin: 6px 0; }
+.pet-move .ico { font-size: 1.4em; width: 1.6em; text-align: center; }
+.pet-move b { font-weight: normal; color: var(--gold-l); }
+.pet-move p { margin: 2px 0 0; font-size: 0.8em; }
+.evo-line { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.evo-step { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; }
+.evo-step.current { border-color: var(--gold); }
+.evo-canvas { width: 56px; height: 56px; image-rendering: pixelated; }
+.bestiary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.best-card { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 6px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.8em; }
+.best-card.caught { border-color: #5ad05a; }
+.best-card b { font-weight: normal; color: var(--gold-l); }
+.pet-card { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.pet-card-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 140px; }
+.pet-card-info b { font-weight: normal; color: var(--gold-l); }
+.pet-card-actions { display: flex; gap: 6px; width: 100%; }
+.pet-card-actions button { flex: 1; }
+.evo-modal { align-items: center; text-align: center; }
+.evo-anim { position: relative; width: 140px; height: 140px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,0.35), rgba(255,240,180,0.08) 60%, transparent 70%); animation: evoglow 0.8s infinite alternate; }
+.evo-anim .pet-canvas { position: absolute; width: 120px; height: 120px; }
+@keyframes evoglow { from { box-shadow: 0 0 10px #fff3; } to { box-shadow: 0 0 40px #fff9; } }
+.evo-text { font-size: 1.05em; }
