@@ -77,9 +77,13 @@ export class SkillBar {
     if (combat) chips.push(h('span', { class: 'chip warn', text: '⚔ En combate' }));
     if (tq && !combat && this.questGuide) {
       const goal = game.questGoal;
-      const where = goal?.zone && goal.zone !== game.zone.id ? ` · ${goal.zoneName}` : '';
+      // Lo mínimo: icono, qué/cuántos y zona.
       const icon = goal ? GOAL_ICON[goal.kind] : '📜';
-      chips.push(h('span', { class: `chip quest${tq.ready ? ' ready' : ''}`, text: `${icon} ${tq.text}${where}` }));
+      const zone = goal?.zoneName || game.zone.def.name;
+      chips.push(h('span', { class: `chip quest${tq.ready ? ' ready' : ''}`, attrs: { title: `${tq.name}: ${tq.text}` } }, [
+        `${icon} ${tq.short}`,
+        h('small', { class: 'quest-zone', text: ` · ${zone}` }),
+      ]));
     }
     this.statusEl.replaceChildren(...chips);
   }

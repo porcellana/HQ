@@ -2,6 +2,13 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.3.1 · 2026-11-23 — Retoques
+
+- Aviso de misión mínimo: una línea con icono, qué/cuántos y zona («⚔ Goblins 2/5 · Bosque Sombrío»).
+- Guía de misión: brújula pequeña con icono y punta hacia el objetivo, sin distancia en casillas.
+- Arreglado: las pantallas largas (Ajustes, etc.) no dejaban llegar a las opciones de arriba,
+  por eso no se podía activar el joystick. Ahora se desplazan enteras.
+
 ## v0.3.0 · 2026-11-23 — Mascotas
 
 - **15 criaturas originales** en 6 líneas evolutivas: Chispón → Brasalón → Volcandor

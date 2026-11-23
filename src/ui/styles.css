@@ -425,3 +425,11 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .evo-anim .pet-canvas { position: absolute; width: 120px; height: 120px; }
 @keyframes evoglow { from { box-shadow: 0 0 10px #fff3; } to { box-shadow: 0 0 40px #fff9; } }
 .evo-text { font-size: 1.05em; }
+/* Objetivo de misión: una sola línea corta */
+.chip.quest { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70vw; }
+.chip.quest .quest-zone { color: var(--muted); font-size: 0.9em; }
+/* Pantallas largas: centradas si caben, pero con scroll completo si no
+   (justify-content:center recortaba la parte de arriba sin poder llegar). */
+.screen { justify-content: flex-start; }
+.screen > :first-child { margin-top: auto; }
+.screen > :last-child { margin-bottom: auto; }

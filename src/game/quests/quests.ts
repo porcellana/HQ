@@ -4,7 +4,7 @@
  * se cuentan al ocurrir; los de recoger se comprueban mirando la mochila y se
  * consumen al entregar.
  */
-import { NPCS, QUESTS, getEnemy } from '@/data/registry';
+import { NPCS, QUESTS, getEnemy, getItem, getZoneDef } from '@/data/registry';
 import type { EnemyDef, QuestDef, QuestObjective } from '@/data/schema';
 import { countItem, type Carrier } from '../items/inventory';
 
@@ -191,12 +191,35 @@ export function trackedQuestDef(h: QuestHolder): QuestDef | null {
 }
 
 /** Texto corto para el HUD: la misión seguida. */
-export function trackedQuest(h: QuestHolder): { quest: QuestDef; name: string; text: string; ready: boolean } | null {
+const FAMILY_SHORT: Record<string, string> = {
+  goblinoide: 'Goblins', 'no-muerto': 'No-muertos', bestia: 'Bestias', 'araña': 'Arañas', orco: 'Orcos', humano: 'Cultistas',
+};
+
+/** Texto mínimo de un objetivo: «Goblins 2/5», «Seda de araña 1/3», «Marga», «Paso Gris». */
+export function shortObjective(h: QuestHolder, q: QuestDef, i: number): string {
+  const o = q.objectives[i]!;
+  const p = objectiveProgress(h, q, i);
+  const count = p.need > 1 ? ` ${p.have}/${p.need}` : '';
+  switch (o.type) {
+    case 'kill': {
+      const name = o.enemy ? (getEnemy(o.enemy)?.name ?? o.enemy) : (FAMILY_SHORT[o.family ?? ''] ?? o.family ?? '');
+      return `${name}${count}`;
+    }
+    case 'collect':
+      return `${getItem(o.item)?.name ?? o.item}${count}`;
+    case 'talk':
+      return NPCS.get(o.npc)?.name ?? o.npc;
+    case 'visit':
+      return getZoneDef(o.zone)?.name ?? o.zone;
+  }
+}
+
+export function trackedQuest(h: QuestHolder): { quest: QuestDef; name: string; text: string; short: string; ready: boolean } | null {
   const q = trackedQuestDef(h);
   if (!q) return null;
   if (isReady(h, q)) {
     const who = NPCS.get(q.turnIn ?? q.giver)?.name ?? '';
-    return { quest: q, name: q.name, text: `Entrégala a ${who}`, ready: true };
+    return { quest: q, name: q.name, text: `Entrégala a ${who}`, short: `Entregar · ${who}`, ready: true };
   }
   const i = q.objectives.findIndex((_, k) => {
     const p = objectiveProgress(h, q, k);
@@ -204,7 +227,7 @@ export function trackedQuest(h: QuestHolder): { quest: QuestDef; name: string; t
   });
   const p = objectiveProgress(h, q, i);
   const o = q.objectives[i]!;
-  return { quest: q, name: q.name, text: p.need > 1 ? `${o.label} ${p.have}/${p.need}` : o.label, ready: false };
+  return { quest: q, name: q.name, text: p.need > 1 ? `${o.label} ${p.have}/${p.need}` : o.label, short: shortObjective(h, q, i), ready: false };
 }
 
 /** Comprueba que una misión es coherente con el resto del contenido (para tests). */

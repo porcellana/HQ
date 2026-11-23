@@ -163,7 +163,7 @@ export class Renderer {
     const icon = GOAL_ICON[goal.kind];
     const pt = goal.point;
     const p = game.playerPos;
-    const distTiles = Math.max(Math.abs(pt.x - p.x), Math.abs(pt.y - p.y));
+    const distTiles = Math.max(Math.abs(pt.x - p.x), Math.abs(pt.y - p.y)); // sólo para ocultar el marcador al llegar
     const sx = ((pt.x + 0.5) * TILE - camX) * zoom;
     const sy = ((pt.y + 0.5) * TILE - camY) * zoom;
     const top = camera.insets.top * zoom + 34 * dpr;
@@ -189,50 +189,72 @@ export class Renderer {
       this.guideBadge(sx, my, icon, null, dpr, 'down');
       return;
     }
-    // Flecha en el borde, en la dirección del objetivo.
+    // Brújula pequeña en el borde: círculo con el icono y una punta que señala
+    // hacia el objetivo (sin números, más discreta).
     const cx = canvas.width / 2;
     const cy = (top + bottom) / 2;
     const dx = sx - cx;
     const dy = sy - cy;
     const k = Math.min(Math.abs((dx > 0 ? right - cx : left - cx) / (dx || 1e-6)), Math.abs((dy > 0 ? bottom - cy : top - cy) / (dy || 1e-6)));
     const ang = Math.atan2(dy, dx);
-    const pulse = 1 + Math.sin(t * 4) * 0.08;
-    const px = cx + dx * k - Math.cos(ang) * 6 * dpr * Math.sin(t * 4);
-    const py = cy + dy * k - Math.sin(ang) * 6 * dpr * Math.sin(t * 4);
-    const a = 22 * dpr * pulse;
+    const bob = Math.sin(t * 3) * 2.5 * dpr;
+    const px = cx + dx * k - Math.cos(ang) * (8 * dpr - bob);
+    const py = cy + dy * k - Math.sin(ang) * (8 * dpr - bob);
+    this.guideCompass(px, py, ang, icon, dpr);
+  }
+
+  /** Insignia redonda con icono y una punta de flecha apuntando en `ang`. */
+  private guideCompass(x: number, y: number, ang: number, icon: string, dpr: number): void {
+    const { ctx } = this;
+    const r = 12 * dpr;
+    const glow = 0.55 + 0.25 * Math.sin(this.time * 4);
     ctx.save();
-    ctx.translate(px, py);
+    ctx.translate(x, y);
+    // Punta
+    ctx.save();
     ctx.rotate(ang);
-    ctx.shadowColor = green;
-    ctx.shadowBlur = 14 * dpr;
-    const grad = ctx.createLinearGradient(-a, 0, a, 0);
-    grad.addColorStop(0, '#3f8a3a');
-    grad.addColorStop(1, '#d8ffb0');
-    ctx.fillStyle = grad;
-    ctx.strokeStyle = '#0b0a10';
-    ctx.lineWidth = 3 * dpr;
     ctx.beginPath();
-    ctx.moveTo(a, 0);
-    ctx.lineTo(-a * 0.25, -a * 0.8);
-    ctx.lineTo(-a * 0.25, -a * 0.32);
-    ctx.lineTo(-a * 0.9, -a * 0.32);
-    ctx.lineTo(-a * 0.9, a * 0.32);
-    ctx.lineTo(-a * 0.25, a * 0.32);
-    ctx.lineTo(-a * 0.25, a * 0.8);
+    ctx.moveTo(r + 9 * dpr, 0);
+    ctx.lineTo(r * 0.55, -r * 0.62);
+    ctx.lineTo(r * 0.55, r * 0.62);
     ctx.closePath();
+    ctx.fillStyle = '#c8f0a0';
+    ctx.strokeStyle = '#0b0a10';
+    ctx.lineWidth = 2 * dpr;
     ctx.stroke();
     ctx.fill();
     ctx.restore();
-    // Insignia con icono y distancia, hacia dentro de la pantalla.
-    const bx = Math.max(left + 30 * dpr, Math.min(right - 30 * dpr, px - Math.cos(ang) * 48 * dpr));
-    const by = Math.max(top + 22 * dpr, Math.min(bottom - 22 * dpr, py - Math.sin(ang) * 48 * dpr));
-    this.guideBadge(bx, by, icon, `${distTiles}`, dpr, null);
+    // Halo suave
+    ctx.globalAlpha = glow * 0.5;
+    ctx.fillStyle = '#a8f08a';
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 4 * dpr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Disco
+    const g = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 1, 0, 0, r);
+    g.addColorStop(0, '#2e5a2a');
+    g.addColorStop(1, '#122612');
+    ctx.fillStyle = g;
+    ctx.strokeStyle = '#c8f0a0';
+    ctx.lineWidth = 2 * dpr;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = `${Math.round(13 * dpr)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(icon, 0, 1 * dpr);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
   }
 
   /** Círculo con icono (y distancia) para la guía. */
   private guideBadge(x: number, y: number, icon: string, distText: string | null, dpr: number, pointer: 'down' | null): void {
     const { ctx } = this;
-    const r = 15 * dpr;
+    const r = 12 * dpr;
     ctx.save();
     ctx.shadowColor = '#a8f08a';
     ctx.shadowBlur = 10 * dpr;
@@ -249,7 +271,7 @@ export class Renderer {
     ctx.fill();
     ctx.stroke();
     ctx.shadowBlur = 0;
-    ctx.font = `${Math.round(16 * dpr)}px sans-serif`;
+    ctx.font = `${Math.round(13 * dpr)}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffffff';
