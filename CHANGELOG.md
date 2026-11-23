@@ -2,6 +2,19 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.4.1 · 2026-11-23 — Movimiento por turno en combate
+
+- Economía de acciones estilo D&D 5e / Baldur's Gate 3: en tu turno de combate tienes
+  **movimiento (casillas) + 1 acción**. Moverte ya no gasta el turno.
+- Movimiento por clase (datos): Guerrero, Mago y Clérigo 5; Pícaro 6. +1 con el talento
+  «Pies ligeros» y el trasfondo Cazador. Ralentizado = la mitad.
+- Casillas alcanzables resaltadas en azul; tocar más lejos avanza lo que puedas.
+- Nueva acción **Correr** (doble movimiento) y botón **Terminar turno**. Contador
+  «👣 3/5 · ⚔ Acción lista/usada»; los botones de acción se apagan al usarla.
+- Enemigos, compañero y mascota se mueven varias casillas (animadas casilla a casilla) y
+  atacan en el mismo turno. Lobo 7, arañas 5-6, zombi 2, jefes 4-5 (nuevo campo `movement`).
+- «Cómo se juega» explica el combate nuevo y cómo capturar mascotas.
+
 ## v0.4.0 · 2026-11-23 — Combate turno a turno, misiones estilo WoW y mascotas a la vista
 
 - **Combate turno a turno**: nueva opción «Velocidad del combate» (Paso a paso por defecto,

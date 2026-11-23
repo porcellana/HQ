@@ -133,17 +133,27 @@ Otros comandos:
   encima de la barra de habilidades.
 - **Esperar**: pasa un turno sin moverte.
 - **Menú**: pausa, guardar, ajustes y salir. En Android, el botón *Atrás* abre/cierra la pausa.
-- **Combate por turnos (v0.4)**: cuando un enemigo te ve, la barra inferior cambia al
-  **menú de acciones** y arriba aparece la **barra de turnos** (retratos en orden con el actor
-  en curso resaltado y su vida). En tu turno («TU TURNO»):
+- **Combate por turnos (v0.4.1, economía de acciones estilo D&D 5e / Baldur's Gate 3)**:
+  cuando un enemigo te ve, la barra inferior cambia al **menú de acciones** y arriba aparece
+  la **barra de turnos** (retratos en orden con el actor en curso resaltado y su vida).
+  En tu turno («TU TURNO») tienes **👣 movimiento + 1 ⚔ acción**:
+  - **Movimiento** en casillas (las diagonales cuentan 1): **Guerrero 5, Mago 5, Clérigo 5,
+    Pícaro 6**. El trasfondo *Cazador* y el talento *Pies ligeros* dan +1. *Ralentizado* lo
+    divide entre 2. Las casillas **azules** son las que alcanzas: tócalas para moverte. Si
+    tocas más lejos, avanzas lo máximo posible. Puedes moverte, actuar y seguir moviéndote.
   - **⚔ Atacar**: si sólo hay un enemigo a tu alcance, le atacas; si hay varios, se resaltan
-    en rojo y tocas uno. Si no hay ninguno, acércate tocando el suelo (en combate cada toque
-    mueve **una casilla = un turno**).
-  - **✨ Habilidad**: despliega tus habilidades (si piden objetivo, toca al enemigo).
-  - **🧪 Objeto**: pociones y consumibles usables en combate (gasta el turno).
-  - **🛡 Defender**: +2 CA hasta tu próximo turno (un escudo flota sobre ti).
-  - **⏳ Esperar**, **🏃 Huir**, **🔮 Vincular** (si hay una criatura salvaje debilitada) y
-    **🐾 Órdenes** a la mascota.
+    en rojo y tocas uno. Tocar a un enemigo lejano te acerca (no ataca solo al llegar).
+  - **✨ Habilidad**, **🧪 Objeto**, **🛡 Defender** (+2 CA hasta tu próximo turno),
+    **👟 Correr** (gastas la acción y sumas otra vez tu movimiento), **🏃 Huir** y
+    **🔮 Vincular**: todas gastan **la acción** (sólo una por turno; luego se apagan).
+  - **🐾 Órdenes** a la mascota no gastan la acción.
+  - **⏭ Terminar turno** cuando quieras. El turno termina solo si ya usaste la acción y no
+    te queda movimiento. Contador en el menú: «👣 3/5 · ⚔ Acción lista / usada».
+  - Fuera de combate se sigue caminando libre y fluido.
+  - **Enemigos y aliados** también tienen movimiento por turno: se acercan (o se colocan a
+    distancia con línea de visión, los arqueros y hechiceros) y **atacan en el mismo turno**.
+    Por defecto `speed` 1 → 4 casillas y 2 → 7; con `movement` en el enemigo se fija a mano
+    (lobo 7, arañas 5-6, zombi 2, jefes 4-5). Compañero 5 casillas, mascota 6.
 - **Velocidad del combate** (Ajustes): **Paso a paso** (por defecto: cada compañero, mascota
   y enemigo hace su acción, se muestra en un **cartel** con la tirada —«Goblin arquero falla
   su arco corto (7 vs tu CA 16)»— y el juego espera a que pulses **▶ Siguiente** o toques la
@@ -494,6 +504,12 @@ encounters: {
 ```
 
 ### Reglas de combate (resumen)
+
+- **Turno**: movimiento (casillas de la clase, `movement` en `src/data/classes/*.ts`) + 1 acción.
+  Moverse no gasta la acción. Decisión: se eligieron 5-6 casillas (≈ 9 m de D&D 5e con
+  casillas de 1,5 m) para que en móvil el combate sea ágil; los duelos simulados dan casi la
+  misma dificultad que antes (los enemigos llegan antes, pero tú también puedes acercarte y
+  atacar en el mismo turno).
 
 - Ataque: d20 + bonificador contra la CA. **20 natural = crítico** (dados de daño ×2) y
   **1 natural = pifia**. Ventaja/desventaja: se tiran 2d20 y se queda el mejor/peor

@@ -527,3 +527,21 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .hud.in-combat .dice-roller { top: 30%; }
 .hud.in-combat .dice-roller.small { top: 24%; }
 .action-caption { top: 55%; }
+
+/* Economía del turno (v0.4.1): movimiento 👣 + 1 acción */
+.combat-menu .turn-status {
+  grid-column: 1 / -1; display: flex; justify-content: center; gap: 14px; pointer-events: none;
+  font-size: 0.85em; text-shadow: 0 1px 2px #000, 0 0 4px #000;
+}
+.combat-menu .turn-status .moves { color: #9ad0ff; }
+.combat-menu .turn-status .moves.empty { color: var(--muted); }
+.combat-menu .turn-status .act { color: var(--gold-l); }
+.combat-menu .turn-status .act.used { color: var(--muted); text-decoration: line-through; }
+.combat-menu .cbtn:disabled { opacity: 0.35; }
+.combat-menu .cbtn.end { grid-column: span 2; }
+.combat-menu .cbtn.end.highlight { border-color: var(--gold); color: var(--gold-l); box-shadow: 0 0 12px rgba(242,216,136,0.55); animation: pulse 1.2s infinite alternate; }
+.combat-menu .turn-status { justify-self: center; background: rgba(11,10,16,0.88); border: 1px solid var(--border); border-radius: 12px; padding: 3px 14px; }
+/* Durante tu turno de combate el menú es más alto: los mensajes suben. */
+body.combat-turn .log { bottom: calc(200px + env(safe-area-inset-bottom)); }
+.combat-menu .cbtn:disabled { opacity: 1; filter: grayscale(1) brightness(0.5); }
+body.combat-turn .log { bottom: calc(236px + env(safe-area-inset-bottom)); }

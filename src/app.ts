@@ -259,6 +259,10 @@ export class App {
         if (err) hud.pushMessage(err, 'warn');
       },
       onDefend: () => game.defend(),
+      onDash: () => {
+        const err = game.dash();
+        if (err) hud.pushMessage(err, 'warn');
+      },
       onContinue: () => game.continueTurn(),
       onItems: () => hud.combatUi.openItems(game, (m) => hud.pushMessage(m, 'warn')),
       onOpenQuest: (id) => {

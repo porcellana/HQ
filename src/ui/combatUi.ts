@@ -4,8 +4,9 @@
  *    resaltado y su vida en miniatura.
  *  - Cartel de acción centrado: qué ha hecho cada actor.
  *  - «TU TURNO» al empezar tu turno.
- *  - Menú de acciones en tu turno: Atacar, Habilidad, Objeto, Defender,
- *    Esperar, Huir (+ Vincular y Órdenes a la mascota si procede).
+ *  - Menú de acciones en tu turno: movimiento 👣 + UNA acción (Atacar,
+ *    Habilidad, Objeto, Defender, Correr, Huir, Vincular) y «Terminar turno».
+ *    Órdenes a la mascota no gastan la acción.
  *  - Botón grande «▶ Siguiente» en el modo paso a paso.
  */
 import { PET_SPECIES } from '@/data/registry';
@@ -22,6 +23,7 @@ export interface CombatActions {
   onAttack(): void;
   onToggleSkills(): void;
   onDefend(): void;
+  onDash(): void;
   onWait(): void;
   onFlee(): void;
   onBind(): void;
@@ -85,7 +87,7 @@ export class CombatUi {
       onError('No llevas objetos que se puedan usar en combate.');
       return;
     }
-    showDialog(this.root, 'Objetos', 'Usar un objeto gasta tu turno.', [
+    showDialog(this.root, 'Objetos', 'Usar un objeto gasta tu acción de este turno.', [
       ...usable.map((it) => ({
         label: `${itemDef(it).name}${it.qty > 1 ? ` ×${it.qty}` : ''}`,
         action: () => {
@@ -112,7 +114,7 @@ export class CombatUi {
     // Tras la última acción el combate puede haber acabado: aún hay que pulsar «Siguiente».
     const waiting = (combat && game.phase === 'enemies') || game.awaitingContinue;
     const bindable = game.bindTargets().length > 0 && game.state.player.inventory.some((x) => x.id === 'runa_vinculo');
-    const msig = [myTurn, waiting, game.awaitingContinue, game.combatSpeed, game.attackMode, this.skillsOpen, bindable, !!game.petInstance].join('|');
+    const msig = [myTurn, waiting, game.awaitingContinue, game.combatSpeed, game.attackMode, this.skillsOpen, bindable, !!game.petInstance, game.turnMove, game.turnMoveMax, game.actionUsed].join('|');
     if (msig === this.menuSig) return;
     this.menuSig = msig;
     if (!combat && !game.awaitingContinue) {
@@ -120,22 +122,36 @@ export class CombatUi {
       this.hideAction();
     }
     this.menu.style.display = myTurn ? '' : 'none';
+    document.body.classList.toggle('combat-turn', myTurn);
     const waitLabel = game.combatSpeed === 'paso' && game.awaitingContinue ? '▶ Siguiente' : 'Turno de los demás…';
     this.nextBtn.style.display = waiting ? '' : 'none';
     this.nextBtn.textContent = waitLabel;
     this.nextBtn.disabled = !(game.combatSpeed === 'paso' && game.awaitingContinue);
     if (!myTurn) return;
-    const b = (ico: string, label: string, fn: () => void, extra = '') =>
-      h('button', { class: `cbtn${extra}`, onClick: fn, attrs: { 'aria-label': label } }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
+    const used = game.actionUsed;
+    if (used && this.skillsOpen) this.skillsOpen = false;
+    const b = (ico: string, label: string, fn: () => void, extra = '', isAction = true) =>
+      h('button', {
+        class: `cbtn${extra}`, onClick: fn, disabled: isAction && used,
+        attrs: { 'aria-label': label },
+      }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
+    // Nada útil que hacer: «Terminar turno» destacado.
+    const done = used && (game.turnMove <= 0);
+    const status = h('div', { class: 'turn-status' }, [
+      h('span', { class: `moves${game.turnMove <= 0 ? ' empty' : ''}`, text: `👣 ${game.turnMove}/${game.turnMoveMax}` }),
+      h('span', { class: `act${used ? ' used' : ''}`, text: used ? '⚔ Acción usada' : '⚔ Acción lista' }),
+    ]);
     this.menu.replaceChildren(
+      status,
       b('⚔', 'Atacar', this.actions.onAttack, game.attackMode ? ' active' : ''),
       b('✨', 'Habilidad', this.actions.onToggleSkills, this.skillsOpen ? ' active' : ''),
       b('🧪', 'Objeto', () => this.onItems?.()),
       b('🛡', 'Defender', this.actions.onDefend),
-      b('⏳', 'Esperar', this.actions.onWait),
+      b('👟', 'Correr', this.actions.onDash),
       b('🏃', 'Huir', this.actions.onFlee),
       ...(bindable ? [b('🔮', 'Vincular', this.actions.onBind, ' bind')] : []),
-      ...(game.petInstance ? [b('🐾', 'Órdenes', this.actions.onPetOrders)] : []),
+      ...(game.petInstance ? [b('🐾', 'Órdenes', this.actions.onPetOrders, '', false)] : []),
+      b('⏭', 'Terminar turno', this.actions.onWait, done || used ? ' end highlight' : ' end', false),
     );
   }
 

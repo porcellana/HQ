@@ -30,6 +30,7 @@ export interface HudActions {
   onBind(): void;
   onAttack(): void;
   onDefend(): void;
+  onDash(): void;
   onContinue(): void;
   onItems(): void;
   onOpenQuest(id: string | null): void;
@@ -113,6 +114,7 @@ export class Hud {
         this.combatUi.skillsOpen = !this.combatUi.skillsOpen;
       },
       onDefend: actions.onDefend,
+      onDash: actions.onDash,
       onWait: actions.onWait,
       onFlee: actions.onFlee,
       onBind: actions.onBind,
