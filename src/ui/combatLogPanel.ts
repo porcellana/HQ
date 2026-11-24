@@ -3,6 +3,7 @@
  * líneas, coloreadas por tipo, sin desvanecerse. Al tocarlo se abre el
  * historial completo (desplazable).
  */
+import { LOG_FADE_S } from '@/data/config/combat_pacing';
 import { CombatLog, LOG_VISIBLE } from '@/game/combat/combatLog';
 import type { MsgCat } from '@/game/combat/presentation';
 import { h } from './dom';
@@ -16,6 +17,7 @@ export class CombatLogPanel {
   readonly model = new CombatLog();
   private active = false;
   private overlay: HTMLDivElement | null = null;
+  private fadeTimer = 0;
 
   constructor(private readonly root: HTMLElement) {
     this.el = h('div', { class: 'combat-log', attrs: { role: 'log', 'aria-label': 'Registro de combate' } });
@@ -47,13 +49,29 @@ export class CombatLogPanel {
     if (this.overlay) this.renderFull();
   }
 
+  /**
+   * Muestra solo las líneas recientes y las desvanece con una animación CSS.
+   * Al re-renderizar, `animation-delay` negativo = la edad de la línea, así
+   * las antiguas no reinician su desvanecimiento. Cuando todas se apagan, el
+   * panel queda reducido a un pequeño «registro» tocable (sin fondo).
+   */
   private render(): void {
-    const recent = this.model.recent(LOG_VISIBLE);
+    window.clearTimeout(this.fadeTimer);
+    const t = performance.now() / 1000;
+    const fresh = this.model.fresh(LOG_FADE_S, LOG_VISIBLE);
+    this.el.classList.toggle('idle', fresh.length === 0);
     this.el.replaceChildren(
-      ...(recent.length ? [] : [h('div', { class: 'log-line neutral', text: '…' })]),
-      ...recent.map((l, i) => h('div', { class: `log-line ${LABEL[l.cat]}${i === recent.length - 1 ? ' latest' : ''}`, text: l.text })),
-      h('small', { class: 'log-hint', text: '▲ toca para ver todo' }),
+      ...fresh.map((l, i) => {
+        const age = Math.max(0, t - l.t);
+        const el = h('div', { class: `log-line ${LABEL[l.cat]}${i === fresh.length - 1 ? ' latest' : ''}`, text: l.text });
+        el.style.animation = i === fresh.length - 1 ? `logpop 0.35s, clogfade ${LOG_FADE_S}s linear forwards` : `clogfade ${LOG_FADE_S}s linear forwards`;
+        el.style.animationDelay = i === fresh.length - 1 ? `0s, ${-age}s` : `${-age}s`;
+        return el;
+      }),
+      h('small', { class: 'log-hint', text: this.model.lines.length ? '📜 registro' : '' }),
     );
+    // Cuando se apague la más reciente, se vuelve a dibujar el panel en reposo.
+    if (fresh.length) this.fadeTimer = window.setTimeout(() => this.render(), (LOG_FADE_S - (t - fresh[fresh.length - 1]!.t)) * 1000 + 100);
   }
 
   private openFull(): void {

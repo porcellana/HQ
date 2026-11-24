@@ -2,7 +2,7 @@
  * GUÍA HACIA EL OBJETIVO
  * Calcula a qué zona hay que ir para la misión seguida y qué salida de la zona
  * actual lleva hacia allí (búsqueda en anchura sobre el grafo de salidas).
- * La flecha dorada de esa salida se dibuja destacada.
+ * Esa salida se rotula destacada en verde con ★ (y la brújula apunta hacia ella).
  */
 import { DUNGEONS, ENEMIES, LOOT_TABLES, NPCS, ORES, PET_SPECIES, ZONES } from '@/data/registry';
 import type { QuestDef, QuestObjective } from '@/data/schema';

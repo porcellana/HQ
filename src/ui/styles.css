@@ -663,3 +663,103 @@ body.combat-turn .combat-log { bottom: calc(204px + env(safe-area-inset-bottom))
 .zoom-btn.small { width: 32px; height: 32px; font-size: 1em; align-self: center; }
 .zoom-btn:disabled { opacity: 0.28; }
 .hud.in-combat .zoom-ctl { opacity: 0.6; }
+
+/* Registro de combate: las líneas se desvanecen solas y el panel queda mínimo en reposo */
+@keyframes clogfade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+.combat-log.idle { background: none; border-left-color: transparent; padding: 0 4px; }
+.combat-log.idle .log-hint { text-align: left; opacity: 0.55; }
+
+/* =====================================================================
+   v0.5.1 — PANELES INFERIORES COMPACTOS Y MÁS BONITOS
+   Un "dock" de cristal oscuro, bajo y estrecho, para ver más pantalla.
+   (Va al final para anular los estilos anteriores.)
+   ===================================================================== */
+.hud { --dock: 62px; }
+.hud.in-combat { --dock: 66px; }
+body.combat-turn .hud { --dock: 112px; }
+
+/* Botón compacto común del dock */
+.action-bar button, .combat-menu .cbtn {
+  background: linear-gradient(#2e2838, #1c1824); border: 1px solid #4d4230; border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 0 #000;
+}
+
+/* --- Dock de exploración: una sola fila --- */
+.action-bar {
+  left: 8px; right: 8px; bottom: calc(6px + env(safe-area-inset-bottom)); padding: 5px; gap: 5px; justify-content: stretch;
+  border-radius: 18px; pointer-events: auto;
+  background: linear-gradient(rgba(30,26,38,0.82), rgba(10,9,14,0.9)); border: 1px solid var(--border); border-top-color: var(--border-l);
+  box-shadow: 0 -3px 14px rgba(0,0,0,0.4);
+}
+.action-bar.izquierda { justify-content: stretch; }
+.action-bar button {
+  flex: 1 1 0; min-width: 0; min-height: 46px; padding: 2px 2px; font-size: 0.7em; gap: 0; line-height: 1.1; letter-spacing: 0.02em;
+  background: transparent; border-color: transparent; box-shadow: none; color: var(--text);
+}
+.action-bar button .ico { font-size: 1.75em; line-height: 1.05; }
+.action-bar button:active:not(:disabled) { background: rgba(242,216,136,0.14); border-color: var(--border-l); transform: none; }
+
+/* --- Habilidades rápidas: botones redondos pequeños sobre el dock --- */
+.skill-bar, .hud.in-combat .skill-bar { bottom: calc(var(--dock) + 8px + env(safe-area-inset-bottom)); gap: 5px; }
+.skill-bar button.skill {
+  position: relative; min-height: 0; min-width: 0; width: 42px; height: 42px; padding: 0; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #3a3346, #1a1620); border: 1px solid var(--border-l);
+}
+.skill-bar button.skill .ico { font-size: 1.25em; }
+.skill-bar button.skill small {
+  position: absolute; right: -3px; bottom: -3px; margin: 0; padding: 0 4px; border-radius: 8px; font-size: 0.62em; line-height: 1.5;
+  background: #0b0a10; border: 1px solid var(--border); color: var(--gold-l);
+}
+.skill-bar button.skill.selected { box-shadow: 0 0 0 2px var(--gold-l), 0 0 10px rgba(242,216,136,0.6); }
+
+/* --- Menú de combate: dos filas finas --- */
+.combat-menu {
+  left: 6px; right: 6px; bottom: calc(6px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 4px;
+  padding: 5px; border-radius: 18px; pointer-events: auto;
+  background: linear-gradient(rgba(30,26,38,0.86), rgba(10,9,14,0.92)); border: 1px solid var(--border); border-top-color: var(--border-l);
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.45);
+}
+.cm-row { display: flex; gap: 4px; }
+.cm-row.main .cbtn {
+  flex: 1 1 0; min-width: 0; min-height: 46px; padding: 2px 1px; flex-direction: column; font-size: 0.68em; gap: 0; line-height: 1.1;
+}
+.cm-row.main .cbtn .ico { font-size: 1.9em; line-height: 1.05; }
+.cm-row.sub .cbtn { min-height: 38px; flex-direction: row; gap: 5px; font-size: 0.74em; padding: 0 10px; flex: 1 1 0; min-width: 0; }
+.cm-row.sub .cbtn .ico { font-size: 1.35em; }
+.cm-row.sub .cbtn.end { flex: 1.7 1 0; }
+.combat-menu .cbtn.end { grid-column: auto; }
+.combat-menu .cbtn.end.highlight { background: linear-gradient(#5a3a1e, #3b2513); border-color: var(--gold); }
+.combat-menu .turn-status {
+  grid-column: auto; flex: 0 0 auto; align-self: center; padding: 0 6px; background: none; border: 0; border-radius: 0; gap: 8px;
+  font-size: 0.74em; display: flex; align-items: center; text-shadow: none; white-space: nowrap;
+}
+.combat-menu .cbtn:disabled { filter: grayscale(1) brightness(0.55); opacity: 1; }
+
+/* «Siguiente» / «Saltar»: más bajos y ya no tapan media pantalla */
+.next-btn { min-height: 48px; min-width: 66%; font-size: 1.02em; bottom: calc(8px + env(safe-area-inset-bottom)); border-radius: 16px; }
+.skip-btn { bottom: calc(66px + env(safe-area-inset-bottom)); min-height: 38px; }
+
+/* --- Todo lo que flota se coloca a partir de la altura del dock --- */
+.joystick { width: 112px; height: 112px; bottom: calc(var(--dock) + 62px + env(safe-area-inset-bottom)); }
+.hud.in-combat .joystick { bottom: calc(var(--dock) + 62px + env(safe-area-inset-bottom)); }
+.joystick .knob { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
+.log, .hud.in-combat .log, body.combat-turn .log { bottom: calc(var(--dock) + 56px + env(safe-area-inset-bottom)); gap: 3px; }
+.log div { font-size: 0.72em; padding: 3px 9px; max-width: 88%; }
+.combat-log, body.combat-turn .combat-log { bottom: calc(var(--dock) + 8px + env(safe-area-inset-bottom)); }
+.zoom-btn { width: 34px; height: 34px; font-size: 1.15em; opacity: 0.7; }
+.zoom-btn.small { width: 28px; height: 28px; }
+
+/* Tarjeta de duelo más compacta (v0.5.1): menos pantalla tapada */
+.duel-card { top: 19%; width: min(76%, 280px); padding: 5px 10px 7px; border-radius: 12px; background: rgba(11,10,16,0.9); font-size: 0.9em; }
+.duel-head { gap: 8px; }
+.duel-portrait { width: 34px; height: 34px; border-radius: 8px; border-width: 2px; }
+.duel-vs { font-size: 1.1em; }
+.duel-title { margin: 2px 0 0; }
+.duel-roll { margin: 2px 0; gap: 8px; }
+.duel-card .d20 { width: 42px; height: 42px; font-size: 1.25em; }
+.duel-calc { font-size: 0.85em; }
+.duel-outcome { font-size: 1.05em; margin-top: 0; }
+.duel-outcome.crit { font-size: 1.25em; }
+.duel-outcome.fumble { font-size: 1.2em; }
+.duel-damage b { font-size: 1.5em; }
+.duel-damage.crit b { font-size: 1.75em; }

@@ -167,8 +167,9 @@ Otros comandos:
   barra de vida es su nivel (rojo con ☠ = mortal para ti).
 - En PC: flechas/WASD para moverse, espacio para esperar, 1-5 habilidades, F huir,
   C ficha, I mochila, J diario, Q poción, Esc pausa.
-- Las casillas que brillan en dorado son **salidas** a otras zonas; si están fuera de la
-  pantalla, una **flecha dorada** en el borde indica hacia dónde ir.
+- Las casillas que brillan en dorado son **salidas** a otras zonas (rotuladas cuando estás
+  cerca). Ya no hay flechas doradas en el borde: la única flecha es la **brújula verde** de
+  la guía de misión (desactivable en Ajustes).
 - **Toca el minimapa** para abrir el **mapa grande** de la zona: arrastra para moverte,
   pellizca o usa −/+ para el zoom, ◎ centra en ti. Toca un punto (o una salida, o un PNJ)
   y pulsa **Ir**: el personaje camina solo hasta allí. En las mazmorras sólo se ve lo

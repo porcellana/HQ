@@ -5,7 +5,7 @@ const SECTIONS: Array<[string, string[]]> = [
   ['🕹️ Moverse', [
     'Toca una casilla del mapa y tu personaje camina hasta allí.',
     'Toca el minimapa (arriba a la derecha) para ir directo a ese punto.',
-    'Las flechas doradas del borde señalan las salidas. La verde con ★ lleva hacia tu objetivo.',
+    'La brújula verde del borde te lleva a tu objetivo (se puede desactivar en Ajustes → Guía de misión). Las salidas se ven brillar en dorado y en el minimapa.',
     'Opcional: joystick virtual en Ajustes.',
     'Zoom del mapa: pellizca con dos dedos, o usa los botones + y − bajo el minimapa (⟲ vuelve al normal). En PC: rueda del ratón o teclas + − 0.',
   ]],

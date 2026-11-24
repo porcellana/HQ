@@ -7,7 +7,7 @@
  * Plegado: solo la misión seguida y su objetivo actual. Desplegado: todas las
  * activas (hasta 4; el resto, «+N más», abre el diario).
  * Tocar el nombre de una misión la sigue; doble toque o mantener pulsado abre
- * su ficha en el diario. Se pliega sola en combate.
+ * su ficha en el diario. Se OCULTA del todo durante el combate.
  */
 import { NPCS } from '@/data/registry';
 import type { QuestDef } from '@/data/schema';
@@ -61,7 +61,7 @@ export class QuestTracker {
     ].join('#');
     if (sig === this.sig) return;
     this.sig = sig;
-    if (!this.enabled || active.length === 0) {
+    if (!this.enabled || active.length === 0 || combat) {
       this.el.replaceChildren();
       this.el.style.display = 'none';
       return;

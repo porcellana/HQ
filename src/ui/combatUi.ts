@@ -138,24 +138,29 @@ export class CombatUi {
       h('button', {
         class: `cbtn${extra}`, onClick: fn, disabled: isAction && used,
         attrs: { 'aria-label': label },
-      }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
+      }, [h('span', { class: 'ico', text: ico }), h('span', { class: 'lbl', text: label })]);
     // Nada útil que hacer: «Terminar turno» destacado.
     const done = used && (game.turnMove <= 0);
     const status = h('div', { class: 'turn-status' }, [
       h('span', { class: `moves${game.turnMove <= 0 ? ' empty' : ''}`, text: `👣 ${game.turnMove}/${game.turnMoveMax}` }),
-      h('span', { class: `act${used ? ' used' : ''}`, text: used ? '⚔ Acción usada' : '⚔ Acción lista' }),
+      h('span', { class: `act${used ? ' used' : ''}`, text: used ? '⚔ ✕' : '⚔ ✓', attrs: { title: used ? 'Acción usada' : 'Acción lista' } }),
     ]);
+    // Panel compacto de dos filas: acciones principales arriba; estado, Correr, Huir y Terminar abajo.
     this.menu.replaceChildren(
-      status,
-      b('⚔', 'Atacar', this.actions.onAttack, game.attackMode ? ' active' : ''),
-      b('✨', 'Habilidad', this.actions.onToggleSkills, this.skillsOpen ? ' active' : ''),
-      b('🧪', 'Objeto', () => this.onItems?.()),
-      b('🛡', 'Defender', this.actions.onDefend),
-      b('👟', 'Correr', this.actions.onDash),
-      b('🏃', 'Huir', this.actions.onFlee),
-      ...(bindable ? [b('🔮', 'Vincular', this.actions.onBind, ' bind')] : []),
-      ...(game.petInstance ? [b('🐾', 'Órdenes', this.actions.onPetOrders, '', false)] : []),
-      b('⏭', 'Terminar turno', this.actions.onWait, done || used ? ' end highlight' : ' end', false),
+      h('div', { class: 'cm-row main' }, [
+        b('⚔', 'Atacar', this.actions.onAttack, game.attackMode ? ' active' : ''),
+        b('✨', 'Habilidad', this.actions.onToggleSkills, this.skillsOpen ? ' active' : ''),
+        b('🧪', 'Objeto', () => this.onItems?.()),
+        b('🛡', 'Defender', this.actions.onDefend),
+        ...(bindable ? [b('🔮', 'Vincular', this.actions.onBind, ' bind')] : []),
+        ...(game.petInstance ? [b('🐾', 'Órdenes', this.actions.onPetOrders, '', false)] : []),
+      ]),
+      h('div', { class: 'cm-row sub' }, [
+        status,
+        b('👟', 'Correr', this.actions.onDash),
+        b('🏃', 'Huir', this.actions.onFlee),
+        b('⏭', 'Terminar', this.actions.onWait, done || used ? ' end highlight' : ' end', false),
+      ]),
     );
   }
 

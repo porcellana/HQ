@@ -412,8 +412,9 @@ export class Renderer {
   }
 
   /**
-   * Flechas doradas en el borde de la pantalla que señalan las salidas fuera de
-   * la vista, y etiqueta con el destino sobre las salidas visibles.
+   * Rótulos con el destino sobre las salidas cercanas que se ven en pantalla.
+   * (Ya no hay flechas de borde hacia las salidas: demasiadas flechas. La única
+   * flecha es la brújula de la guía de misión.)
    */
   private drawExitPointers(game: Game, camX: number, camY: number, guide: boolean): void {
     const { ctx, canvas, zoom, camera } = this;
@@ -423,8 +424,6 @@ export class Renderer {
     const bottom = canvas.height - camera.insets.bottom * zoom - 20 * dpr;
     const left = 26 * dpr;
     const right = canvas.width - 26 * dpr;
-    const cx = canvas.width / 2;
-    const cy = (top + bottom) / 2;
     const seen = new Set<string>();
     const fontPx = Math.round(13 * dpr);
     ctx.font = `bold ${fontPx}px Georgia, serif`;
@@ -445,41 +444,14 @@ export class Renderer {
       const pulse = (0.75 + 0.25 * Math.sin(this.time * 4)) * (goalTo && !isGoal ? 0.7 : 1);
       if (sx >= left && sx <= right && sy >= top && sy <= bottom) {
         // En combate no se rotulan las salidas visibles: taparían a los enemigos.
-        if (!game.inCombat) this.labelAt(label, sx, sy - TILE * zoom * 0.8, fontPx, pulse, color);
-        continue;
+        // Para no llenar la pantalla de letreros, sólo se rotulan las cercanas
+        // (las puertas de edificios, sólo al tenerlas encima).
+        const p = game.playerPos;
+        const near = Math.max(Math.abs(mx - p.x), Math.abs(my - p.y)) <= (e.door ? 3 : 9);
+        if (!game.inCombat && near) this.labelAt(label, sx, sy - TILE * zoom * 0.8, fontPx, pulse, color);
       }
-      // La guía GPS ya dibuja su propia flecha hacia esta salida.
-      if (isGoal && game.questGoal?.point && !game.inCombat) continue;
-      // Las puertas de edificios sólo se rotulan cuando se ven (salvo la del objetivo).
-      if (e.door && !isGoal) continue;
-      // Punto del borde en dirección a la salida
-      const dx = sx - cx;
-      const dy = sy - cy;
-      const k = Math.min(Math.abs((dx > 0 ? right - cx : left - cx) / (dx || 1e-6)), Math.abs((dy > 0 ? bottom - cy : top - cy) / (dy || 1e-6)));
-      const px = cx + dx * k;
-      const py = cy + dy * k;
-      const ang = Math.atan2(dy, dx);
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(ang);
-      ctx.globalAlpha = pulse;
-      ctx.fillStyle = color;
-      ctx.strokeStyle = PAL.black;
-      ctx.lineWidth = 2 * dpr;
-      const a = (isGoal ? 18 : 14) * dpr;
-      ctx.beginPath();
-      ctx.moveTo(a, 0);
-      ctx.lineTo(-a * 0.7, -a * 0.75);
-      ctx.lineTo(-a * 0.35, 0);
-      ctx.lineTo(-a * 0.7, a * 0.75);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.fill();
-      ctx.restore();
-      // Etiqueta hacia dentro de la pantalla
-      const lx = Math.max(left + 50 * dpr, Math.min(right - 50 * dpr, px - Math.cos(ang) * 40 * dpr));
-      const ly = Math.max(top + 8 * dpr, Math.min(bottom - 4 * dpr, py - Math.sin(ang) * 28 * dpr));
-      this.labelAt(label, lx, ly, fontPx, pulse, color);
+      // Sin flechas de borde para las salidas: la única flecha del mapa es la brújula
+      // de la guía de misión (drawQuestGuide). Las salidas se ven en el minimapa y en el mapa grande.
     }
     ctx.globalAlpha = 1;
   }

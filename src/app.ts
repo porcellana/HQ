@@ -4,6 +4,7 @@
  * Une motor, partida, interfaz y guardado: menú principal, inicio/carga de
  * partida, menú de pausa, autoguardado y ciclo de vida de Android.
  */
+import { CAPTION_HOLD_MS } from '@/data/config/combat_pacing';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { getClass, getZoneDef } from '@/data/registry';
@@ -244,9 +245,8 @@ export class App {
           const state = createNewGame({ ...r, seed: randomSeed() });
           this.startGame(state);
           void this.autosave('nueva partida');
-          this.hud?.pushMessage(`¡Que empiece la aventura, ${r.name}!`, 'good');
-          this.hud?.pushMessage('Toca el mapa para caminar. Las flechas doradas llevan a las salidas.', 'info');
-          this.hud?.pushMessage('Tu objetivo sale arriba. ¿Dudas? Menú → Cómo se juega.', 'info');
+          // Un solo aviso (antes eran tres y tapaban el mapa).
+          this.hud?.pushMessage(`¡Suerte, ${r.name}! Toca el mapa para caminar y sigue la brújula verde.`, 'good');
         },
         () => void this.showMainMenu(),
       ),
@@ -347,7 +347,7 @@ export class App {
     game.events.on('actorAction', ({ actor, name, lines }) => {
       // Si la acción tuvo tarjeta de duelo, no se duplica con el cartel.
       if (hud.duel.takeFresh()) return;
-      const hold = game.combatSpeed === 'paso' ? 60000 : 1800;
+      const hold = CAPTION_HOLD_MS[game.combatSpeed];
       hud.combatUi.showAction(actor.kind === 'player' ? `Tú (${name})` : name, lines, actor.kind === 'enemy', hold);
     });
     game.events.on('playerTurn', () => {

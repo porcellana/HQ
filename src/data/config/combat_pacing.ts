@@ -26,10 +26,15 @@ export interface PacingDef {
   cardHoldMs: number;
 }
 
+/** Segundos que se queda visible una línea del registro de combate antes de desvanecerse. */
+export const LOG_FADE_S = 6;
+/** Milisegundos que se queda el cartel de una acción sin ataque (moverse, esperar) por velocidad. */
+export const CAPTION_HOLD_MS: Record<SpeedKey, number> = { paso: 2800, lenta: 1500, normal: 1000 };
+
 export const PACING: Record<SpeedKey, PacingDef> = {
-  paso: { lead: 0.8, perActor: 0, afterPlayer: 2.1, moveDelay: 0.7, nextHold: 1.1, cardHoldMs: 8000 },
-  lenta: { lead: 0.75, perActor: 2.0, afterPlayer: 2.0, moveDelay: 0.9, nextHold: 1.0, cardHoldMs: 1200 },
-  normal: { lead: 0.3, perActor: 0.85, afterPlayer: 0.7, moveDelay: 0.25, nextHold: 0.5, cardHoldMs: 650 },
+  paso: { lead: 0.8, perActor: 0, afterPlayer: 2.1, moveDelay: 0.7, nextHold: 1.1, cardHoldMs: 2600 },
+  lenta: { lead: 0.75, perActor: 2.0, afterPlayer: 2.0, moveDelay: 0.9, nextHold: 1.0, cardHoldMs: 1000 },
+  normal: { lead: 0.3, perActor: 0.85, afterPlayer: 0.7, moveDelay: 0.25, nextHold: 0.5, cardHoldMs: 600 },
 };
 
 /** Factor de duración de los efectos visuales (números, proyectiles, ondas) en combate cinematográfico. */

@@ -28,8 +28,12 @@ import {
 import { petSprite } from './pets';
 import { STATUS_INFO } from '@/game/combat/status';
 
-/** Zoom máximo de la cámara de acción respecto al zoom del jugador. */
-export const ACTION_ZOOM = 1.28;
+/**
+ * Zoom de la cámara de acción respecto al zoom del jugador. 1 = SIN zoom:
+ * en v0.5.1 se quitó el acercamiento a cada golpe (al usuario no le gustaba).
+ * Si algún día lo quieres de vuelta, súbelo (p. ej. 1.2).
+ */
+export const ACTION_ZOOM = 1;
 /** Colores del botín por rareza (índice 0..4). */
 export const RARITY_COLORS = ['#d8d4cc', '#5ad05a', '#4a90f0', '#b060f0', '#ff9a20'];
 
@@ -136,6 +140,8 @@ export class CombatCinema {
    * Solo con efectos completos.
    */
   frame(a: Point | null, b: Point | null, hold: number): void {
+    // Sin zoom de acción no hay nada que encuadrar (ni mover la cámara hacia el golpe).
+    if (ACTION_ZOOM <= 1) return;
     if (this.level !== 'completos' || (!a && !b)) return;
     const p1 = a ?? b!;
     const p2 = b ?? a!;

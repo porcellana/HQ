@@ -84,15 +84,12 @@ describe('cinemática del combate', () => {
     }
   });
 
-  it('el zoom de acción es relativo, acotado y vuelve a 1', () => {
+  it('sin zoom de acción: la cámara no se acerca ni se desplaza hacia el golpe', () => {
     const { g } = gameWithEnemy();
     const c = new CombatCinema();
+    expect(ACTION_ZOOM).toBe(1);
     c.onDuelStart({ x: 5, y: 5 }, { x: 7, y: 5 }, 0.5);
-    expect(c.focus).toEqual({ x: 6, y: 5 });
     for (let i = 0; i < 20; i++) c.update(0.05, g);
-    expect(c.zoomMul).toBeGreaterThan(1.2);
-    expect(c.zoomMul).toBeLessThanOrEqual(ACTION_ZOOM + 0.001);
-    for (let i = 0; i < 80; i++) c.update(0.05, g);
     expect(c.zoomMul).toBe(1);
     expect(c.focus).toBeNull();
   });

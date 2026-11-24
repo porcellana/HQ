@@ -2,6 +2,18 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.1 · 2026-11-24 — Retoques de interfaz
+
+- Quitado el zoom de acercamiento a cada golpe en combate (feo): la cámara ya no se acerca ni se desplaza.
+- Las misiones desaparecen del todo durante el combate.
+- Menos flechas: ya no hay flechas doradas hacia cada salida. Queda sólo la brújula verde de la
+  guía de misión (desactivable). Los rótulos de salida sólo salen cuando estás cerca.
+- Mensajes de combate más breves: el cartel de acción y la tarjeta de duelo se cierran solos
+  (antes en «Paso a paso» se quedaban hasta 60 s); las líneas del registro se desvanecen solas.
+- Paneles de abajo rediseñados: dock fino de cristal en exploración, botones de habilidad
+  redondos y pequeños, y menú de combate de dos filas (≈ la mitad de alto). Tarjeta de duelo
+  más compacta. Un solo aviso al empezar la partida.
+
 ## v0.5.0 · 2026-11-24 — Combate cinematográfico y zoom del mapa
 
 - **Tarjeta de duelo** (estilo Baldur's Gate 3) en cada ataque o hechizo: retratos, d20 rodando,

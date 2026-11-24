@@ -10,11 +10,15 @@ export interface LogLine {
   cat: MsgCat;
   /** Número de línea creciente (para claves y animación de entrada). */
   n: number;
+  /** Instante en que se escribió (segundos, reloj monótono): sirve para desvanecerla. */
+  t: number;
 }
+
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
 
 export const LOG_MAX_LINES = 80;
 /** Líneas visibles en el panel compacto. */
-export const LOG_VISIBLE = 6;
+export const LOG_VISIBLE = 4;
 
 /**
  * Categoría final de una línea: la que indicó el motor o, si no la hay,
@@ -34,7 +38,7 @@ export class CombatLog {
   private counter = 0;
 
   push(text: string, kind: 'info' | 'warn' | 'good' | 'combat' | undefined, cat?: MsgCat): LogLine {
-    const line: LogLine = { text, cat: classify(text, kind, cat), n: ++this.counter };
+    const line: LogLine = { text, cat: classify(text, kind, cat), n: ++this.counter, t: now() };
     this.lines.push(line);
     while (this.lines.length > LOG_MAX_LINES) this.lines.shift();
     return line;
@@ -43,6 +47,12 @@ export class CombatLog {
   /** Últimas líneas para el panel compacto. */
   recent(n = LOG_VISIBLE): LogLine[] {
     return this.lines.slice(-n);
+  }
+
+  /** Líneas recientes que aún no se han desvanecido (edad menor que `fadeS`). */
+  fresh(fadeS: number, n = LOG_VISIBLE): LogLine[] {
+    const t = now();
+    return this.recent(n).filter((l) => t - l.t < fadeS);
   }
 
   clear(): void {
