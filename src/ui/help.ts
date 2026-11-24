@@ -7,6 +7,7 @@ const SECTIONS: Array<[string, string[]]> = [
     'Toca el minimapa (arriba a la derecha) para ir directo a ese punto.',
     'Las flechas doradas del borde señalan las salidas. La verde con ★ lleva hacia tu objetivo.',
     'Opcional: joystick virtual en Ajustes.',
+    'Zoom del mapa: pellizca con dos dedos, o usa los botones + y − bajo el minimapa (⟲ vuelve al normal). En PC: rueda del ratón o teclas + − 0.',
   ]],
   ['❤️ Barras', [
     'Roja: puntos de vida (PV). Si llega a 0, caes.',
@@ -23,6 +24,12 @@ const SECTIONS: Array<[string, string[]]> = [
     'Después actúan tus aliados y los enemigos, de uno en uno: en «Paso a paso» (Ajustes → Velocidad del combate) pulsa ▶ Siguiente o toca la pantalla para ver cada acción.',
     'Ataque = d20 + bonificador contra la CA. Un 20 natural es crítico; un 1, pifia. El número sobre un enemigo es su nivel: en rojo con ☠, huye o vuelve más fuerte.',
     'Los enemigos también se mueven varias casillas y atacan en el mismo turno: los lobos corren mucho, los zombis muy poco. Ralentizado = la mitad de movimiento.',
+  ]],
+  ['🎬 Combate cinematográfico', [
+    'Cada ataque o hechizo abre una tarjeta de duelo: retratos, el d20 rodando, «14 + 5 = 19 vs CA 16», Impacto / Fallo / ¡Crítico! y el daño con su tipo.',
+    'El registro de combate (abajo a la izquierda) guarda las últimas líneas y no se desvanece: tócalo para ver todo el historial.',
+    'Con 3 o más actores por actuar sale ⏩ Saltar ronda para acelerar.',
+    'Ajustes: Velocidad del combate (Paso a paso, Lenta o Normal) y Efectos de combate (Completos, Reducidos o Mínimos: sin zoom ni temblor).',
   ]],
   ['🐾 Mascotas', [
     'Tobías, junto al corral de Brumaroja, te da tu primera mascota y Runas de vínculo.',

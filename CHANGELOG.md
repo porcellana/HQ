@@ -2,6 +2,24 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.0 · 2026-11-24 — Combate cinematográfico y zoom del mapa
+
+- **Tarjeta de duelo** (estilo Baldur's Gate 3) en cada ataque o hechizo: retratos, d20 rodando,
+  «14 + 5 = 19 vs CA 16», Impacto / Fallo / ¡Crítico! / ¡Pifia! y daño con su tipo. Una acción con
+  varios objetivos es una sola tarjeta con una fila por objetivo.
+- **Registro de combate persistente** (últimas líneas, coloreadas por tipo, sin desvanecerse;
+  tócalo para ver todo el historial).
+- **Cinemática**: zoom de acción hacia el golpe, temblor, hit-stop y cámara lenta en críticos y
+  golpes de gracia, viñeta, anticipación y embestida, banners ⚔ ¡COMBATE! y ¡VICTORIA! (con XP,
+  oro y objetos) que se encadenan con la pantalla de subida de nivel.
+- **Partículas por tipo de daño** (tajo, chispas, fuego, hielo, rayo, veneno, sagrado, sombra),
+  proyectiles con estela, curaciones, iconos de estado, enemigos que se desintegran y botín que
+  salta con el color de su rareza.
+- **Sonido en capas** y ajustes **Efectos de combate** (Completos / Reducidos / Mínimos).
+- Ritmo ajustable en `src/data/config/combat_pacing.ts`; ⏩ **Saltar ronda** con 3+ actores.
+- **Zoom del mapa controlado por el jugador**: pellizco, botones + − ⟲, rueda y teclas; niveles
+  enteros de ~8 a ~30 casillas, guardado en Ajustes. Alejar el mapa no delata enemigos lejanos.
+
 ## v0.4.2 · 2026-11-24 — Arreglo de misiones
 
 - Arreglado: no se podían entregar «Carta para la Forja» (Garrik) ni «Tu primera captura»

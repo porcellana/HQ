@@ -131,6 +131,8 @@ Otros comandos:
 - **Joystick virtual** (opcional, en Ajustes): moverse en 8 direcciones mientras lo
   mantienes; empujarlo contra un enemigo le ataca. Va en el lado de tu mano dominante,
   encima de la barra de habilidades.
+- **Zoom del mapa**: pellizca con dos dedos o usa los botones **+ −** bajo el minimapa
+  (**⟲** vuelve al normal). En PC: rueda del ratón o teclas `+` `−` `0`.
 - **Esperar**: pasa un turno sin moverte.
 - **Menú**: pausa, guardar, ajustes y salir. En Android, el botón *Atrás* abre/cierra la pausa.
 - **Combate por turnos (v0.4.1, economía de acciones estilo D&D 5e / Baldur's Gate 3)**:
@@ -502,6 +504,59 @@ encounters: {
   groups: [{ enemy: 'goblin', weight: 4, min: 1, max: 3 }],
 },
 ```
+
+### Combate cinematográfico (v0.5)
+
+La lógica del combate es instantánea y determinista (la que usan los tests); la
+**presentación** la reproduce en el tiempo. Todo el ritmo se ajusta en
+`src/data/config/combat_pacing.ts` (`lead` = segundos hasta el impacto mientras rueda el d20,
+`perActor`, `afterPlayer`, `moveDelay`, `nextHold`, `cardHoldMs`).
+
+- **Velocidad del combate** (Ajustes): *Paso a paso* (nadie actúa hasta pulsar ▶ Siguiente, que
+  espera ~1 s para que se vea el golpe), *Lenta* (cada acción dura ~2 s completa) y *Normal*
+  (más ágil, con los efectos básicos).
+- **Efectos de combate** (Ajustes): *Completos* (por defecto), *Reducidos* (sin zoom de acción,
+  temblor ni hit-stop, la mitad de partículas) y *Mínimos* (solo lo esencial: sin viñeta ni
+  capas de sonido).
+- **Tarjeta de duelo** (`src/ui/duelCard.ts` + `src/game/combat/duelBook.ts`): una por acción,
+  con una fila por objetivo (torbellino, bola de fuego…). Los golpes automáticos repetidos
+  (proyectil mágico ×3) se acumulan en una fila.
+- **Registro de combate** (`src/ui/combatLogPanel.ts`): las últimas 6 líneas, coloreadas (daño
+  recibido en rojo, causado en dorado, curación en verde, estados en morado, fallos en gris);
+  no se desvanece mientras dura el combate. Tócalo para ver el historial completo.
+- **Cinemática** (`src/gfx/cinema.ts`): zoom de acción (×1,28 como máximo, RELATIVO al zoom del
+  jugador), temblor según el daño, *hit-stop* de ~80 ms y cámara lenta en críticos y golpes de
+  gracia, viñeta oscura, anticipación y embestida, destello al recibir daño, enemigos que se
+  desintegran, botín que salta con el color de su rareza y banners ⚔ ¡COMBATE! / ¡VICTORIA!.
+- **Partículas** (`src/gfx/particles.ts`): pool de 150 sin crear objetos por fotograma.
+  **Para añadir el efecto de un tipo de daño nuevo**: añade el tipo en `DamageType`
+  (`src/data/schema.ts`), escribe un emisor en `EMITTERS` (partículas) y, si quieres un
+  dibujo propio (como el arco de tajo o el relámpago), un caso en `CombatCinema.addShape`;
+  el sonido va en `IMPACT_SFX` (`src/app.ts`) y en `RECIPES` (`src/audio/sfx.ts`).
+- **Sonido** en capas, generado por código: silbido al atacar, un impacto distinto por tipo de
+  daño, crítico grave, campana en «TU TURNO», «ding» más agudo cuanto más rara es la pieza y
+  acorde ascendente en la victoria.
+- **Saltar ronda**: con 3+ actores pendientes (`SKIP_MIN_ACTORS`).
+- Los efectos visibles de cada golpe (número, destello, barra de vida, vida del HUD y mensajes
+  del registro) esperan al `lead` para no estropear el suspense del d20.
+
+### Zoom del mapa (v0.5)
+
+- **Cómo se usa**: pellizco con dos dedos (cambia de nivel al superar un umbral, no
+  continuamente), botones **+** y **−** bajo el minimapa (**⟲** aparece para volver al nivel
+  por defecto), rueda del ratón y teclas `+`, `−` y `0` en PC. Se guarda en Ajustes
+  (`zoomStep`: 0 = por defecto, +1 más cerca, −1 más lejos).
+- **Niveles enteros** (el pixel art sigue nítido) calculados con el ancho real del canvas
+  (`src/engine/zoom.ts`): de ~8 casillas de ancho (muy cerca) a ~30 (muy lejos), con el actual
+  (~12) como por defecto. En un móvil típico hay 5-6 niveles; en pantallas diminutas, menos
+  (no existen más enteros útiles). Entre niveles el cambio se anima y se fija el entero al
+  terminar.
+- Con dos dedos se cancelan el toque y la ruta pendientes: soltar no mueve ni ataca.
+- **Regla de visión**: el radio con el que ves enemigos (`PLAYER_SIGHT` = 10 casillas, más
+  los que te persiguen a su alcance de detección + 2) **no depende del zoom**: alejar el mapa
+  enseña más terreno pero no delata criaturas lejanas. Con el mapa alejado, un velo suave más
+  allá de ese radio lo explica. El minimapa y el mapa grande no cambian.
+- El zoom de acción del combate multiplica al del jugador (nunca lo sustituye).
 
 ### Reglas de combate (resumen)
 
