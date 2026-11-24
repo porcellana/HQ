@@ -1,19 +1,9 @@
 /**
  * Banners del combate: «⚔ ¡COMBATE!» al empezar (con la lista de enemigos) y
- * «¡VICTORIA!» al terminar, con un resumen corto de XP, oro y objetos.
- * Se pueden saltar tocándolos. Al cerrarse avisan, para encadenar la pantalla
- * de subida de nivel sin solaparse.
+ * (Desde v0.5.3 ya no hay banner de «¡VICTORIA!»: la experiencia sale pequeña
+ * flotando sobre el personaje.) Se puede saltar tocándolo.
  */
 import { h } from './dom';
-
-export interface VictorySummary {
-  xp: number;
-  gold: number;
-  items: Array<{ name: string; rarity: number }>;
-  kills: number;
-}
-
-const RARITY_CLASS = ['r0', 'r1', 'r2', 'r3', 'r4'];
 
 export class CombatBanner {
   readonly el: HTMLDivElement;
@@ -37,23 +27,7 @@ export class CombatBanner {
     this.open('start', [h('b', { text: '⚔ ¡COMBATE!' }), h('small', { text: list })], 1900);
   }
 
-  /** «¡VICTORIA!» con el resumen; `done` se llama al cerrarse (por tiempo o al tocar). */
-  showVictory(s: VictorySummary, done?: () => void): void {
-    const lines: HTMLElement[] = [h('b', { text: '¡VICTORIA!' })];
-    const bits: string[] = [];
-    if (s.xp > 0) bits.push(`+${s.xp} XP`);
-    if (s.gold > 0) bits.push(`${s.gold} oro`);
-    if (bits.length) lines.push(h('small', { text: bits.join(' · ') }));
-    if (s.items.length) {
-      lines.push(
-        h('div', { class: 'victory-items' }, s.items.slice(0, 6).map((it) => h('span', { class: `vi ${RARITY_CLASS[it.rarity] ?? 'r0'}`, text: it.name }))),
-      );
-      if (s.items.length > 6) lines.push(h('small', { text: `…y ${s.items.length - 6} más` }));
-    }
-    this.open('victory', lines, 3300, done);
-  }
-
-  private open(kind: 'start' | 'victory', children: HTMLElement[], ms: number, done?: () => void): void {
+  private open(kind: 'start', children: HTMLElement[], ms: number, done?: () => void): void {
     this.close(false);
     this.onClose = done ?? null;
     this.el.className = `combat-banner ${kind}`;

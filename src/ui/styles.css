@@ -639,11 +639,6 @@ body.combat-turn .combat-log { bottom: calc(204px + env(safe-area-inset-bottom))
 .combat-banner small { color: #d8d4cc; font-size: 0.85em; }
 .combat-banner.start { border-color: #c04a3a; background: linear-gradient(rgba(60,14,14,0.92), rgba(20,8,10,0.92)); }
 .combat-banner.start b { color: #ff9a7a; }
-.combat-banner.victory { border-color: var(--gold-l); background: linear-gradient(rgba(60,46,12,0.94), rgba(20,16,8,0.94)); box-shadow: 0 0 28px rgba(242,216,136,0.4); }
-.combat-banner.victory b { color: var(--gold-l); font-size: 2em; text-shadow: 0 0 16px rgba(242,216,136,0.7), 0 2px 0 #000; }
-.victory-items { display: flex; flex-wrap: wrap; gap: 4px 8px; justify-content: center; font-size: 0.8em; }
-.victory-items .vi { padding: 1px 8px; border-radius: 9px; border: 1px solid currentColor; background: rgba(0,0,0,0.4); }
-.vi.r0 { color: #d8d4cc; } .vi.r1 { color: #5ad05a; } .vi.r2 { color: #4a90f0; } .vi.r3 { color: #b060f0; } .vi.r4 { color: #ff9a20; }
 
 /* Saltar ronda */
 .skip-btn {
@@ -826,3 +821,6 @@ body.combat-turn .hud { --dock: 112px; }
 .duel-line .duel-calc { white-space: nowrap; }
 /* Mientras hay tarjeta o cartel, el registro se esconde (no se apilan tres cosas) */
 .combat-stack:has(.duel-card.show) .combat-log, .combat-stack:has(.action-caption.show) .combat-log { display: none !important; }
+
+/* Al acabar el combate, la tira de mensajes que aún queda sube sobre los botones de habilidad */
+.hud:not(.in-combat) .combat-stack { bottom: calc(var(--dock) + 58px + env(safe-area-inset-bottom)); }

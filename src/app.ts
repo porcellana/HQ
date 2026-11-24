@@ -69,7 +69,6 @@ export class App {
   /** Seguimiento del combate para banners (COMBATE / VICTORIA) y registro. */
   private combatWas = false;
   private combatEnding = false;
-  private combatZone = '';
   private readonly summary = { xp: 0, gold: 0, kills: 0, items: [] as Array<{ name: string; rarity: number }> };
   /** Instante hasta el que los mensajes aún van al registro de combate (tras acabar). */
   private logUntil = 0;
@@ -601,7 +600,6 @@ export class App {
       // ⚔ ¡COMBATE!
       this.combatWas = true;
       this.combatEnding = false;
-      this.combatZone = game.zone.id;
       game.fled = false;
       Object.assign(this.summary, { xp: 0, gold: 0, kills: 0, items: [] });
       hud.combatLog.reset();
@@ -620,18 +618,14 @@ export class App {
         this.combatEnding = false;
         this.combatWas = false;
         hud.duel.flush();
-        const won = !game.isDead && !game.fled && this.summary.kills > 0 && game.zone.id === this.combatZone;
+        // Sin banner de «¡VICTORIA!»: la XP ya sale pequeña flotando sobre el personaje.
         this.logUntil = performance.now() + 4500;
-        if (won) {
-          hud.combatBanner.showVictory({ ...this.summary, items: [...this.summary.items] });
-          if (this.settings.combatFx !== 'minimos') this.sfx.play('victoria_acorde');
-        }
         window.setTimeout(() => {
           if (!game.inCombat) hud.combatLog.setActive(false);
         }, 4500);
       }
     }
-    // Subidas de nivel: tras el combate y el banner de victoria, y sin otro diálogo abierto.
+    // Subidas de nivel: tras el combate, y sin otro diálogo abierto.
     if (this.pendingLevelUps.length && !blocked && !this.pauseClose && !this.screen && !game.inCombat && !this.combatWas && !hud.combatBanner.active) {
       const list = this.pendingLevelUps.splice(0);
       for (const ev of list) this.showLevelUp(ev);

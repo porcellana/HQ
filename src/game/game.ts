@@ -208,7 +208,7 @@ export type SfxId =
 
 /** Efectos visuales efímeros (el renderizador los dibuja). */
 export type Fx =
-  | { kind: 'text'; x: number; y: number; text: string; color: string; t: number; life: number }
+  | { kind: 'text'; x: number; y: number; text: string; color: string; t: number; life: number; size?: number }
   | { kind: 'bolt'; fx: number; fy: number; tx: number; ty: number; color: string; t: number; life: number }
   | { kind: 'burst'; x: number; y: number; radius: number; color: string; t: number; life: number };
 
@@ -561,8 +561,9 @@ export class Game {
     this.events.emit('message', { text, kind, delay: this.actionLead, ...(cat ? { cat } : {}) });
   }
 
-  private floatText(x: number, y: number, text: string, color: string): void {
-    this.pushFx({ kind: 'text', x, y, text, color, t: 0, life: 0.9 });
+  /** `size` (px de mundo) opcional: por defecto los números de daño son grandes; la XP y el oro, pequeños. */
+  private floatText(x: number, y: number, text: string, color: string, size?: number, life = 0.9): void {
+    this.pushFx({ kind: 'text', x, y, text, color, t: 0, life, ...(size ? { size } : {}) });
   }
 
   // ============================================== presentación del combate (v0.5)
@@ -1610,7 +1611,7 @@ export class Game {
     const pl = this.state.player;
     if (g.gold > 0) {
       pl.gold += g.gold;
-      this.floatText(p.x, p.y - 0.3, `+${g.gold} oro`, '#f2d888');
+      this.floatText(p.x, p.y - 0.3, `+${g.gold} oro`, '#f2d888', 5, 1.3);
       this.msg(`Recoges ${g.gold} de oro.`, 'good');
       this.sfx('moneda');
       g.gold = 0;
@@ -2254,7 +2255,7 @@ export class Game {
   gainXp(amount: number, reason: string): void {
     const p = this.state.player;
     p.xp += amount;
-    this.floatText(this.playerPos.x, this.playerPos.y - 0.6, `+${amount} XP`, '#c9a227');
+    this.floatText(this.playerPos.x, this.playerPos.y - 0.6, `+${amount} XP`, '#e8c84a', 5, 1.5);
     this.msg(`+${amount} XP (${reason}).`, 'good');
     const target = levelForXp(p.xp);
     while (p.level < target) {

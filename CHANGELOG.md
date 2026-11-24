@@ -2,6 +2,11 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.3 · 2026-11-24 — Sin banner de victoria
+
+- Quitado el cartel grande de «¡VICTORIA!» al acabar el combate. La experiencia (y el oro) salen
+  pequeños, flotando sobre el personaje, como al recoger algo.
+
 ## v0.5.2 · 2026-11-24 — Mensajes de combate abajo
 
 - La tarjeta de duelo, el cartel de acción y el registro van ahora **abajo, pegados a los botones

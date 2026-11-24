@@ -811,8 +811,8 @@ export class Renderer {
         const x = f.x * TILE + 8;
         const y = f.y * TILE + 2 - k * 10;
         ctx.globalAlpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
-        // Números de daño grandes; textos largos algo más pequeños.
-        ctx.font = `bold ${/^[-+¡]?\d/.test(f.text) ? 10 : 7}px sans-serif`;
+        // Números de daño grandes; textos largos algo más pequeños; XP y oro pequeños (`size`).
+        ctx.font = `bold ${f.size ?? (/^[-+¡]?\d/.test(f.text) ? 10 : 7)}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.lineWidth = 2;
         ctx.strokeStyle = '#000';
