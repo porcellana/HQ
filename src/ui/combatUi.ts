@@ -9,13 +9,10 @@
  *    Órdenes a la mascota no gastan la acción.
  *  - Botón grande «▶ Siguiente» en el modo paso a paso.
  */
-import { PET_SPECIES } from '@/data/registry';
 import type { Actor, Game, TurnEntry } from '@/game/game';
 import { itemDef } from '@/game/items/items';
-import { monsterSprite } from '@/gfx/monsters';
-import { PAL } from '@/gfx/palette';
-import { petSprite } from '@/gfx/pets';
-import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
+import type { HumanoidColors } from '@/gfx/sprites';
+import { actorSprite } from './actorSprite';
 import { showDialog } from './dialogs';
 import { h } from './dom';
 
@@ -29,6 +26,7 @@ export interface CombatActions {
   onBind(): void;
   onPetOrders(): void;
   onContinue(): void;
+  onSkipRound(): void;
 }
 
 export class CombatUi {
@@ -37,6 +35,8 @@ export class CombatUi {
   readonly turnBanner: HTMLDivElement;
   readonly menu: HTMLDivElement;
   readonly nextBtn: HTMLButtonElement;
+  /** «⏩ Saltar ronda»: aparece cuando hay 3+ actores por actuar. */
+  readonly skipBtn: HTMLButtonElement;
   /** Habilidades desplegadas (la barra de habilidades se muestra). */
   skillsOpen = false;
   heroColors: HumanoidColors | null = null;
@@ -51,6 +51,8 @@ export class CombatUi {
     this.turnBanner = h('div', { class: 'turn-banner', text: 'TU TURNO' });
     this.menu = h('div', { class: 'combat-menu' });
     this.nextBtn = h('button', { class: 'next-btn primary', text: '▶ Siguiente', onClick: () => actions.onContinue() });
+    this.skipBtn = h('button', { class: 'skip-btn', text: '⏩ Saltar ronda', onClick: () => actions.onSkipRound(), attrs: { 'aria-label': 'Saltar el resto de la ronda' } });
+    this.skipBtn.style.display = 'none';
   }
 
   /** Cartel con la acción de un actor. Se queda hasta la siguiente acción. */
@@ -114,7 +116,8 @@ export class CombatUi {
     // Tras la última acción el combate puede haber acabado: aún hay que pulsar «Siguiente».
     const waiting = (combat && game.phase === 'enemies') || game.awaitingContinue;
     const bindable = game.bindTargets().length > 0 && game.state.player.inventory.some((x) => x.id === 'runa_vinculo');
-    const msig = [myTurn, waiting, game.awaitingContinue, game.combatSpeed, game.attackMode, this.skillsOpen, bindable, !!game.petInstance, game.turnMove, game.turnMoveMax, game.actionUsed].join('|');
+    const holding = game.holdT > 0;
+    const msig = [myTurn, waiting, game.awaitingContinue, holding, game.canSkipRound, game.combatSpeed, game.attackMode, this.skillsOpen, bindable, !!game.petInstance, game.turnMove, game.turnMoveMax, game.actionUsed].join('|');
     if (msig === this.menuSig) return;
     this.menuSig = msig;
     if (!combat && !game.awaitingContinue) {
@@ -125,8 +128,9 @@ export class CombatUi {
     document.body.classList.toggle('combat-turn', myTurn);
     const waitLabel = game.combatSpeed === 'paso' && game.awaitingContinue ? '▶ Siguiente' : 'Turno de los demás…';
     this.nextBtn.style.display = waiting ? '' : 'none';
-    this.nextBtn.textContent = waitLabel;
-    this.nextBtn.disabled = !(game.combatSpeed === 'paso' && game.awaitingContinue);
+    this.nextBtn.textContent = holding && game.awaitingContinue ? '⏳ …' : waitLabel;
+    this.nextBtn.disabled = !(game.combatSpeed === 'paso' && game.awaitingContinue) || holding;
+    this.skipBtn.style.display = waiting && game.canSkipRound ? '' : 'none';
     if (!myTurn) return;
     const used = game.actionUsed;
     if (used && this.skillsOpen) this.skillsOpen = false;
@@ -176,22 +180,6 @@ export class CombatUi {
   }
 
   private spriteFor(game: Game, a: Actor): HTMLCanvasElement | null {
-    if (a.kind === 'player') return this.heroColors ? humanoidSprite(this.heroColors).right : null;
-    if (a.kind === 'ally') {
-      const l = game.companionDef?.look;
-      if (!l) return null;
-      return humanoidSprite({
-        hair: l.hair ?? PAL.hair, skin: l.skin ?? PAL.skin, cloth: l.cloth, clothDark: l.clothDark, pants: l.pants,
-        ...(l.hat ? { hat: l.hat } : {}), ...(l.overlay ? { overlay: l.overlay } : {}),
-      }).right;
-    }
-    if (a.kind === 'pet') {
-      const sp = game.petInstance ? PET_SPECIES.get(game.petInstance.species) : undefined;
-      return sp ? petSprite(sp.look, sp.stage).right : null;
-    }
-    const en = game.enemies.find((x) => x.uid === a.uid);
-    if (!en) return null;
-    const wild = en.def.pet ? PET_SPECIES.get(en.def.pet.species) : undefined;
-    return (wild ? petSprite(wild.look, wild.stage) : monsterSprite(en.def.look)).left;
+    return actorSprite(game, a, this.heroColors);
   }
 }

@@ -6,6 +6,8 @@
  * entera para que el pixel art se vea nítido en cualquier pantalla.
  */
 import { Camera } from '@/engine/camera';
+import { clampStep, defaultZoom, stepLimits, tilesAcross, zoomForStep, zoomLevels } from '@/engine/zoom';
+import type { CombatCinema } from './cinema';
 import type { Point } from '@/engine/pathfinding';
 import { dangerLevel, dist } from '@/game/combat/rules';
 import { STATUS_INFO } from '@/game/combat/status';
@@ -24,8 +26,11 @@ import { DEFAULT_HERO_COLORS, humanoidSprite, type HumanoidColors } from './spri
 import type { NpcDef } from '@/data/schema';
 import { getTileSprite, variantFor } from './tiles';
 
-/** Casillas visibles aproximadas de ancho (en vertical). */
-const TARGET_TILES_ACROSS = 12;
+/**
+ * Radio de visión del jugador (casillas) para ver enemigos. No cambia con el zoom:
+ * alejar el mapa enseña más terreno, pero no delata criaturas lejanas.
+ */
+export const PLAYER_SIGHT = 10;
 
 export interface RenderOptions {
   grid: boolean;
@@ -33,6 +38,17 @@ export interface RenderOptions {
   dayNight?: boolean;
   /** Guía de misión (flecha GPS). */
   questGuide?: boolean;
+}
+
+/**
+ * Desplazamiento (px) de una embestida según `b` (el motor lo baja de 1,3 a 0):
+ * entre 1,3 y 1 el actor RETROCEDE un poco (anticipación) y de 1 a 0 se lanza
+ * hacia delante y vuelve.
+ */
+export function lungeOffset(b: number): number {
+  if (b <= 0) return 0;
+  if (b > 1) return -Math.sin(((b - 1) / 0.3) * Math.PI) * 2.2;
+  return Math.sin(b * Math.PI) * 4.5;
 }
 
 /** Duración de un día completo en turnos. */
@@ -52,7 +68,22 @@ export function nightAmount(turn: number): number {
 export class Renderer {
   readonly camera = new Camera();
   private readonly ctx: CanvasRenderingContext2D;
+  /** Zoom efectivo de este fotograma = zoom del jugador (animado) × zoom de acción del combate. */
   private zoom = 3;
+  /** Zoom del jugador, animado hacia `zoomTarget` (siempre entero al terminar la transición). */
+  private zoomCur = 3;
+  private zoomTarget = 3;
+  /** Niveles enteros disponibles, nivel por defecto y paso elegido por el jugador (0 = por defecto). */
+  private levels: number[] = [3];
+  private defaultLevel = 3;
+  private step = 0;
+  /** Ancho de referencia (px) con el que se calculan los niveles. */
+  private across = 0;
+  /** Márgenes del HUD en px de pantalla (se convierten a mundo cada fotograma). */
+  private insetPx = { top: 0, bottom: 0 };
+  /** Cinemática de combate (temblor, zoom de acción, partículas…). */
+  cinema: CombatCinema | null = null;
+  private vignetteCanvas: HTMLCanvasElement | null = null;
   /** devicePixelRatio efectivo (limitado a 3 por rendimiento). */
   pixelRatio = 1;
   private zoneCache: { zone: Zone; canvas: HTMLCanvasElement } | null = null;
@@ -81,16 +112,61 @@ export class Renderer {
     }
     this.ctx.imageSmoothingEnabled = false;
     const across = Math.min(w, h * 0.8);
-    this.zoom = Math.max(1, Math.round(across / (TILE * TARGET_TILES_ACROSS)));
+    this.across = across;
+    this.levels = zoomLevels(across, TILE);
+    this.defaultLevel = defaultZoom(across, TILE);
+    this.step = clampStep(this.levels, this.defaultLevel, this.step);
+    this.zoomTarget = zoomForStep(this.levels, this.defaultLevel, this.step);
+    this.zoomCur = this.zoomTarget;
+    this.zoom = this.zoomCur * (this.cinema?.zoomMul ?? 1);
     this.camera.viewW = w / this.zoom;
     this.camera.viewH = h / this.zoom;
+    this.vignetteCanvas = null;
+  }
+
+  // -------------------------------------------------------------- zoom del jugador
+  /** Paso de zoom actual: 0 por defecto, +1 más cerca, −1 más lejos. */
+  get zoomStep(): number {
+    return this.step;
+  }
+
+  /** Pasos mínimo (más lejos) y máximo (más cerca) disponibles. */
+  get zoomLimits(): { min: number; max: number } {
+    return stepLimits(this.levels, this.defaultLevel);
+  }
+
+  /** Casillas de ancho visibles con el zoom actual del jugador. */
+  get visibleTilesAcross(): number {
+    return tilesAcross(this.across, this.zoomTarget, TILE);
+  }
+
+  /** Fija el paso de zoom (animado). Devuelve el paso efectivo tras limitarlo. */
+  setZoomStep(step: number): number {
+    this.step = clampStep(this.levels, this.defaultLevel, step);
+    this.zoomTarget = zoomForStep(this.levels, this.defaultLevel, this.step);
+    return this.step;
+  }
+
+  zoomBy(delta: number): number {
+    return this.setZoomStep(this.step + delta);
+  }
+
+  resetZoom(): number {
+    return this.setZoomStep(0);
   }
 
   /** Altura (px de canvas) tapada arriba por el HUD y abajo por los botones. */
   setInsets(topPx: number, bottomPx: number): void {
+    // Se guardan en px de pantalla y se convierten a mundo en cada fotograma con el
+    // zoom efectivo (que cambia con el zoom del jugador y el de acción).
+    this.insetPx = { top: topPx, bottom: bottomPx };
+    this.applyInsets();
+  }
+
+  private applyInsets(): void {
     // Margen extra de media casilla abajo: así el jugador y el compañero que
     // camina detrás nunca quedan medio tapados por la barra de habilidades.
-    this.camera.insets = { top: topPx / this.zoom, bottom: bottomPx / this.zoom + TILE * 0.75 };
+    this.camera.insets = { top: this.insetPx.top / this.zoom, bottom: this.insetPx.bottom / this.zoom + TILE * 0.75 };
   }
 
   /** Convierte un punto del canvas (px internos) en casilla del mapa. */
@@ -123,7 +199,18 @@ export class Renderer {
 
   render(game: Game, dt: number, opts: RenderOptions): void {
     this.time += dt;
-    const { ctx, canvas, camera, zoom } = this;
+    const { ctx, canvas, camera } = this;
+    // Zoom del jugador (transición suave) × zoom de acción del combate.
+    if (this.zoomCur !== this.zoomTarget) {
+      this.zoomCur += (this.zoomTarget - this.zoomCur) * Math.min(1, dt * 9);
+      if (Math.abs(this.zoomCur - this.zoomTarget) < 0.02) this.zoomCur = this.zoomTarget;
+    }
+    const cin = this.cinema;
+    this.zoom = this.zoomCur * (cin?.zoomMul ?? 1);
+    const zoom = this.zoom;
+    camera.viewW = canvas.width / zoom;
+    camera.viewH = canvas.height / zoom;
+    this.applyInsets();
     const zone = game.zone;
     const zc = this.getZoneCanvas(zone);
     const v = game.view;
@@ -136,6 +223,11 @@ export class Renderer {
     if (ap && Math.max(Math.abs(ap.x - v.rx), Math.abs(ap.y - v.ry)) > 3) {
       tx = (v.rx + ap.x) / 2;
       ty = (v.ry + ap.y) / 2;
+    }
+    // Durante un golpe la cámara encuadra a atacante y objetivo.
+    if (cin?.focus) {
+      tx = cin.focus.x;
+      ty = cin.focus.y;
     }
     if (this.camZone !== zone.id || Math.abs(this.camFX - tx) > 12 || Math.abs(this.camFY - ty) > 12) {
       this.camFX = tx;
@@ -153,8 +245,8 @@ export class Renderer {
     }
     camera.centerOn((this.camFX + 0.5) * TILE, (this.camFY + 0.5) * TILE, zone.width * TILE, zone.height * TILE);
     // Ajuste a píxel de pantalla para evitar costuras.
-    const camX = Math.round(camera.x * zoom) / zoom;
-    const camY = Math.round(camera.y * zoom) / zoom;
+    const camX = Math.round(camera.x * zoom) / zoom + (cin?.shakeX ?? 0);
+    const camY = Math.round(camera.y * zoom) / zoom + (cin?.shakeY ?? 0);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = PAL.black;
@@ -172,8 +264,12 @@ export class Renderer {
     this.drawHazards(game);
     this.drawLoot(game);
     this.drawCombatMarks(game);
+    cin?.drawGhosts(ctx, silhouette);
     this.drawEntities(game);
+    cin?.drawWorld(ctx);
     this.drawFx(game);
+    this.drawFog(game, camX, camY);
+    this.drawVignette(cin?.vignette ?? 0);
     this.drawExitPointers(game, camX, camY, opts.questGuide ?? true);
     if (opts.questGuide ?? true) this.drawQuestGuide(game, camX, camY);
   }
@@ -463,7 +559,12 @@ export class Renderer {
         const rank = ['comun', 'poco_comun', 'raro', 'epico', 'legendario'].indexOf(r.id);
         return !acc || rank > acc.rank ? { color: r.color, rank } : acc;
       }, null);
-      const bob = Math.sin(this.time * 3 + g.x) * 0.8;
+      // Aún no se ha revelado el golpe que lo soltó.
+      if (g.age !== undefined && g.age < 0) continue;
+      // Salto con arco al caer (0,55 s) y luego flotación suave.
+      const age = g.age ?? 99;
+      const hop = age < 0.55 ? Math.sin((age / 0.55) * Math.PI) * 9 * (1 - age / 0.55 * 0.4) : 0;
+      const bob = Math.sin(this.time * 3 + g.x) * 0.8 - hop;
       if (best && best.rank >= 1) {
         ctx.globalAlpha = 0.35 + 0.2 * Math.sin(this.time * 4);
         ctx.fillStyle = best.color;
@@ -537,7 +638,7 @@ export class Renderer {
     const { ctx } = this;
     a.bumpT = Math.max(0, a.bumpT - 0.08);
     a.flashT = Math.max(0, a.flashT - 0.06);
-    const bump = Math.sin(a.bumpT * Math.PI) * 4;
+    const bump = lungeOffset(a.bumpT);
     const x = a.rx * TILE + a.bumpDx * bump;
     const y = a.ry * TILE + a.bumpDy * bump;
     const l = a.def.look;
@@ -575,7 +676,7 @@ export class Renderer {
     const { ctx } = this;
     u.bumpT = Math.max(0, u.bumpT - 0.08);
     u.flashT = Math.max(0, u.flashT - 0.06);
-    const bump = Math.sin(u.bumpT * Math.PI) * 4;
+    const bump = lungeOffset(u.bumpT);
     const hop = pi.down ? 0 : Math.abs(Math.sin(this.time * 4 + u.x)) * 0.8;
     const x = u.rx * TILE + u.bumpDx * bump;
     const y = u.ry * TILE + u.bumpDy * bump - hop;
@@ -643,9 +744,11 @@ export class Renderer {
   private drawEnemy(game: Game, e: Enemy): void {
     const { ctx } = this;
     const p = game.playerPos;
-    // Fuera de la vista del jugador y lejos: no se dibuja (niebla ligera).
-    if (dist(e.x, e.y, p.x, p.y) > 10) return;
-    const bump = Math.sin(e.bumpT * Math.PI) * 4;
+    // Fuera de la vista del jugador y lejos: no se dibuja. El radio de visión NO depende del
+    // zoom: alejar el mapa no delata enemigos (los que te persiguen se ven a su alcance + 2).
+    const dd = dist(e.x, e.y, p.x, p.y);
+    if (dd > PLAYER_SIGHT && !(e.alerted && dd <= e.def.sight + 2)) return;
+    const bump = lungeOffset(e.bumpT);
     const x = e.rx * TILE + e.bumpDx * bump;
     const y = e.ry * TILE + e.bumpDy * bump;
     if (e.def.boss) {
@@ -689,7 +792,7 @@ export class Renderer {
       ctx.fillStyle = '#000';
       ctx.fillRect(bx - 0.5, by - 0.5, w + 1, 2.5);
       ctx.fillStyle = e.def.boss ? '#a040ff' : '#d03030';
-      ctx.fillRect(bx, by, (w * Math.max(0, e.hp)) / e.maxHp, 1.5);
+      ctx.fillRect(bx, by, (w * Math.max(0, e.shownHp ?? e.hp)) / e.maxHp, 1.5);
       const danger = dangerLevel(e.def.level, game.state.player.level);
       const col = { trivial: '#8a8a8a', facil: '#80c080', normal: '#ece6d6', dificil: '#f0a040', mortal: '#ff4040' }[danger];
       ctx.font = 'bold 4px sans-serif';
@@ -705,11 +808,32 @@ export class Renderer {
         ctx.fillRect(bx + i * 3, by + 2.5, 2, 2);
       });
     }
+    // Estados: tinte suave del sprite e iconos pulsantes sobre la cabeza.
+    if (e.statuses.length) this.drawStatusMarks(e.statuses.map((s) => s.id), Math.round(x), Math.round(y), img);
+  }
+
+  /** Tinte suave y pequeños iconos pulsantes de los estados alterados. */
+  private drawStatusMarks(ids: Array<keyof typeof STATUS_INFO>, x: number, y: number, img: HTMLCanvasElement): void {
+    if (!ids.length || (this.cinema && this.cinema.level === 'minimos')) return;
+    const { ctx } = this;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 5);
+    ctx.globalAlpha = 0.14 + 0.1 * pulse;
+    ctx.drawImage(silhouette(img, STATUS_INFO[ids[0]!].color), x, y - 1);
+    ctx.globalAlpha = 1;
+    ctx.font = '5px sans-serif';
+    ctx.textAlign = 'center';
+    ids.slice(0, 3).forEach((id, i) => {
+      const sx = x + 8 + (i - (Math.min(ids.length, 3) - 1) / 2) * 6;
+      ctx.globalAlpha = 0.75 + 0.25 * pulse;
+      ctx.fillText(STATUS_INFO[id].icon, sx, y - 5 - pulse * 1.2);
+    });
+    ctx.globalAlpha = 1;
   }
 
   private drawFx(game: Game): void {
     const { ctx } = this;
     for (const f of game.fx) {
+      if (f.t < 0) continue; // aún no se ha revelado (la tarjeta de duelo está rodando el dado)
       const k = f.t / f.life;
       if (f.kind === 'text') {
         const x = f.x * TILE + 8;
@@ -797,7 +921,7 @@ export class Renderer {
     ctx.fill();
     // Pequeño salto al caminar
     const bob = v.stepT >= 0 ? -Math.round(Math.sin(v.stepT * Math.PI) * 1.5) : 0;
-    const bump = Math.sin(v.bumpT * Math.PI) * 4;
+    const bump = lungeOffset(v.bumpT);
     const sx = Math.round(x + v.bumpDx * bump);
     const sy = Math.round(y + v.bumpDy * bump) + bob - 1;
     const sprite = humanoidSprite(this.heroColors);
@@ -810,12 +934,51 @@ export class Renderer {
       ctx.drawImage(silhouette(img, '#ff3030'), sx, sy);
       ctx.globalAlpha = 1;
     }
+    if (game.combat.statuses.length) this.drawStatusMarks(game.combat.statuses.map((s) => s.id), sx, sy, img);
     // Defendiendo: escudo sobre la cabeza.
     if (game.defending) {
       ctx.font = '7px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('🛡', sx + 8, sy - 2 + Math.sin(this.time * 3) * 0.8);
     }
+  }
+
+  /**
+   * Con el mapa muy alejado, un velo suave más allá del radio de visión explica
+   * por qué no se ven criaturas lejanas (y mantiene el reto).
+   */
+  private drawFog(game: Game, camX: number, camY: number): void {
+    if (this.zoomTarget >= this.defaultLevel && this.step >= 0) return;
+    const { ctx, camera } = this;
+    const v = game.view;
+    const cx = (v.rx + 0.5) * TILE;
+    const cy = (v.ry + 0.5) * TILE;
+    const g = ctx.createRadialGradient(cx, cy, TILE * (PLAYER_SIGHT - 1), cx, cy, TILE * (PLAYER_SIGHT + 5));
+    g.addColorStop(0, 'rgba(11,10,16,0)');
+    g.addColorStop(1, 'rgba(11,10,16,0.42)');
+    ctx.fillStyle = g;
+    ctx.fillRect(camX, camY, camera.viewW, camera.viewH);
+  }
+
+  /** Viñeta oscura en los bordes durante el combate (atmósfera). */
+  private drawVignette(alpha: number): void {
+    if (alpha <= 0.01) return;
+    const { ctx, canvas } = this;
+    if (!this.vignetteCanvas || this.vignetteCanvas.width !== canvas.width || this.vignetteCanvas.height !== canvas.height) {
+      const c = makeCanvas(canvas.width, canvas.height);
+      const x = c.getContext('2d')!;
+      const r = Math.hypot(canvas.width, canvas.height) / 2;
+      const g = x.createRadialGradient(canvas.width / 2, canvas.height / 2, r * 0.45, canvas.width / 2, canvas.height / 2, r);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(8,4,12,0.6)');
+      x.fillStyle = g;
+      x.fillRect(0, 0, canvas.width, canvas.height);
+      this.vignetteCanvas = c;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.drawImage(this.vignetteCanvas, 0, 0);
+    ctx.globalAlpha = 1;
   }
 
   /** Oscuridad ambiental con un halo de luz alrededor del jugador. */

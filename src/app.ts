@@ -17,6 +17,10 @@ import { defaultStores } from '@/game/save/storage';
 import { loadSettings, saveSettings, type Settings } from '@/game/settings';
 import { createNewGame, type GameState } from '@/game/state';
 import { Renderer } from '@/gfx/renderer';
+import { CombatCinema } from '@/gfx/cinema';
+import type { CombatFxEvent } from '@/game/combat/presentation';
+import type { DamageType } from '@/data/schema';
+import type { SfxId, DiceEvent } from '@/game/game';
 import { heroColors } from '@/gfx/sprites';
 import { creationScreen } from '@/ui/creation';
 import { characterSheet } from '@/ui/sheet';
@@ -36,6 +40,12 @@ import { helpScreen } from '@/ui/help';
 import { victoryScreen } from '@/ui/victory';
 import { Sfx } from '@/audio/sfx';
 
+/** Sonido de impacto por tipo de daño (capa sobre «golpe»/«herido»). */
+const IMPACT_SFX: Record<DamageType, SfxId> = {
+  cortante: 'imp_tajo', perforante: 'imp_contundente', contundente: 'imp_contundente', fuego: 'imp_fuego', frio: 'imp_hielo',
+  rayo: 'imp_rayo', veneno: 'imp_veneno', sagrado: 'imp_sagrado', necrotico: 'imp_sombra', arcano: 'imp_sombra',
+};
+
 /** Cada cuántos turnos se autoguarda además de al cambiar de zona. */
 const AUTOSAVE_EVERY_TURNS = 40;
 
@@ -53,16 +63,34 @@ export class App {
   private readonly sfx = new Sfx();
   /** La pantalla final espera a que se cierre el diálogo de la misión. */
   private pendingVictory = false;
+  /** Cinemática de combate (temblor, zoom de acción, partículas…). */
+  private readonly cinema = new CombatCinema();
+  /** Seguimiento del combate para banners (COMBATE / VICTORIA) y registro. */
+  private combatWas = false;
+  private combatEnding = false;
+  private combatZone = '';
+  private readonly summary = { xp: 0, gold: 0, kills: 0, items: [] as Array<{ name: string; rarity: number }> };
+  /** Instante hasta el que los mensajes aún van al registro de combate (tras acabar). */
+  private logUntil = 0;
+  /** Subidas de nivel que esperan a que acabe el combate y su banner de victoria. */
+  private pendingLevelUps: LevelUpEvent[] = [];
 
   constructor(
     canvas: HTMLCanvasElement,
     private readonly ui: HTMLElement,
   ) {
     this.renderer = new Renderer(canvas);
+    this.renderer.cinema = this.cinema;
     this.loop = new GameLoop((dt) => this.tick(dt));
     new Input(canvas, {
       onTap: (x, y) => this.onTap(x, y),
       onHeldDir: (d) => this.setHeldDir(d),
+      onZoom: (dir) => this.zoomMap(dir),
+      // Dos dedos: se cancelan la ruta y el movimiento pendientes (no se mueve ni ataca al soltar).
+      onPinchStart: () => {
+        this.game?.cancelPath();
+        if (this.game) this.game.heldDir = null;
+      },
       onKey: (code) => {
         if (code === 'Space' || code === 'Period') this.game?.waitTurn();
         if (code === 'Escape') this.togglePause();
@@ -173,8 +201,20 @@ export class App {
     }
     this.sfx.enabled = this.settings.sound;
     this.sfx.volume = this.settings.volume;
+    this.cinema.setLevel(this.settings.combatFx);
+    this.renderer.setZoomStep(this.settings.zoomStep);
     // El tamaño de interfaz cambia el layout: recalculamos el canvas.
     requestAnimationFrame(() => this.layout());
+  }
+
+  /** Zoom del mapa (botones, pellizco, rueda, teclas): +1 acercar, −1 alejar, 0 restablecer. */
+  private zoomMap(dir: -1 | 0 | 1): void {
+    if (!this.game || this.screen || this.pauseClose) return;
+    const step = dir === 0 ? this.renderer.resetZoom() : this.renderer.zoomBy(dir);
+    if (step !== this.settings.zoomStep) {
+      this.settings = { ...this.settings, zoomStep: step };
+      saveSettings(this.settings);
+    }
   }
 
   /** Recalcula el canvas y el hueco libre entre el HUD superior y los botones. */
@@ -263,7 +303,16 @@ export class App {
         const err = game.dash();
         if (err) hud.pushMessage(err, 'warn');
       },
-      onContinue: () => game.continueTurn(),
+      onContinue: () => {
+        if (game.holdT > 0) return;
+        hud.duel.dismiss();
+        game.continueTurn();
+      },
+      onZoom: (dir) => this.zoomMap(dir),
+      onSkipRound: () => {
+        hud.duel.flush();
+        game.skipRound();
+      },
       onItems: () => hud.combatUi.openItems(game, (m) => hud.pushMessage(m, 'warn')),
       onOpenQuest: (id) => {
         if (!this.screen && !this.pauseClose) this.showJournal(id);
@@ -271,24 +320,47 @@ export class App {
     });
     this.hud = hud;
     this.ui.prepend(hud.root);
+    hud.setGame(game);
+    // Presentación cinematográfica: la interfaz la activa (en tests el motor es instantáneo).
+    game.cinematic = true;
+    this.cinema.reset();
+    this.combatWas = false;
+    this.combatEnding = false;
+    this.pendingLevelUps = [];
     this.applyLook();
     this.applySettings();
 
-    game.events.on('message', (m) => hud.pushMessage(m.text, m.kind));
-    game.events.on('dice', (d) => hud.dice.show(d));
-    // Combate por turnos: cartel de cada acción y aviso de «TU TURNO».
+    // Mensajes: durante el combate van al REGISTRO persistente (no se desvanecen); el resto, como avisos.
+    game.events.on('message', (m) => {
+      const send = () => {
+        const inLog = m.kind !== 'info' && (game.inCombat || performance.now() < this.logUntil || hud.combatLog.isActive);
+        if (inLog) hud.combatLog.push(m.text, m.kind, m.cat);
+        else hud.pushMessage(m.text, m.kind);
+      };
+      if (m.delay && m.delay > 0) window.setTimeout(send, m.delay * 1000);
+      else send();
+    });
+    // Tiradas: las de ataque van a la tarjeta de duelo; el resto (huir, trampas, vínculo) al dado clásico.
+    game.events.on('dice', (d) => this.onDice(d));
+    game.events.on('cfx', (ev) => this.onCombatFx(ev));
+    // Combate por turnos: cartel de las acciones sin ataque (moverse, esperar) y aviso de «TU TURNO».
     game.events.on('actorAction', ({ actor, name, lines }) => {
+      // Si la acción tuvo tarjeta de duelo, no se duplica con el cartel.
+      if (hud.duel.takeFresh()) return;
       const hold = game.combatSpeed === 'paso' ? 60000 : 1800;
       hud.combatUi.showAction(actor.kind === 'player' ? `Tú (${name})` : name, lines, actor.kind === 'enemy', hold);
     });
     game.events.on('playerTurn', () => {
+      hud.duel.dismiss();
       if (game.combatSpeed === 'normal') return;
       hud.combatUi.showTurnBanner();
+      if (this.settings.combatFx !== 'minimos') this.sfx.play('turno');
       buzz(this.settings.vibration, 15);
       window.setTimeout(() => hud.combatUi.hideAction(), 1400);
     });
     game.events.on('playerHurt', ({ amount }) => buzz(this.settings.vibration, Math.min(80, 15 + amount * 4)));
-    game.events.on('levelUp', (ev) => this.showLevelUp(ev));
+    // La subida de nivel espera a que acabe el combate y su banner de victoria (sin solaparse).
+    game.events.on('levelUp', (ev) => this.pendingLevelUps.push(ev));
     game.events.on('playerDied', () => this.showDeath());
     game.events.on('petTapped', () => {
       if (!this.screen && !this.pauseClose) petOrders(this.ui, game, () => this.showPets());
@@ -298,13 +370,15 @@ export class App {
     });
     // Entrenamiento del establo mientras no jugabas
     for (const r of game.trainStable()) hud.pushMessage(`🐾 ${r.name} ha subido ${r.levels} nivel${r.levels > 1 ? 'es' : ''} en el establo mientras no estabas.`, 'good');
-    game.events.on('sfx', ({ id }) => this.sfx.play(id));
+    game.events.on('sfx', ({ id, delay, rate }) => this.sfx.play(id, delay ?? 0, rate ?? 1));
     game.events.on('victory', () => {
       this.pendingVictory = true;
       void this.autosave('victoria');
     });
     game.events.on('npcTalk', ({ npc }) => this.showNpcDialog(npc));
     game.events.on('zoneChanged', ({ zone, firstVisit }) => {
+      this.cinema.reset();
+      hud.duel.flush();
       hud.showBanner(zone.def.name, firstVisit ? zone.def.description : undefined);
       buzz(this.settings.vibration, 20);
       void this.autosave('cambio de zona');
@@ -504,20 +578,117 @@ export class App {
       this.renderer.setInsets(ins.top * dpr, ins.bottom * dpr);
     }
     const blocked = !!this.ui.querySelector('.modal-back, .dialog-back');
-    if (!this.pauseClose && !this.screen && !blocked) game.update(dt);
+    // La cinemática marca el factor de tiempo: 0 en el «hit-stop», 0,4 en cámara lenta.
+    const scale = this.cinema.update(dt, game);
+    if (!this.pauseClose && !this.screen && !blocked) game.update(dt * scale);
+    this.trackCombat(game, blocked);
     if (this.pendingVictory && !this.pauseClose && !this.screen && !blocked) {
       this.pendingVictory = false;
       this.setScreen(victoryScreen(game.state, () => this.setScreen(null), () => void this.quitToMenu()));
     }
     this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, questGuide: this.settings.questGuide });
     this.hud?.update(game, dt);
+    this.hud?.zoom.update(this.renderer.zoomStep, this.renderer.zoomLimits);
+  }
+
+  // ------------------------------------------------------- combate cinematográfico
+  /** Inicio y fin del combate: banners, registro y subidas de nivel en cola. */
+  private trackCombat(game: Game, blocked: boolean): void {
+    const hud = this.hud;
+    if (!hud) return;
+    const inCombat = game.inCombat && !game.isDead;
+    if (inCombat && !this.combatWas) {
+      // ⚔ ¡COMBATE!
+      this.combatWas = true;
+      this.combatEnding = false;
+      this.combatZone = game.zone.id;
+      game.fled = false;
+      Object.assign(this.summary, { xp: 0, gold: 0, kills: 0, items: [] });
+      hud.combatLog.reset();
+      hud.combatLog.setActive(true);
+      const p = game.playerPos;
+      const names = game.enemies.filter((e) => e.alerted && Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y)) <= e.def.sight + 2).map((e) => e.def.name);
+      hud.combatBanner.showStart(names);
+      if (this.settings.combatFx !== 'minimos') this.sfx.play('combate');
+    } else if (!inCombat && this.combatWas && !this.combatEnding) {
+      this.combatEnding = true;
+    }
+    if (this.combatEnding) {
+      // Esperamos a que la tarjeta de duelo y el golpe final terminen de verse.
+      const settled = hud.duel.idleFor(1300) && game.holdT <= 0 && !game.awaitingContinue;
+      if (game.isDead || settled) {
+        this.combatEnding = false;
+        this.combatWas = false;
+        hud.duel.flush();
+        const won = !game.isDead && !game.fled && this.summary.kills > 0 && game.zone.id === this.combatZone;
+        this.logUntil = performance.now() + 4500;
+        if (won) {
+          hud.combatBanner.showVictory({ ...this.summary, items: [...this.summary.items] });
+          if (this.settings.combatFx !== 'minimos') this.sfx.play('victoria_acorde');
+        }
+        window.setTimeout(() => {
+          if (!game.inCombat) hud.combatLog.setActive(false);
+        }, 4500);
+      }
+    }
+    // Subidas de nivel: tras el combate y el banner de victoria, y sin otro diálogo abierto.
+    if (this.pendingLevelUps.length && !blocked && !this.pauseClose && !this.screen && !game.inCombat && !this.combatWas && !hud.combatBanner.active) {
+      const list = this.pendingLevelUps.splice(0);
+      for (const ev of list) this.showLevelUp(ev);
+    }
+  }
+
+  private posOf(game: Game, a: { kind: 'player' | 'ally' | 'pet' | 'enemy'; uid?: number }): { x: number; y: number } | null {
+    return game.actorPos(a);
+  }
+
+  /** Tirada: ataques y salvaciones de combate → tarjeta de duelo; el resto → dado clásico. */
+  private onDice(d: DiceEvent): void {
+    const game = this.game;
+    const hud = this.hud;
+    if (!game || !hud) return;
+    if (d.attacker && d.defender) {
+      hud.duel.onDice(d);
+      this.cinema.onDuelStart(this.posOf(game, d.attacker), this.posOf(game, d.defender), d.lead ?? 0);
+      // Silbido del arma al empezar el ataque.
+      if (this.settings.combatFx !== 'minimos') this.sfx.play('whoosh', Math.max(0, (d.lead ?? 0) - 0.15));
+    } else hud.dice.show(d);
+  }
+
+  /** Evento de presentación del motor: tarjeta, partículas, temblor y sonido por tipo. */
+  private onCombatFx(ev: CombatFxEvent): void {
+    const game = this.game;
+    const hud = this.hud;
+    if (!game || !hud) return;
+    hud.duel.onCfx(ev);
+    this.cinema.onEvent(ev, game);
+    const layers = this.settings.combatFx !== 'minimos';
+    if (ev.type === 'hit') {
+      if (layers && ev.dmgType) this.sfx.play(IMPACT_SFX[ev.dmgType], ev.lead);
+      if (layers && ev.crit) this.sfx.play('critico_grave', ev.lead);
+    } else if (ev.type === 'kill') {
+      this.summary.kills++;
+      this.summary.xp += ev.xp;
+      this.summary.gold += ev.gold;
+      this.summary.items.push(...ev.items);
+      if (layers) {
+        this.sfx.play('desintegra', ev.lead + 0.05);
+        const rank = ev.items.reduce((m, it) => Math.max(m, it.rarity), -1);
+        // «Ding» más agudo cuanto más rara es la mejor pieza (o la moneda si solo hay oro).
+        if (rank >= 0) this.sfx.play('ding', ev.lead + 0.4, 1 + rank * 0.18);
+        else if (ev.gold > 0) this.sfx.play('moneda', ev.lead + 0.4);
+      }
+    }
   }
 
   private onTap(sx: number, sy: number): void {
     if (!this.game || this.pauseClose || this.screen || this.ui.querySelector('.modal-back, .dialog-back')) return;
     // Paso a paso: tocar la pantalla también sirve como «Siguiente».
     if (this.game.awaitingContinue) {
-      this.game.continueTurn();
+      if (this.game.holdT <= 0) {
+        this.hud?.duel.dismiss();
+        this.game.continueTurn();
+      }
       return;
     }
     const t = this.renderer.screenToTile(sx, sy);

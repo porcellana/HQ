@@ -31,8 +31,8 @@ export interface Settings {
    * reducidos (sin zoom ni temblor, menos partículas) o mínimos (solo lo esencial).
    */
   combatFx: 'completos' | 'reducidos' | 'minimos';
-  /** Nivel de zoom del mapa elegido por el jugador (índice en ZOOM_LEVELS; ver engine/zoom.ts). */
-  zoomLevel: number;
+  /** Zoom del mapa: 0 = por defecto, +1 un nivel más cerca, −1 más lejos (ver engine/zoom.ts). */
+  zoomStep: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -48,8 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   questGuide: true,
   combatSpeed: 'paso',
   combatFx: 'completos',
-  /** -1 = el nivel por defecto de cada pantalla. */
-  zoomLevel: -1,
+  zoomStep: 0,
 };
 
 const KEY = 'ecos.settings';

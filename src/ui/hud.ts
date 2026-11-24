@@ -15,6 +15,11 @@ import { Minimap } from './minimap';
 import { SkillBar } from './skillbar';
 import { QuestTracker } from './questTracker';
 import { CombatUi } from './combatUi';
+import { CombatBanner } from './combatBanner';
+import { CombatLogPanel } from './combatLogPanel';
+import { DuelCard } from './duelCard';
+import { ZoomControls } from './zoomControls';
+import { actorName, actorSprite } from './actorSprite';
 
 export interface HudActions {
   onWait(): void;
@@ -34,6 +39,10 @@ export interface HudActions {
   onContinue(): void;
   onItems(): void;
   onOpenQuest(id: string | null): void;
+  /** Zoom del mapa: +1 acercar, −1 alejar, 0 restablecer. */
+  onZoom(dir: -1 | 0 | 1): void;
+  /** «Saltar ronda» (combate paso a paso con muchos actores). */
+  onSkipRound(): void;
 }
 
 function bar(kind: string, thin = false): { el: HTMLDivElement; fill: HTMLElement; label: HTMLElement } {
@@ -58,6 +67,14 @@ export class Hud {
   private readonly actionBar: HTMLDivElement;
   readonly skillBar: SkillBar;
   readonly dice = new DiceRoller();
+  /** Tarjeta de duelo, registro de combate, banners y controles de zoom (v0.5). */
+  readonly duel: DuelCard;
+  readonly combatLog: CombatLogPanel;
+  readonly combatBanner = new CombatBanner();
+  readonly zoom: ZoomControls;
+  /** Partida enlazada (nombres y sprites de la tarjeta de duelo). */
+  private game: Game | null = null;
+  private heroColors: HumanoidColors | null = null;
   private bannerTimer = 0;
   private resourceShort = 'PM';
   /** Última firma de datos mostrada, para no tocar el DOM si no cambia nada. */
@@ -106,6 +123,15 @@ export class Hud {
     ]);
 
     this.skillBar = new SkillBar(actions.onSkill, actions.onFlee, actions.onPotion, actions.onBind);
+    this.duel = new DuelCard(
+      {
+        name: (a) => (this.game ? actorName(this.game, a) : ''),
+        sprite: (a) => (this.game ? actorSprite(this.game, a, this.heroColors) : null),
+      },
+      () => this.game?.combatSpeed ?? 'normal',
+    );
+    this.combatLog = new CombatLogPanel(document.getElementById('ui') ?? document.body);
+    this.zoom = new ZoomControls(actions.onZoom);
     this.minimap.onTapTile = actions.onMinimapTap;
     this.tracker = new QuestTracker(actions.onOpenQuest, () => void 0);
     this.combatUi = new CombatUi(document.getElementById('ui') ?? document.body, {
@@ -120,6 +146,7 @@ export class Hud {
       onBind: actions.onBind,
       onPetOrders: actions.onPetOrders,
       onContinue: actions.onContinue,
+      onSkipRound: actions.onSkipRound,
     });
     this.combatUi.onItems = actions.onItems;
     this.leftCol = h('div', { class: 'hud-left' }, [this.combatUi.turnBar, this.skillBar.statusRow, this.tracker.el]);
@@ -129,6 +156,10 @@ export class Hud {
       this.banner,
       this.log,
       this.dice.el,
+      this.duel.el,
+      this.combatLog.el,
+      this.combatBanner.el,
+      this.zoom.el,
       this.combatUi.caption,
       this.combatUi.turnBanner,
       this.joystick.el,
@@ -136,7 +167,13 @@ export class Hud {
       this.actionBar,
       this.combatUi.menu,
       this.combatUi.nextBtn,
+      this.combatUi.skipBtn,
     ]);
+  }
+
+  /** Enlaza la partida (para los retratos y nombres de la tarjeta de duelo). */
+  setGame(game: Game): void {
+    this.game = game;
   }
 
   applySettings(s: Settings): void {
@@ -168,6 +205,7 @@ export class Hud {
   }
 
   setPortrait(colors: HumanoidColors): void {
+    this.heroColors = colors;
     const c = this.portrait.getContext('2d')!;
     c.imageSmoothingEnabled = false;
     c.fillStyle = '#000';
@@ -199,7 +237,8 @@ export class Hud {
   update(game: Game, dt: number): void {
     const p = game.state.player;
     const prog = levelProgress(p.xp);
-    const sig = `${p.name}|${p.level}|${p.gold}|${p.hp}/${p.maxHp}|${p.mp}/${p.maxMp}|${p.xp}|${p.attributePoints}`;
+    const hpNow = game.hudHp;
+    const sig = `${p.name}|${p.level}|${p.gold}|${hpNow}/${p.maxHp}|${p.mp}/${p.maxMp}|${p.xp}|${p.attributePoints}`;
     if (sig !== this.lastSig) {
       this.lastSig = sig;
       this.nameEl.replaceChildren(
@@ -207,8 +246,8 @@ export class Hud {
         ...(p.attributePoints > 0 ? [h('span', { class: 'hud-points', text: ' ✚' })] : []),
       );
       this.goldEl.textContent = `● ${p.gold} oro`;
-      this.hp.fill.style.width = `${(100 * p.hp) / Math.max(1, p.maxHp)}%`;
-      this.hp.label.textContent = `PV ${p.hp}/${p.maxHp}`;
+      this.hp.fill.style.width = `${(100 * hpNow) / Math.max(1, p.maxHp)}%`;
+      this.hp.label.textContent = `PV ${hpNow}/${p.maxHp}`;
       this.mp.fill.style.width = `${(100 * p.mp) / Math.max(1, p.maxMp)}%`;
       this.mp.label.textContent = `${this.resourceShort} ${p.mp}/${p.maxMp}`;
       this.xp.fill.style.width = `${prog.ratio * 100}%`;

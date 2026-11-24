@@ -345,11 +345,15 @@ export class Game {
   fastRound = false;
   /** Paso a paso: segundos hasta poder pulsar «Siguiente» (que se vea el golpe). */
   holdT = 0;
+  /** Escapaste del último combate (para no celebrar una «victoria» al huir). */
+  fled = false;
   private timers: Array<{ t: number; fn: () => void }> = [];
   /** Vida del jugador mostrada en el HUD mientras el golpe aún no se revela. */
   private shownPlayerHp: number | undefined;
   /** Nombre de la habilidad en curso (para la tarjeta de duelo de sus ataques). */
   private skillContext: string | null = null;
+  /** Quién golpea realmente (el jugador aunque sea durante un turno enemigo: contraataque, espinas). */
+  private strikeActor: Actor | null = null;
   /** Algo importante pasó durante el turno enemigo: se detiene la ruta. */
   private interrupt = false;
 
@@ -562,6 +566,17 @@ export class Game {
   }
 
   // ============================================== presentación del combate (v0.5)
+  /** Ejecuta `fn` atribuyendo los golpes al jugador (para la tarjeta de duelo). */
+  private asPlayer<T>(fn: () => T): T {
+    const prev = this.strikeActor;
+    this.strikeActor = { kind: 'player' };
+    try {
+      return fn();
+    } finally {
+      this.strikeActor = prev;
+    }
+  }
+
   /** Ejecuta `fn` tras `delay` segundos de juego (ya, si no hay retraso). */
   private later(delay: number, fn: () => void): void {
     if (delay <= 0) fn();
@@ -1436,6 +1451,13 @@ export class Game {
     enemy: Enemy,
     opt: { extraDice?: string; moreDice?: string[]; toHitBonus?: number; critRange?: number; applyStatus?: StatusApply; moreStatus?: StatusApply[] },
   ): void {
+    this.asPlayer(() => this.playerAttackInner(enemy, opt));
+  }
+
+  private playerAttackInner(
+    enemy: Enemy,
+    opt: { extraDice?: string; moreDice?: string[]; toHitBonus?: number; critRange?: number; applyStatus?: StatusApply; moreStatus?: StatusApply[] },
+  ): void {
     const d = this.derived;
     const weapon = d.weapon;
     const pos = this.playerPos;
@@ -1522,10 +1544,11 @@ export class Game {
     const color = crit ? '#f2d888' : d.note === 'vulnerable' ? '#ff8040' : d.note === 'resiste' ? '#a0a0b0' : '#ffffff';
     this.floatText(enemy.x, enemy.y, `${crit ? '¡' : ''}${d.amount}${crit ? '!' : ''}`, color);
     const note = d.note === 'vulnerable' ? ' (¡vulnerable!)' : d.note === 'resiste' ? ' (resiste)' : '';
-    this.msg(`${crit ? '¡CRÍTICO! ' : ''}${enemy.def.name} recibe ${d.amount} de daño ${type}${note}.`, 'combat', this.currentActor?.kind === 'enemy' ? 'dmg-in' : 'dmg-out');
+    this.msg(`${crit ? '¡CRÍTICO! ' : ''}${enemy.def.name} recibe ${d.amount} de daño ${type}${note}.`, 'combat', this.strikeActor || this.currentActor?.kind !== 'enemy' ? 'dmg-out' : 'dmg-in');
     this.cfx({
       type: 'hit', target: { kind: 'enemy', uid: enemy.uid }, pos: { x: enemy.x, y: enemy.y }, amount: d.amount, dmgType: type, crit,
-      note: d.note, killed: enemy.hp <= 0, attacker: this.currentActor, action: this.skillContext ?? this.actionName, lead: this.actionLead,
+      note: d.note, killed: enemy.hp <= 0, action: this.skillContext ?? this.actionName, lead: this.actionLead,
+      attacker: this.strikeActor ?? (this.currentActor && !(this.currentActor.kind === 'enemy' && this.currentActor.uid === enemy.uid) ? this.currentActor : null),
     });
     if (enemy.hp <= 0) {
       this.killEnemy(enemy);
@@ -1744,7 +1767,9 @@ export class Game {
     this.skillContext = skill.name;
     this.actionName = skill.name;
     this.msg(`${skill.icon} ${skill.name}`, 'combat');
-    for (const eff of skill.effects) this.applySkillEffect(skill, eff, center);
+    this.asPlayer(() => {
+      for (const eff of skill.effects) this.applySkillEffect(skill, eff, center);
+    });
     this.skillContext = null;
     this.afterAction();
   }
@@ -1884,6 +1909,7 @@ export class Game {
     this.cancelPath();
     if (s.success) {
       this.enemies = this.enemies.filter((e) => !foes.includes(e));
+      this.fled = true;
       this.msg('¡Logras escapar! Tus enemigos te pierden el rastro.', 'good');
       this.state.turn++;
       return;
@@ -2105,7 +2131,7 @@ export class Game {
       for (const t of this.talentList('thorns')) {
         if (e.hp <= 0) break;
         this.killContext = 'other';
-        this.damageEnemy(e, roll(this.rng, t.dice).total, t.damageType);
+        this.asPlayer(() => this.damageEnemy(e, roll(this.rng, t.dice).total, t.damageType));
       }
     }
   }
