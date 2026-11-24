@@ -131,6 +131,7 @@ export class CombatUi {
     this.nextBtn.textContent = holding && game.awaitingContinue ? '⏳ …' : waitLabel;
     this.nextBtn.disabled = !(game.combatSpeed === 'paso' && game.awaitingContinue) || holding;
     this.skipBtn.style.display = waiting && game.canSkipRound ? '' : 'none';
+    this.nextBtn.classList.toggle('with-skip', waiting && game.canSkipRound);
     if (!myTurn) return;
     const used = game.actionUsed;
     if (used && this.skillsOpen) this.skillsOpen = false;

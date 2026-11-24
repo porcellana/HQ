@@ -156,42 +156,50 @@ export class DuelCard {
     const first = e.rows[0];
     const worst = e.rows.find((r) => r.outcome === 'crit') ? 'crit' : e.rows.find((r) => r.outcome === 'fumble') ? 'fumble' : '';
     this.el.className = `duel-card passthrough show${single ? ' single' : ' multi'}${revealed && worst ? ` ${worst}` : ''}${this.revealed ? ' revealed' : ''}`;
-    const header = h('div', { class: 'duel-head' }, [
+    // Un solo objetivo: tarjeta compacta de DOS líneas (retratos a la izquierda).
+    //   [A] ⚔ [B]  Proyectil mágico · Perla → Goblin
+    //              🎲14 + 5 = 19 vs CA 16 · Impacto · −9 🔮 arcano
+    if (single && first) {
+      const head = h('div', { class: 'duel-head' }, [
+        spriteElement(e.attackerSprite, 'duel-portrait'),
+        h('span', { class: 'duel-vs', text: '⚔' }),
+        spriteElement(first.defenderSprite, 'duel-portrait foe'),
+      ]);
+      const title = h('div', { class: 'duel-title' }, [
+        h('b', { text: e.action }),
+        h('small', { text: ` ${e.attackerName} → ${first.defenderName}` }),
+      ]);
+      this.el.replaceChildren(h('div', { class: 'duel-main' }, [head, h('div', { class: 'duel-col' }, [title, this.resultLine(first, revealed)])]));
+      return;
+    }
+    // Varios objetivos: cabecera pequeña y una fila por objetivo.
+    const header = h('div', { class: 'duel-head multi-head' }, [
       spriteElement(e.attackerSprite, 'duel-portrait'),
-      h('span', { class: 'duel-vs', text: '⚔' }),
-      ...(single && first ? [spriteElement(first.defenderSprite, 'duel-portrait foe')] : []),
+      h('div', { class: 'duel-title' }, [h('b', { text: e.action }), h('small', { text: ` ${e.attackerName}` })]),
     ]);
-    const title = h('div', { class: 'duel-title' }, [
-      h('b', { text: e.action }),
-      h('small', { text: single && first ? ` ${e.attackerName} → ${first.defenderName}` : ` ${e.attackerName}` }),
-    ]);
-    const body = single && first ? this.bigRow(first, revealed) : e.rows.map((r) => this.smallRow(r, revealed));
-    this.el.replaceChildren(header, title, ...(Array.isArray(body) ? body : [body]));
+    this.el.replaceChildren(header, ...e.rows.map((r) => this.smallRow(r, revealed)));
   }
 
-  /** Fila grande: d20 y resultado (un solo objetivo). */
-  private bigRow(r: DuelRow<HTMLCanvasElement>, revealed: boolean): HTMLElement {
+  /** Línea de resultado de un solo objetivo: d20, cuenta, resultado y daño. */
+  private resultLine(r: DuelRow<HTMLCanvasElement>, revealed: boolean): HTMLElement {
     const o = OUTCOME[r.outcome] ?? OUTCOME['hit']!;
-    const parts: HTMLElement[] = [];
+    const parts: Array<HTMLElement | string> = [];
     if (r.roll) {
       const sign = r.roll.bonus >= 0 ? '+' : '−';
-      parts.push(
-        h('div', { class: 'duel-roll' }, [
-          h('div', { class: `d20${revealed ? ` ${o.cls}` : ' rolling'}`, text: revealed ? String(r.roll.natural) : '?' }),
-          h('div', { class: 'duel-calc' }, [
-            h('span', { text: revealed ? `${r.roll.natural} ${sign} ${Math.abs(r.roll.bonus)} = ${r.roll.total}` : 'Tirando…' }),
-            r.roll.target !== null ? h('small', { text: ` vs ${r.roll.targetLabel} ${r.roll.target}` }) : null,
-          ]),
-        ]),
-      );
+      parts.push(h('span', { class: `d20 mini${revealed ? ` ${o.cls}` : ' rolling'}`, text: revealed ? String(r.roll.natural) : '?' }));
+      // Cuenta compacta: «14+5=19 vs CA 16».
+      const calc = revealed
+        ? `${r.roll.natural}${sign}${Math.abs(r.roll.bonus)}=${r.roll.total}${r.roll.target !== null ? ` vs ${r.roll.targetLabel} ${r.roll.target}` : ''}`
+        : 'Tirando…';
+      parts.push(h('span', { class: 'duel-calc', text: calc }));
     } else if (!revealed) {
-      parts.push(h('div', { class: 'duel-cast', text: '· · ·' }));
+      parts.push(h('span', { class: 'duel-cast', text: '· · ·' }));
     }
     if (revealed) {
-      parts.push(h('div', { class: `duel-outcome ${o.cls}`, text: o.text }));
-      if (r.damage) parts.push(this.damageLine(r));
+      parts.push(h('span', { class: `duel-outcome ${o.cls}`, text: o.text }));
+      if (r.damage) parts.push(this.damageLine(r, true));
     }
-    return h('div', { class: 'duel-body' }, parts);
+    return h('div', { class: 'duel-line' }, parts);
   }
 
   /** Fila compacta (varios objetivos). */
@@ -213,7 +221,9 @@ export class DuelCard {
     return h('div', { class: `duel-damage${d.crit ? ' crit' : ''}${small ? ' sm' : ''}` }, [
       h('b', { text: `−${d.amount}` }),
       d.hits && d.hits > 1 ? h('small', { text: ` ×${d.hits}` }) : null,
-      h('span', { text: ` ${d.type ? TYPE_ICON[d.type] : ''} ${d.type ?? ''}` }),
+      h('span', { text: ` ${d.type ? TYPE_ICON[d.type] : ''}` }),
+      // El nombre del tipo sólo se ve donde hay sitio (la tarjeta compacta lo oculta).
+      h('span', { class: 'tword', text: d.type ? ` ${d.type}` : '' }),
       note ? h('small', { class: d.note === 'vulnerable' ? 'vuln' : 'resist', text: note }) : null,
       d.killed ? h('small', { class: 'kill', text: ' ☠' }) : null,
     ]);

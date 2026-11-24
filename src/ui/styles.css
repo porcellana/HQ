@@ -763,3 +763,66 @@ body.combat-turn .hud { --dock: 112px; }
 .duel-outcome.fumble { font-size: 1.2em; }
 .duel-damage b { font-size: 1.5em; }
 .duel-damage.crit b { font-size: 1.75em; }
+
+/* =====================================================================
+   v0.5.2 — MENSAJES DE COMBATE ABAJO, JUNTO A LOS BOTONES
+   El registro, el cartel de acción y la tarjeta de duelo van apilados en
+   .combat-stack, justo encima del menú de combate: no tapan el mapa.
+   ===================================================================== */
+.combat-stack {
+  position: absolute; left: 6px; right: 6px; bottom: calc(var(--dock) + 8px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px; pointer-events: none; z-index: 3;
+}
+/* Registro: estrecho, a la izquierda, encima de la tarjeta */
+.combat-stack .combat-log, body.combat-turn .combat-stack .combat-log {
+  position: static; width: min(100%, 290px); align-self: flex-start; bottom: auto; left: auto;
+}
+/* Tarjeta de duelo: una tira baja de dos líneas */
+.combat-stack .duel-card {
+  position: static; transform: none; width: auto; top: auto; left: auto; opacity: 1; display: none;
+  padding: 4px 8px; border-radius: 12px; font-size: 0.82em; text-align: left; background: rgba(11,10,16,0.92);
+  border-width: 1px; animation: cardin 0.18s ease-out;
+}
+.combat-stack .duel-card.show { display: block; transform: none; }
+@keyframes cardin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.duel-main { display: flex; align-items: center; gap: 8px; }
+.duel-main .duel-head { flex: none; gap: 3px; }
+.duel-main .duel-portrait { width: 30px; height: 30px; border-radius: 7px; }
+.duel-main .duel-vs { font-size: 0.9em; }
+.duel-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.duel-col .duel-title { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.duel-col .duel-title b { font-size: 1em; }
+.duel-col .duel-title small { font-size: 0.8em; }
+.duel-line { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 8px; line-height: 1.2; }
+.duel-line .d20.mini { width: 26px; height: 26px; font-size: 0.85em; border-width: 2px; }
+.duel-line .duel-calc { font-size: 0.95em; text-align: left; }
+.duel-line .duel-outcome { font-size: 1em; margin: 0; letter-spacing: 0.03em; }
+.duel-line .duel-outcome.crit { font-size: 1.1em; }
+.duel-line .duel-damage { margin: 0; animation: none; }
+.duel-line .duel-damage b { font-size: 1.25em; }
+.duel-line .duel-damage.crit b { font-size: 1.45em; }
+.duel-head.multi-head { gap: 8px; justify-content: flex-start; }
+.duel-head.multi-head .duel-portrait { width: 28px; height: 28px; }
+/* Cartel de acción (moverse, esperar…): también abajo, de una línea */
+.combat-stack .action-caption {
+  position: static; transform: none; width: auto; min-width: 0; max-width: none; top: auto; left: auto; opacity: 1; display: none;
+  padding: 3px 10px; font-size: 0.78em; text-align: left; border-width: 1px; animation: cardin 0.18s ease-out;
+}
+.combat-stack .action-caption.show { display: block; transform: none; }
+.combat-stack .action-caption b { display: inline; margin: 0 6px 0 0; }
+.combat-stack .action-caption div { display: inline; }
+/* Los avisos sueltos suben para no pisar la pila */
+.hud.in-combat .log, body.combat-turn .log { bottom: calc(var(--dock) + 170px + env(safe-area-inset-bottom)); }
+/* «Siguiente» y «Saltar ronda» en la misma fila inferior */
+.next-btn { left: 8px; right: 8px; transform: none; min-width: 0; width: auto; }
+.next-btn.with-skip { right: calc(36% + 4px); }
+.skip-btn { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(36% - 12px); min-height: 48px; padding: 0 6px; font-size: 0.8em; }
+/* Tarjeta de duelo en dos líneas: retratos pequeños, sin el nombre del tipo de daño */
+.combat-stack .duel-damage .tword { display: none; }
+.duel-main { gap: 6px; }
+.duel-main .duel-portrait { width: 26px; height: 26px; }
+.combat-stack .duel-card { font-size: 0.78em; padding: 3px 8px; }
+.duel-line { gap: 2px 6px; flex-wrap: nowrap; }
+.duel-line .duel-calc { white-space: nowrap; }
+/* Mientras hay tarjeta o cartel, el registro se esconde (no se apilan tres cosas) */
+.combat-stack:has(.duel-card.show) .combat-log, .combat-stack:has(.action-caption.show) .combat-log { display: none !important; }

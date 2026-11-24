@@ -2,6 +2,15 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.2 · 2026-11-24 — Mensajes de combate abajo
+
+- La tarjeta de duelo, el cartel de acción y el registro van ahora **abajo, pegados a los botones
+  de combate**, en una pila que no tapa el mapa. La tarjeta es una tira fina de dos líneas
+  (retratos, acción, d20, cuenta, resultado y daño con su icono).
+- Mientras hay tarjeta o cartel, el registro se esconde (no se apilan tres cosas).
+- En combate la cámara reserva ese espacio para que el personaje no quede tapado.
+- «▶ Siguiente» y «⏩ Saltar ronda» comparten la misma fila inferior.
+
 ## v0.5.1 · 2026-11-24 — Retoques de interfaz
 
 - Quitado el zoom de acercamiento a cada golpe en combate (feo): la cámara ya no se acerca ni se desplaza.

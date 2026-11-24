@@ -156,11 +156,8 @@ export class Hud {
       this.banner,
       this.log,
       this.dice.el,
-      this.duel.el,
-      this.combatLog.el,
       this.combatBanner.el,
       this.zoom.el,
-      this.combatUi.caption,
       this.combatUi.turnBanner,
       this.joystick.el,
       this.skillBar.el,
@@ -168,6 +165,9 @@ export class Hud {
       this.combatUi.menu,
       this.combatUi.nextBtn,
       this.combatUi.skipBtn,
+      // Pila de mensajes de combate (registro, cartel y tarjeta de duelo): pegada
+      // justo encima de los botones de combate para no tapar el mapa.
+      h('div', { class: 'combat-stack' }, [this.combatLog.el, this.combatUi.caption, this.duel.el]),
     ]);
   }
 
@@ -201,7 +201,10 @@ export class Hud {
       .map((el) => el.getBoundingClientRect().top)
       .filter((t) => t > 0);
     const barTop = tops.length ? Math.min(...tops) : window.innerHeight;
-    return { top: top + 4, bottom: Math.max(0, window.innerHeight - barTop) + 4 };
+    // En combate se reserva sitio para la tira de mensajes que aparece sobre los botones
+    // (así el personaje no queda tapado por la tarjeta de duelo).
+    const reserve = this.root.classList.contains('in-combat') ? 54 : 0;
+    return { top: top + 4, bottom: Math.max(0, window.innerHeight - barTop) + 4 + reserve };
   }
 
   setPortrait(colors: HumanoidColors): void {
