@@ -528,7 +528,7 @@ La lógica del combate es instantánea y determinista (la que usan los tests); l
 - **Cinemática** (`src/gfx/cinema.ts`): zoom de acción (×1,28 como máximo, RELATIVO al zoom del
   jugador), temblor según el daño, *hit-stop* de ~80 ms y cámara lenta en críticos y golpes de
   gracia, viñeta oscura, anticipación y embestida, destello al recibir daño, enemigos que se
-  desintegran, botín que salta con el color de su rareza y banners ⚔ ¡COMBATE! / ¡VICTORIA!.
+  desintegran, botín que salta con el color de su rareza y (sin banners grandes de inicio ni de victoria: la XP sale pequeña sobre el personaje).
 - **Partículas** (`src/gfx/particles.ts`): pool de 150 sin crear objetos por fotograma.
   **Para añadir el efecto de un tipo de daño nuevo**: añade el tipo en `DamageType`
   (`src/data/schema.ts`), escribe un emisor en `EMITTERS` (partículas) y, si quieres un

@@ -597,16 +597,13 @@ export class App {
     if (!hud) return;
     const inCombat = game.inCombat && !game.isDead;
     if (inCombat && !this.combatWas) {
-      // ⚔ ¡COMBATE!
+      // Empieza un combate (sin cartel grande: sólo un sonido suave).
       this.combatWas = true;
       this.combatEnding = false;
       game.fled = false;
       Object.assign(this.summary, { xp: 0, gold: 0, kills: 0, items: [] });
       hud.combatLog.reset();
       hud.combatLog.setActive(true);
-      const p = game.playerPos;
-      const names = game.enemies.filter((e) => e.alerted && Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y)) <= e.def.sight + 2).map((e) => e.def.name);
-      hud.combatBanner.showStart(names);
       if (this.settings.combatFx !== 'minimos') this.sfx.play('combate');
     } else if (!inCombat && this.combatWas && !this.combatEnding) {
       this.combatEnding = true;
@@ -626,7 +623,7 @@ export class App {
       }
     }
     // Subidas de nivel: tras el combate, y sin otro diálogo abierto.
-    if (this.pendingLevelUps.length && !blocked && !this.pauseClose && !this.screen && !game.inCombat && !this.combatWas && !hud.combatBanner.active) {
+    if (this.pendingLevelUps.length && !blocked && !this.pauseClose && !this.screen && !game.inCombat && !this.combatWas) {
       const list = this.pendingLevelUps.splice(0);
       for (const ev of list) this.showLevelUp(ev);
     }

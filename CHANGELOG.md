@@ -2,6 +2,10 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.4 · 2026-11-24 — Sin banner de combate
+
+- Quitado también el cartel grande «⚔ ¡COMBATE!» al empezar un combate (queda sólo un sonido suave).
+
 ## v0.5.3 · 2026-11-24 — Sin banner de victoria
 
 - Quitado el cartel grande de «¡VICTORIA!» al acabar el combate. La experiencia (y el oro) salen

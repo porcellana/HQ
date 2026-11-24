@@ -15,7 +15,6 @@ import { Minimap } from './minimap';
 import { SkillBar } from './skillbar';
 import { QuestTracker } from './questTracker';
 import { CombatUi } from './combatUi';
-import { CombatBanner } from './combatBanner';
 import { CombatLogPanel } from './combatLogPanel';
 import { DuelCard } from './duelCard';
 import { ZoomControls } from './zoomControls';
@@ -70,7 +69,6 @@ export class Hud {
   /** Tarjeta de duelo, registro de combate, banners y controles de zoom (v0.5). */
   readonly duel: DuelCard;
   readonly combatLog: CombatLogPanel;
-  readonly combatBanner = new CombatBanner();
   readonly zoom: ZoomControls;
   /** Partida enlazada (nombres y sprites de la tarjeta de duelo). */
   private game: Game | null = null;
@@ -156,7 +154,6 @@ export class Hud {
       this.banner,
       this.log,
       this.dice.el,
-      this.combatBanner.el,
       this.zoom.el,
       this.combatUi.turnBanner,
       this.joystick.el,
