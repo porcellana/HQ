@@ -171,6 +171,8 @@ describe('objetos en partida', () => {
     expect(g.quickPotion()).toBeNull();
     expect(g.state.player.hp).toBeGreaterThan(1);
     expect(g.state.turn).toBe(turn + 1);
+    // Que el goblin no pueda matarte durante el resto de la prueba (antes era inestable).
+    g.state.player.maxHp = g.state.player.hp = 200;
     settle(g);
     const bread = g.state.player.inventory.find((x) => x.id === 'pan')!;
     expect(g.useItem(bread.uid)).toMatch(/combate/);
