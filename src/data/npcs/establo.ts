@@ -22,6 +22,7 @@ export default [
         'Las que dejes aquí seguirán entrenando conmigo, aunque tú estés lejos. Eso sí: no más fuertes que tú.',
         'Un destellín es raro de ver. Si alguna vez encuentras uno, trátalo bien: cura a los heridos.',
       ],
+      quests: true,
       extraOptions: [{ label: '🐾 Ver el establo', action: { type: 'stable' } }],
     }),
   },

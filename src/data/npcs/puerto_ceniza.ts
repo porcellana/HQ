@@ -49,6 +49,7 @@ export default [
     look: { overlay: 'guerrero', cloth: '#4a3a2a', clothDark: '#2a2018', pants: '#2a2420', hat: '#3a3a40', hair: '#3a2418', skin: '#b07850' },
     dialog: npcDialog({
       greeting: 'La Forja del Ancla. El mejor acero del puerto, y el más caro. Se nota.',
+      quests: true,
       shop: 'forja_ancla',
       rumors: ['Mi prima Brunna forja en Brumaroja. Buena mano, poco carbón.', 'Las armas a dos manos pegan más, pero adiós al escudo.'],
       extraOptions: [

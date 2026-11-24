@@ -2,6 +2,12 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.4.2 · 2026-11-24 — Arreglo de misiones
+
+- Arreglado: no se podían entregar «Carta para la Forja» (Garrik) ni «Tu primera captura»
+  (Tobías): sus diálogos no tenían la opción «📜 Misiones».
+- Test nuevo que comprueba que todo PNJ que da o recibe una misión puede gestionarla.
+
 ## v0.4.1 · 2026-11-23 — Movimiento por turno en combate
 
 - Economía de acciones estilo D&D 5e / Baldur's Gate 3: en tu turno de combate tienes
