@@ -2,6 +2,13 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.6 · 2026-11-24 — Menú de combate en una línea
+
+- El menú de «Tu turno» pasa de dos filas a **una sola línea**: Atacar, Habilidad, Objeto,
+  Defender, Huir y Terminar. Correr, Vincular y las órdenes a la mascota están dentro de
+  «Habilidad». El movimiento 👣 y la acción salen en una pastilla pequeña sobre el menú.
+- Quitado el cartel grande «TU TURNO» (queda un sonido suave y una vibración corta).
+
 ## v0.5.5 · 2026-11-24 — Sin recuadro «En combate»
 
 - Quitado el recuadro rojo «⚔ En combate» que se quedaba arriba a la izquierda durante la pelea.

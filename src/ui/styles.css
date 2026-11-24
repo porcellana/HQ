@@ -484,14 +484,6 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .action-caption b.foe { color: #ff9a8a; }
 .action-caption b.friend { color: #a8f08a; }
 
-/* «TU TURNO» */
-.turn-banner {
-  position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(0.8); padding: 6px 22px;
-  font-size: 1.4em; letter-spacing: 0.12em; color: var(--gold-l); background: rgba(11,10,16,0.85);
-  border: 2px solid var(--gold); border-radius: 12px; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none;
-  text-shadow: 0 2px 0 #000;
-}
-.turn-banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 
 /* Menú de acciones en tu turno */
 .combat-menu {
@@ -812,3 +804,19 @@ body.combat-turn .hud { --dock: 112px; }
 
 /* Al acabar el combate, la tira de mensajes que aún queda sube sobre los botones de habilidad */
 .hud:not(.in-combat) .combat-stack { bottom: calc(var(--dock) + 58px + env(safe-area-inset-bottom)); }
+
+
+/* =====================================================================
+   v0.5.6 — MENÚ DE COMBATE EN UNA SOLA LÍNEA
+   ===================================================================== */
+body.combat-turn .hud { --dock: 94px; }
+.cm-row.main .cbtn { min-height: 48px; font-size: 0.66em; }
+.cm-row.main .cbtn .ico { font-size: 1.75em; }
+.combat-menu { padding: 4px; gap: 0; }
+/* Pastilla flotante con el movimiento y la acción, sobre el borde del menú */
+.combat-menu .turn-status {
+  position: absolute; left: 10px; bottom: calc(100% + 4px); padding: 1px 10px; border-radius: 12px; gap: 8px;
+  background: rgba(11,10,16,0.9); border: 1px solid var(--border); font-size: 0.74em; pointer-events: none;
+}
+.skill-bar button.skill.dash small, .skill-bar button.skill.pet small { font-size: 0.55em; }
+.skill-bar button.skill:disabled { opacity: 0.35; }

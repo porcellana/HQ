@@ -120,7 +120,7 @@ export class Hud {
       btn('☰', 'Menú', actions.onMenu),
     ]);
 
-    this.skillBar = new SkillBar(actions.onSkill, actions.onFlee, actions.onPotion, actions.onBind);
+    this.skillBar = new SkillBar(actions.onSkill, actions.onDash, actions.onPotion, actions.onBind, actions.onPetOrders);
     this.duel = new DuelCard(
       {
         name: (a) => (this.game ? actorName(this.game, a) : ''),
@@ -155,7 +155,6 @@ export class Hud {
       this.log,
       this.dice.el,
       this.zoom.el,
-      this.combatUi.turnBanner,
       this.joystick.el,
       this.skillBar.el,
       this.actionBar,

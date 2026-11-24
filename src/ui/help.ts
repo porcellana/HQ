@@ -19,7 +19,7 @@ const SECTIONS: Array<[string, string[]]> = [
     'Fuera de combate caminas libre. Cuando un enemigo te ve empieza el combate: arriba sale la barra de turnos con los retratos en orden (el que actúa, resaltado).',
     'En TU TURNO tienes 👣 movimiento (casillas; Guerrero, Mago y Clérigo 5, Pícaro 6) y UNA ⚔ acción. Puedes moverte, actuar y volver a moverte.',
     'Las casillas azules son las que alcanzas: tócalas para moverte. Si tocas más lejos, avanzas lo que puedas.',
-    'Acciones: ⚔ Atacar (toca al enemigo resaltado), ✨ Habilidad, 🧪 Objeto, 🛡 Defender (+2 CA hasta tu próximo turno), 👟 Correr (doble movimiento), 🏃 Huir y 🔮 Vincular. 🐾 Órdenes a la mascota no gasta la acción.',
+    'Botones (una sola línea): ⚔ Atacar (toca al enemigo resaltado), ✨ Habilidad, 🧪 Objeto, 🛡 Defender (+2 CA hasta tu próximo turno), 🏃 Huir y ⏭ Terminar. Dentro de ✨ Habilidad, junto a tus habilidades, están 👟 Correr (doble movimiento), 🔮 Vincular y 🐾 Órdenes a la mascota (no gasta la acción).',
     '⏭ Terminar turno cuando quieras (se termina solo si ya no te queda acción ni movimiento).',
     'Después actúan tus aliados y los enemigos, de uno en uno: en «Paso a paso» (Ajustes → Velocidad del combate) pulsa ▶ Siguiente o toca la pantalla para ver cada acción.',
     'Ataque = d20 + bonificador contra la CA. Un 20 natural es crítico; un 1, pifia. El número sobre un enemigo es su nivel: en rojo con ☠, huye o vuelve más fuerte.',

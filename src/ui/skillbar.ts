@@ -1,4 +1,4 @@
-/** Barra de habilidades (encima de los botones) + botón Huir durante el combate. */
+/** Barra de habilidades (encima de los botones). En combate también trae Correr y las órdenes a la mascota. */
 import type { SkillDef } from '@/data/schema';
 import type { Game } from '@/game/game';
 import { unlockedSkills } from '@/game/rules/character';
@@ -16,9 +16,10 @@ export class SkillBar {
 
   constructor(
     private readonly onSkill: (s: SkillDef) => void,
-    private readonly onFlee: () => void,
+    private readonly onDash: () => void,
     private readonly onPotion: () => void,
     private readonly onBind: () => void,
+    private readonly onPetOrders: () => void,
   ) {
     this.statusEl = h('div', { class: 'status-row' });
     this.el = h('div', { class: 'skill-bar' });
@@ -43,7 +44,7 @@ export class SkillBar {
       runes, bindable.length, Math.round(bestBind * 100),
       this.questGuide,
       tq ? `${tq.name}${tq.text}${game.zone.id}` : '',
-      potions,
+      potions, game.actionUsed, !!game.petInstance,
       skills.map((s) => s.id).join(','), p.mp, JSON.stringify(c.cooldowns), game.targeting?.id ?? '', combat, game.canAct,
       c.statuses.map((s) => `${s.id}${s.turns}`).join(), c.buffs.map((b) => `${b.stat}${b.amount}${b.turns}`).join(), c.stealth,
     ].join('|');
@@ -66,7 +67,8 @@ export class SkillBar {
       }),
       ...(bindable.length ? [h('button', { class: 'skill bind', onClick: this.onBind, attrs: { 'aria-label': 'Vincular criatura' } }, [h('span', { class: 'ico', text: '🔮' }), h('small', { text: `${Math.round(bestBind * 100)}%` })])] : []),
       ...(potions > 0 ? [h('button', { class: 'skill potion', onClick: this.onPotion, attrs: { 'aria-label': 'Poción de curación' } }, [h('span', { class: 'ico', text: '🧪' }), h('small', { text: `×${potions}` })])] : []),
-      ...(combat ? [h('button', { class: 'skill flee', onClick: this.onFlee, attrs: { 'aria-label': 'Huir' } }, [h('span', { class: 'ico', text: '🏃' }), h('small', { text: 'Huir' })])] : []),
+      ...(combat ? [h('button', { class: 'skill dash', onClick: this.onDash, disabled: game.actionUsed, attrs: { 'aria-label': 'Correr (gasta la acción: doble movimiento)' } }, [h('span', { class: 'ico', text: '👟' }), h('small', { text: 'Correr' })])] : []),
+      ...(combat && game.petInstance ? [h('button', { class: 'skill pet', onClick: this.onPetOrders, attrs: { 'aria-label': 'Órdenes a la mascota' } }, [h('span', { class: 'ico', text: '🐾' }), h('small', { text: 'Órdenes' })])] : []),
     );
 
     const chips: HTMLElement[] = [];

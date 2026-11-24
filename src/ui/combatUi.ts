@@ -3,10 +3,10 @@
  *  - Barra de turnos (bajo el HUD): retratos en orden con el actor en curso
  *    resaltado y su vida en miniatura.
  *  - Cartel de acción centrado: qué ha hecho cada actor.
- *  - «TU TURNO» al empezar tu turno.
- *  - Menú de acciones en tu turno: movimiento 👣 + UNA acción (Atacar,
- *    Habilidad, Objeto, Defender, Correr, Huir, Vincular) y «Terminar turno».
- *    Órdenes a la mascota no gastan la acción.
+ *  - Menú de acciones en tu turno, en UNA sola línea: Atacar, Habilidad, Objeto,
+ *    Defender, Huir y Terminar. Correr, Vincular y las órdenes a la mascota
+ *    están dentro de «Habilidad» (junto a tus habilidades). Una pastilla
+ *    flotante muestra el movimiento 👣 y si la acción está lista.
  *  - Botón grande «▶ Siguiente» en el modo paso a paso.
  */
 import type { Actor, Game, TurnEntry } from '@/game/game';
@@ -32,7 +32,6 @@ export interface CombatActions {
 export class CombatUi {
   readonly turnBar: HTMLDivElement;
   readonly caption: HTMLDivElement;
-  readonly turnBanner: HTMLDivElement;
   readonly menu: HTMLDivElement;
   readonly nextBtn: HTMLButtonElement;
   /** «⏩ Saltar ronda»: aparece cuando hay 3+ actores por actuar. */
@@ -43,12 +42,10 @@ export class CombatUi {
   private barSig = '';
   private menuSig = '';
   private captionTimer = 0;
-  private bannerTimer = 0;
 
   constructor(private readonly root: HTMLElement, private readonly actions: CombatActions) {
     this.turnBar = h('div', { class: 'turn-bar' });
     this.caption = h('div', { class: 'action-caption' });
-    this.turnBanner = h('div', { class: 'turn-banner', text: 'TU TURNO' });
     this.menu = h('div', { class: 'combat-menu' });
     this.nextBtn = h('button', { class: 'next-btn primary', text: '▶ Siguiente', onClick: () => actions.onContinue() });
     this.skipBtn = h('button', { class: 'skip-btn', text: '⏩ Saltar ronda', onClick: () => actions.onSkipRound(), attrs: { 'aria-label': 'Saltar el resto de la ronda' } });
@@ -70,12 +67,6 @@ export class CombatUi {
   hideAction(): void {
     window.clearTimeout(this.captionTimer);
     this.caption.classList.remove('show');
-  }
-
-  showTurnBanner(): void {
-    window.clearTimeout(this.bannerTimer);
-    this.turnBanner.classList.add('show');
-    this.bannerTimer = window.setTimeout(() => this.turnBanner.classList.remove('show'), 1100);
   }
 
   /** Abre la lista de objetos usables en combate. */
@@ -146,19 +137,14 @@ export class CombatUi {
       h('span', { class: `moves${game.turnMove <= 0 ? ' empty' : ''}`, text: `👣 ${game.turnMove}/${game.turnMoveMax}` }),
       h('span', { class: `act${used ? ' used' : ''}`, text: used ? '⚔ ✕' : '⚔ ✓', attrs: { title: used ? 'Acción usada' : 'Acción lista' } }),
     ]);
-    // Panel compacto de dos filas: acciones principales arriba; estado, Correr, Huir y Terminar abajo.
+    // Panel de UNA sola línea. Correr, Vincular y Órdenes viven en «Habilidad».
     this.menu.replaceChildren(
+      status,
       h('div', { class: 'cm-row main' }, [
         b('⚔', 'Atacar', this.actions.onAttack, game.attackMode ? ' active' : ''),
         b('✨', 'Habilidad', this.actions.onToggleSkills, this.skillsOpen ? ' active' : ''),
         b('🧪', 'Objeto', () => this.onItems?.()),
         b('🛡', 'Defender', this.actions.onDefend),
-        ...(bindable ? [b('🔮', 'Vincular', this.actions.onBind, ' bind')] : []),
-        ...(game.petInstance ? [b('🐾', 'Órdenes', this.actions.onPetOrders, '', false)] : []),
-      ]),
-      h('div', { class: 'cm-row sub' }, [
-        status,
-        b('👟', 'Correr', this.actions.onDash),
         b('🏃', 'Huir', this.actions.onFlee),
         b('⏭', 'Terminar', this.actions.onWait, done || used ? ' end highlight' : ' end', false),
       ]),

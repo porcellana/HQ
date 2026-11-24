@@ -352,7 +352,7 @@ export class App {
     game.events.on('playerTurn', () => {
       hud.duel.dismiss();
       if (game.combatSpeed === 'normal') return;
-      hud.combatUi.showTurnBanner();
+      // Sin cartel grande de «TU TURNO»: sólo un sonido suave y una vibración corta.
       if (this.settings.combatFx !== 'minimos') this.sfx.play('turno');
       buzz(this.settings.vibration, 15);
       window.setTimeout(() => hud.combatUi.hideAction(), 1400);

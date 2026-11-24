@@ -535,7 +535,7 @@ La lógica del combate es instantánea y determinista (la que usan los tests); l
   dibujo propio (como el arco de tajo o el relámpago), un caso en `CombatCinema.addShape`;
   el sonido va en `IMPACT_SFX` (`src/app.ts`) y en `RECIPES` (`src/audio/sfx.ts`).
 - **Sonido** en capas, generado por código: silbido al atacar, un impacto distinto por tipo de
-  daño, crítico grave, campana en «TU TURNO», «ding» más agudo cuanto más rara es la pieza y
+  daño, crítico grave, campana al empezar tu turno, «ding» más agudo cuanto más rara es la pieza y
   acorde ascendente en la victoria.
 - **Saltar ronda**: con 3+ actores pendientes (`SKIP_MIN_ACTORS`).
 - Los efectos visibles de cada golpe (número, destello, barra de vida, vida del HUD y mensajes
