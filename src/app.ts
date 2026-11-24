@@ -516,7 +516,6 @@ export class App {
         game.state.player,
         () => this.setScreen(null),
         () => void this.autosave('ficha'),
-        () => this.showJournal(),
         () => this.showTalents(),
         () => this.showPets(),
       ),

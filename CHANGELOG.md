@@ -2,6 +2,19 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.8 · 2026-11-24 — Menú de misiones claro y desplegable cuadrado
+
+- **Menú de misiones rehecho (📖):** cada misión en curso muestra la tarea de ahora resaltada (▶),
+  las hechas (✓) y las que faltan (○) con «Tienes 2 de 5» y una barra, **dónde ir** con la ruta
+  desde donde estás («Aldea de Brumaroja → Bosque Sombrío»), la recompensa y los botones
+  «Seguir» e «Historia». Pestañas En curso / Hechas, y «Misiones nuevas» con a quién hablar.
+  El botón 📖 de la barra muestra ❗ si hay una misión lista para entregar.
+- **La lista de misiones de arriba desaparece**: queda una sola línea abajo, sobre la barra
+  («⚔ Goblins 0/5 · Bosque Sombrío (+1)»), que abre el menú al tocarla.
+- Quitado el enlace a las misiones de la Ficha.
+- Arreglado: el desplegable de habilidades se salía por la derecha; ahora ocupa justo el ancho de
+  la barra, con dos columnas iguales.
+
 ## v0.5.7 · 2026-11-24 — Barra con accesos directos y desplegable de habilidades
 
 - Barra inferior de exploración en una línea con accesos directos: ⏳ Esperar, ✨ Habilidad,

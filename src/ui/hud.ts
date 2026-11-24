@@ -13,6 +13,7 @@ import { DiceRoller } from './dice';
 import { Joystick } from './joystick';
 import { Minimap } from './minimap';
 import { SkillBar } from './skillbar';
+import * as Quests from '@/game/quests/quests';
 import { QuestTracker } from './questTracker';
 import { CombatUi } from './combatUi';
 import { CombatLogPanel } from './combatLogPanel';
@@ -92,6 +93,8 @@ export class Hud {
   private readonly leftCol: HTMLDivElement;
   /** Botón ✨ de la barra de exploración (abre el desplegable de habilidades). */
   private readonly drawerBtn: HTMLButtonElement;
+  /** Botón 📖 de la barra: se marca con ❗ cuando hay una misión lista para entregar. */
+  private readonly questsBtn: HTMLButtonElement;
 
   constructor(actions: HudActions) {
     this.portrait = h('canvas', { class: 'hud-portrait' });
@@ -122,12 +125,13 @@ export class Hud {
     this.drawerBtn = btn('✨', 'Habilidad', () => {
       this.combatUi.skillsOpen = !this.combatUi.skillsOpen;
     });
+    this.questsBtn = btn('📖', 'Misiones', actions.onJournal);
     this.actionBar = h('div', { class: 'action-bar' }, [
       btn('⏳', 'Esperar', actions.onWait),
       this.drawerBtn,
       btn('🎒', 'Mochila', actions.onInventory),
       btn('📜', 'Ficha', actions.onSheet),
-      btn('📖', 'Misiones', actions.onJournal),
+      this.questsBtn,
       btn('⚙', 'Ajustes', actions.onSettings),
     ]);
 
@@ -165,7 +169,7 @@ export class Hud {
       onSkipRound: actions.onSkipRound,
     });
     this.combatUi.onItems = actions.onItems;
-    this.leftCol = h('div', { class: 'hud-left' }, [this.combatUi.turnBar, this.skillBar.statusRow, this.tracker.el]);
+    this.leftCol = h('div', { class: 'hud-left' }, [this.combatUi.turnBar, this.skillBar.statusRow]);
     this.root = h('div', { class: 'hud passthrough' }, [
       h('div', { class: 'hud-top' }, [panel, this.minimap.el]),
       this.leftCol,
@@ -174,6 +178,7 @@ export class Hud {
       this.dice.el,
       this.zoom.el,
       this.joystick.el,
+      this.tracker.el,
       this.skillBar.el,
       this.actionBar,
       this.combatUi.menu,
@@ -288,6 +293,7 @@ export class Hud {
     // El desplegable de habilidades sólo se ve mientras está abierto (en combate y fuera).
     this.skillBar.el.style.display = this.combatUi.skillsOpen ? '' : 'none';
     this.drawerBtn.classList.toggle('active', this.combatUi.skillsOpen);
+    this.questsBtn.classList.toggle('alert', Quests.activeQuests(game.state).some((q) => Quests.isReady(game.state, q)));
     this.root.classList.toggle('in-combat', combat);
     // Compañero: nombre y vida
     const cd = game.companionDef;

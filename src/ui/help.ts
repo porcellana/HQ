@@ -44,8 +44,8 @@ const SECTIONS: Array<[string, string[]]> = [
   ]],
   ['📜 Misiones', [
     'Los aldeanos con ❗ tienen una misión; con ❓, puedes entregarla.',
-    'Tu objetivo actual aparece arriba, bajo el panel de vida, con la zona donde cumplirlo.',
-    'Diario completo: botón 📖 Misiones de la barra de abajo (ahí eliges cuál seguir y la lees entera).',
+    'Abajo, sobre la barra, ves una línea con la misión que sigues (qué hacer y dónde). Tócala para abrir el menú de misiones.',
+    '📖 Misiones (barra de abajo): para cada misión ves qué te falta (▶), lo que ya llevas (✓ y «Tienes 2 de 5»), a dónde ir con la ruta y la recompensa. Con ❗ en el botón hay una lista para entregar.',
   ]],
   ['🏰 Mazmorras', [
     'Los cofres dan botín; algunos están cerrados (el Pícaro los abre mejor).',

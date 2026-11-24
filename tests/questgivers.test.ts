@@ -38,3 +38,26 @@ describe('PNJ de misiones', () => {
     expect(g.state.player.gold).toBeGreaterThan(gold);
   });
 });
+
+describe('menú de misiones: ruta y textos', () => {
+  it('la ruta lleva por las zonas hasta el destino (y es vacía si ya estás)', async () => {
+    const { routeNames } = await import('@/game/quests/guide');
+    expect(routeNames('aldea_brumaroja', 'aldea_brumaroja')).toEqual([]);
+    expect(routeNames('aldea_brumaroja', 'bosque_sombrio')).toEqual(['Bosque Sombrío']);
+    const toCave = routeNames('aldea_brumaroja', 'cueva_goblin');
+    expect(toCave?.[0]).toBe('Bosque Sombrío');
+    expect(toCave?.length).toBeGreaterThanOrEqual(2);
+    // Dentro de una mazmorra no se calcula ruta (se guía con la brújula)
+    expect(routeNames('cueva_goblin', 'aldea_brumaroja')).toBeNull();
+  });
+
+  it('«Tienes» para recoger y «Llevas» para cazar, sin texto si no hay cantidad', async () => {
+    const { progressText, rewardText } = await import('@/ui/journal');
+    expect(progressText({ type: 'collect', item: 'pan', count: 5, label: 'x' }, 2, 5)).toBe('Tienes 2 de 5');
+    expect(progressText({ type: 'kill', enemy: 'goblin', count: 5, label: 'x' }, 2, 5)).toBe('Llevas 2 de 5');
+    expect(progressText({ type: 'talk', npc: 'herrero_garrik', label: 'x' }, 0, 1)).toBe('');
+    const q = QUESTS.get('sq_carta')!;
+    expect(rewardText(q)).toContain('70 XP');
+    expect(rewardText(q)).toContain('30 oro');
+  });
+});

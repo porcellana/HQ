@@ -153,6 +153,36 @@ export function nextHop(zone: Zone, goal: string): string | null {
   return null;
 }
 
+/**
+ * Ruta más corta (nombres de zona) desde la zona actual hasta la de destino,
+ * para decirle al jugador «Aldea de Brumaroja → Bosque Sombrío». Devuelve null si
+ * no hay ruta o si estás dentro de una mazmorra (ahí se guía con la brújula).
+ */
+export function routeNames(fromZoneId: string, goalZoneId: string): string[] | null {
+  if (parseDungeonZone(fromZoneId)) return null;
+  const target = parseDungeonZone(goalZoneId);
+  const goal = target ? target.dungeon.id : goalZoneId;
+  if (fromZoneId === goal) return [];
+  const prev = new Map<string, string>();
+  const queue = [fromZoneId];
+  const seen = new Set<string>([fromZoneId]);
+  while (queue.length) {
+    const cur = queue.shift()!;
+    for (const n of neighbors(cur)) {
+      if (seen.has(n)) continue;
+      seen.add(n);
+      prev.set(n, cur);
+      if (n === goal) {
+        const path: string[] = [];
+        for (let z: string | undefined = n; z !== undefined; z = prev.get(z)) path.unshift(z);
+        return path.slice(1).map(zoneName);
+      }
+      queue.push(n);
+    }
+  }
+  return null;
+}
+
 /** Nombre legible de una zona (para "Objetivo: … · en X"). */
 export function zoneName(id: string): string {
   const d = parseDungeonZone(id);
