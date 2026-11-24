@@ -2,6 +2,10 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.5 · 2026-11-24 — Sin recuadro «En combate»
+
+- Quitado el recuadro rojo «⚔ En combate» que se quedaba arriba a la izquierda durante la pelea.
+
 ## v0.5.4 · 2026-11-24 — Sin banner de combate
 
 - Quitado también el cartel grande «⚔ ¡COMBATE!» al empezar un combate (queda sólo un sonido suave).

@@ -73,7 +73,6 @@ export class SkillBar {
     for (const s of c.statuses) chips.push(h('span', { class: 'chip', text: `${STATUS_INFO[s.id].icon} ${s.turns}`, attrs: { title: STATUS_INFO[s.id].name } }));
     for (const b of c.buffs) chips.push(h('span', { class: 'chip good', text: `▲${b.stat} +${b.amount} (${b.turns})` }));
     if (c.stealth > 0) chips.push(h('span', { class: 'chip good', text: `🌑 oculto ${c.stealth}` }));
-    if (combat) chips.push(h('span', { class: 'chip warn', text: '⚔ En combate' }));
     // (El objetivo de misión ya no va aquí: lo muestra el seguimiento de misiones.)
     void tq;
     this.statusEl.replaceChildren(...chips);
