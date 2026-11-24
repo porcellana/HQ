@@ -10,6 +10,9 @@
 import { COMPANIONS, NPCS, ORES, TRAPS, getBackground, getClass, getEnemy, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
 import type { CompanionDef, CompanionEvent, DamageType, DialogNode, EnemySpell, NpcDef, QuestDef, SkillDef, SkillEffect, SkillKey, StatusApply, StatusId, ZoneFeature } from '@/data/schema';
 import { Emitter } from '@/engine/events';
+import { FX_LIFE_MUL, PACING, SKIP_MIN_ACTORS } from '@/data/config/combat_pacing';
+import type { CombatFxEvent, MsgCat } from './combat/presentation';
+import { RARITY_RANK } from './combat/presentation';
 import { findPath, type Point } from '@/engine/pathfinding';
 import { Rng, hashString } from '@/engine/rng';
 import { createEnemy, enemySave, type Enemy } from './combat/entities';
@@ -63,6 +66,13 @@ export interface DiceEvent {
   outcome: 'crit' | 'hit' | 'miss' | 'fumble' | 'success' | 'fail';
   /** Tirada secundaria (ataques enemigos): se muestra más pequeña. */
   small?: boolean;
+  /** Quién tira y contra quién (tarjeta de duelo). */
+  attacker?: Actor;
+  defender?: Actor;
+  /** Nombre de la acción («Cimitarra», «Bola de fuego»…). */
+  action?: string;
+  /** Segundos hasta que se revela el resultado (el dado rueda mientras tanto). */
+  lead?: number;
 }
 
 export interface LevelUpEvent {
@@ -131,7 +141,7 @@ export interface CheckResult {
 export interface GameEvents extends Record<string, unknown> {
   zoneChanged: { zone: Zone; firstVisit: boolean };
   turn: { turn: number };
-  message: { text: string; kind?: MsgKind };
+  message: { text: string; kind?: MsgKind; /** Retraso visual en segundos. */ delay?: number; cat?: MsgCat };
   dice: DiceEvent;
   levelUp: LevelUpEvent;
   playerDied: { cause: string };
@@ -144,7 +154,9 @@ export interface GameEvents extends Record<string, unknown> {
   /** Se ha completado la historia principal (pantalla final). */
   victory: Record<string, never>;
   /** Sonido sugerido para la interfaz (el juego no reproduce audio). */
-  sfx: { id: SfxId };
+  sfx: { id: SfxId; delay?: number; rate?: number };
+  /** Evento de presentación del combate (golpes, muertes…). */
+  cfx: CombatFxEvent;
   /** Novedades de la mascota (la interfaz muestra elecciones pendientes). */
   petEvent: PetEvent;
   /** Tocaste a tu mascota en el mapa (órdenes). */
@@ -188,7 +200,11 @@ export interface QuestGoal {
   point: { x: number; y: number } | null;
 }
 
-export type SfxId = 'golpe' | 'critico' | 'fallo' | 'herido' | 'nivel' | 'moneda' | 'cofre' | 'muerte' | 'victoria' | 'mision';
+export type SfxId =
+  | 'golpe' | 'critico' | 'fallo' | 'herido' | 'nivel' | 'moneda' | 'cofre' | 'muerte' | 'victoria' | 'mision'
+  // Combate cinematográfico (v0.5)
+  | 'whoosh' | 'imp_tajo' | 'imp_contundente' | 'imp_fuego' | 'imp_hielo' | 'imp_rayo' | 'imp_veneno' | 'imp_sagrado' | 'imp_sombra'
+  | 'critico_grave' | 'turno' | 'ding' | 'victoria_acorde' | 'desintegra' | 'combate';
 
 /** Efectos visuales efímeros (el renderizador los dibuja). */
 export type Fx =
@@ -202,6 +218,8 @@ export interface GroundLoot {
   y: number;
   items: ItemInstance[];
   gold: number;
+  /** Segundos desde que cayó (negativo: aún no se ha revelado). Anima el salto. */
+  age?: number;
 }
 
 /** Estado visual del jugador (no se guarda; se reconstruye al cargar). */
@@ -310,6 +328,28 @@ export class Game {
   attackMode = false;
   /** Mensajes del actor en curso (para el cartel de acción). */
   private caption: string[] | null = null;
+  /**
+   * COMBATE CINEMATOGRÁFICO (lo activa la interfaz; en tests es false y todo
+   * es instantáneo). Con él, las consecuencias visibles de cada acción
+   * (impacto, daño, sonido, mensajes) se retrasan `actionLead` segundos para
+   * que dé tiempo a ver el d20 rodar en la tarjeta de duelo.
+   */
+  cinematic = false;
+  /** Retraso visual de la acción en curso (segundos). */
+  actionLead = 0;
+  /** Nombre de la acción en curso (para la tarjeta de duelo). */
+  private actionName = '';
+  /** Alguien atacó durante la acción en curso (decide la pausa posterior). */
+  private sawAttack = false;
+  /** «Saltar ronda»: el resto de actores de esta ronda actúan sin pausas. */
+  fastRound = false;
+  /** Paso a paso: segundos hasta poder pulsar «Siguiente» (que se vea el golpe). */
+  holdT = 0;
+  private timers: Array<{ t: number; fn: () => void }> = [];
+  /** Vida del jugador mostrada en el HUD mientras el golpe aún no se revela. */
+  private shownPlayerHp: number | undefined;
+  /** Nombre de la habilidad en curso (para la tarjeta de duelo de sus ataques). */
+  private skillContext: string | null = null;
   /** Algo importante pasó durante el turno enemigo: se detiene la ruta. */
   private interrupt = false;
 
@@ -408,7 +448,8 @@ export class Game {
 
   /** Ritmo de las animaciones: más lentas fuera del modo normal en combate. */
   get animRate(): number {
-    return this.combatSpeed !== 'normal' && this.inCombat ? 0.55 : 1;
+    // En modo cinematográfico el ritmo lo marca PACING (retrasos explícitos), no un factor global.
+    return !this.cinematic && this.combatSpeed !== 'normal' && this.inCombat ? 0.55 : 1;
   }
 
   playerToHit(): number {
@@ -444,6 +485,7 @@ export class Game {
     if (this.combatTurn) {
       this.actionUsed = true;
       this.autoEndIfDone();
+      this.endActionLead();
       return;
     }
     this.endPlayerTurn();
@@ -510,13 +552,85 @@ export class Game {
   }
 
   // ==================================================================== mensajes
-  private msg(text: string, kind: MsgKind = 'info'): void {
+  private msg(text: string, kind: MsgKind = 'info', cat?: MsgCat): void {
     if (this.caption && kind !== 'info') this.caption.push(text);
-    this.events.emit('message', { text, kind });
+    this.events.emit('message', { text, kind, delay: this.actionLead, ...(cat ? { cat } : {}) });
   }
 
   private floatText(x: number, y: number, text: string, color: string): void {
-    this.fx.push({ kind: 'text', x, y, text, color, t: 0, life: 0.9 });
+    this.pushFx({ kind: 'text', x, y, text, color, t: 0, life: 0.9 });
+  }
+
+  // ============================================== presentación del combate (v0.5)
+  /** Ejecuta `fn` tras `delay` segundos de juego (ya, si no hay retraso). */
+  private later(delay: number, fn: () => void): void {
+    if (delay <= 0) fn();
+    else this.timers.push({ t: delay, fn });
+  }
+
+  /** Añade un efecto visual respetando el retraso de la acción y alargando su vida en cinematográfico. */
+  private pushFx(f: Fx): void {
+    f.t = -this.actionLead;
+    if (this.actionLead > 0) f.life *= FX_LIFE_MUL;
+    this.fx.push(f);
+  }
+
+  /** Empieza una acción: fija el retraso visual según la velocidad (0 si no es cinematográfico). */
+  private beginAction(attack = false): void {
+    this.sawAttack = false;
+    const speedKey = this.combatSpeed;
+    const inFight = this.inCombat || attack;
+    this.actionLead = this.cinematic && inFight && !this.fastRound ? PACING[speedKey].lead : 0;
+  }
+
+  private endActionLead(): void {
+    this.actionLead = 0;
+  }
+
+  /** Embestida con anticipación: el actor retrocede un poco y golpea al llegar el impacto. */
+  private strike(o: { bumpT: number; bumpDx: number; bumpDy: number }, dx: number, dy: number): void {
+    const go = () => {
+      o.bumpT = this.cinematic ? 1.3 : 1;
+      o.bumpDx = dx;
+      o.bumpDy = dy;
+    };
+    // Empieza un poco antes del impacto para que el golpe coincida con la revelación.
+    this.later(Math.max(0, this.actionLead - 0.3), go);
+  }
+
+  /** Destello de daño sobre un actor cuando se revela el golpe. */
+  private flash(o: { flashT: number }): void {
+    this.later(this.actionLead, () => {
+      o.flashT = 1;
+    });
+  }
+
+  /** Evento de presentación (la capa visual lo reproduce). */
+  private cfx(ev: CombatFxEvent): void {
+    this.sawAttack = true;
+    this.events.emit('cfx', ev);
+  }
+
+  /** Vida del jugador que debe enseñar el HUD (retrasada hasta que se revela el golpe). */
+  get hudHp(): number {
+    return this.shownPlayerHp ?? this.state.player.hp;
+  }
+
+  /** Paso a paso: salta las pausas del resto de la ronda. */
+  skipRound(): void {
+    if (!this.cinematic || this.phase !== 'enemies') return;
+    this.fastRound = true;
+    this.holdT = 0;
+    this.actionLead = 0;
+    if (this.awaitingContinue) this.continueTurn(true);
+    else this.enemyTimer = 0;
+  }
+
+  /** ¿Hay suficientes actores pendientes como para ofrecer «Saltar ronda»? */
+  get canSkipRound(): boolean {
+    if (!this.cinematic || this.phase !== 'enemies' || this.fastRound) return false;
+    const pending = this.enemyQueue.length + (this.allyPending ? 1 : 0) + (this.petPending ? 1 : 0);
+    return pending + (this.awaitingContinue ? 1 : 0) >= SKIP_MIN_ACTORS - 1 && pending >= 2;
   }
 
   // ======================================================================= input
@@ -670,9 +784,12 @@ export class Game {
   }
 
   /** Paso a paso: continuar con el siguiente actor. */
-  continueTurn(): void {
+  continueTurn(force = false): void {
     if (!this.awaitingContinue) return;
+    // Que dé tiempo a ver el golpe antes de pasar al siguiente actor.
+    if (!force && this.holdT > 0) return;
     this.awaitingContinue = false;
+    this.holdT = 0;
     this.enemyTimer = 0;
   }
 
@@ -813,14 +930,27 @@ export class Game {
 
   private updateAnimations(rawDt: number): void {
     const dt = rawDt * this.animRate;
+    // Temporizadores de presentación y espera de «Siguiente».
+    if (this.holdT > 0) this.holdT = Math.max(0, this.holdT - rawDt);
+    if (this.timers.length) {
+      const due: Array<() => void> = [];
+      for (const t of this.timers) {
+        t.t -= rawDt;
+        if (t.t <= 0) due.push(t.fn);
+      }
+      this.timers = this.timers.filter((t) => t.t > 0);
+      for (const fn of due) fn();
+    }
+    for (const g of this.ground) if (g.age !== undefined) g.age += rawDt;
     const v = this.view;
-    v.bumpT = Math.max(0, v.bumpT - dt * 5);
+    const bumpRate = this.cinematic ? 3.2 : 5;
+    v.bumpT = Math.max(0, v.bumpT - dt * bumpRate);
     v.flashT = Math.max(0, v.flashT - dt * 4);
     if (this.ally) advanceWalker(this.ally, dt);
     if (this.pet) advanceWalker(this.pet, dt);
     for (const e of this.enemies) {
       advanceWalker(e, dt);
-      e.bumpT = Math.max(0, e.bumpT - dt * 5);
+      e.bumpT = Math.max(0, e.bumpT - dt * bumpRate);
       e.flashT = Math.max(0, e.flashT - dt * 4);
     }
     for (const f of this.fx) f.t += dt;
@@ -987,7 +1117,14 @@ export class Game {
     // Cartel con lo que acabas de hacer y una pausa para verlo antes de que actúen los demás.
     const myLines = this.caption;
     this.caption = null;
-    if (myLines && this.inCombat && this.combatSpeed !== 'normal') {
+    const attacked = this.sawAttack;
+    this.sawAttack = false;
+    this.endActionLead();
+    if (this.cinematic && this.inCombat) {
+      const pc = PACING[this.combatSpeed];
+      if (myLines) this.events.emit('actorAction', { actor: { kind: 'player' }, name: this.state.player.name, lines: myLines });
+      this.enemyTimer = attacked ? pc.afterPlayer : pc.moveDelay;
+    } else if (myLines && this.inCombat && this.combatSpeed !== 'normal') {
       this.events.emit('actorAction', { actor: { kind: 'player' }, name: this.state.player.name, lines: myLines });
       this.enemyTimer = this.combatSpeed === 'paso' ? 0.8 : SLOW_DELAY;
     }
@@ -1005,6 +1142,8 @@ export class Game {
     const wasCombat = this.inCombat;
     this.currentActor = actor;
     this.caption = [];
+    this.beginAction();
+    this.actionName = '';
     const before = this.actorPos(actor);
     let acted = false;
     try {
@@ -1018,9 +1157,20 @@ export class Game {
         lines.push(moved ? (actor.kind === 'enemy' ? 'Se acerca.' : 'Se coloca.') : 'Espera su momento.');
       }
       this.caption = null;
+      const attacked = this.sawAttack;
+      this.sawAttack = false;
+      const lead = this.actionLead;
+      this.endActionLead();
       if (acted && (wasCombat || this.inCombat) && !this.isDead) {
         this.events.emit('actorAction', { actor, name, lines });
-        if (this.combatSpeed === 'paso') this.awaitingContinue = true;
+        if (this.cinematic) {
+          const pc = PACING[this.combatSpeed];
+          if (this.fastRound) this.enemyTimer = 0;
+          else if (this.combatSpeed === 'paso') {
+            this.awaitingContinue = true;
+            this.holdT = attacked ? Math.max(lead + 0.3, pc.nextHold) : 0.25;
+          } else this.enemyTimer = attacked ? pc.perActor : pc.moveDelay;
+        } else if (this.combatSpeed === 'paso') this.awaitingContinue = true;
         else this.enemyTimer = this.combatSpeed === 'lenta' ? SLOW_DELAY : ENEMY_DELAY;
       }
     }
@@ -1053,6 +1203,9 @@ export class Game {
     this.phase = 'player';
     this.defending = false;
     this.awaitingContinue = false;
+    this.fastRound = false;
+    this.holdT = 0;
+    this.sawAttack = false;
     this.currentActor = this.inCombat ? { kind: 'player' } : null;
     // Lo que hagas en tu turno se recoge para el cartel de acción.
     this.caption = this.inCombat ? [] : null;
@@ -1286,10 +1439,12 @@ export class Game {
     const d = this.derived;
     const weapon = d.weapon;
     const pos = this.playerPos;
+    this.beginAction(true);
+    this.actionName = this.skillContext ?? weapon.name;
     this.faceTowards(enemy);
-    this.view.bumpT = 1;
-    this.view.bumpDx = Math.sign(enemy.x - pos.x);
-    this.view.bumpDy = Math.sign(enemy.y - pos.y);
+    if (weapon.range > 1) {
+      this.pushFx({ kind: 'bolt', fx: pos.x, fy: pos.y, tx: enemy.x, ty: enemy.y, color: '#d8d0bc', t: 0, life: 0.25 });
+    } else this.strike(this.view, Math.sign(enemy.x - pos.x), Math.sign(enemy.y - pos.y));
 
     let mode: RollMode = 'normal';
     const adv = this.combat.stealth > 0;
@@ -1303,15 +1458,17 @@ export class Game {
     const toHit = this.playerToHit() + (opt.toHitBonus ?? 0);
     const critRange = Math.min(weapon.critRange, opt.critRange ?? 20);
     const r = attackRoll(this.rng, toHit, enemy.def.ac, mode, critRange);
+    this.sawAttack = true;
     this.events.emit('dice', {
       label: weapon.name, natural: r.natural, bonus: toHit, total: r.total, target: enemy.def.ac, targetLabel: 'CA',
       outcome: r.fumble ? 'fumble' : r.crit ? 'crit' : r.hit ? 'hit' : 'miss',
+      attacker: { kind: 'player' }, defender: { kind: 'enemy', uid: enemy.uid }, action: this.actionName, lead: this.actionLead,
     });
     this.sfx(r.crit ? 'critico' : r.hit ? 'golpe' : 'fallo');
     enemy.alerted = true;
     if (!r.hit) {
       this.floatText(enemy.x, enemy.y, r.fumble ? '¡Pifia!' : 'Fallo', '#a49c8a');
-      this.msg(r.fumble ? `¡Pifia! Tu ${weapon.name.toLowerCase()} golpea el aire.` : `Fallas contra ${enemy.def.name} (${r.total} vs CA ${enemy.def.ac}).`, 'combat');
+      this.msg(r.fumble ? `¡Pifia! Tu ${weapon.name.toLowerCase()} golpea el aire.` : `Fallas contra ${enemy.def.name} (${r.total} vs CA ${enemy.def.ac}).`, 'combat', 'miss');
       return;
     }
     const p = this.state.player;
@@ -1352,13 +1509,24 @@ export class Game {
   /** Aplica daño a un enemigo (con resistencias) y gestiona muerte y fases. */
   damageEnemy(enemy: Enemy, raw: number, type: DamageType, crit = false): void {
     const d = applyDefenses(raw, type, enemy.def);
+    // La barra de vida no baja hasta que la tarjeta de duelo revela el golpe.
+    if (this.actionLead > 0 && enemy.shownHp === undefined) {
+      enemy.shownHp = enemy.hp;
+      this.later(this.actionLead, () => {
+        enemy.shownHp = undefined;
+      });
+    }
     enemy.hp -= d.amount;
-    enemy.flashT = 1;
+    this.flash(enemy);
     enemy.alerted = true;
     const color = crit ? '#f2d888' : d.note === 'vulnerable' ? '#ff8040' : d.note === 'resiste' ? '#a0a0b0' : '#ffffff';
     this.floatText(enemy.x, enemy.y, `${crit ? '¡' : ''}${d.amount}${crit ? '!' : ''}`, color);
     const note = d.note === 'vulnerable' ? ' (¡vulnerable!)' : d.note === 'resiste' ? ' (resiste)' : '';
-    this.msg(`${crit ? '¡CRÍTICO! ' : ''}${enemy.def.name} recibe ${d.amount} de daño ${type}${note}.`, 'combat');
+    this.msg(`${crit ? '¡CRÍTICO! ' : ''}${enemy.def.name} recibe ${d.amount} de daño ${type}${note}.`, 'combat', this.currentActor?.kind === 'enemy' ? 'dmg-in' : 'dmg-out');
+    this.cfx({
+      type: 'hit', target: { kind: 'enemy', uid: enemy.uid }, pos: { x: enemy.x, y: enemy.y }, amount: d.amount, dmgType: type, crit,
+      note: d.note, killed: enemy.hp <= 0, attacker: this.currentActor, action: this.skillContext ?? this.actionName, lead: this.actionLead,
+    });
     if (enemy.hp <= 0) {
       this.killEnemy(enemy);
       return;
@@ -1372,7 +1540,7 @@ export class Game {
     const ctx = this.killContext;
     if (ctx === 'weapon' || ctx === 'spell') this.onKillTalents(enemy, ctx);
     if (ctx === 'ally') this.companionSay('mata', 0.25);
-    this.fx.push({ kind: 'burst', x: enemy.x, y: enemy.y, radius: 0.8, color: '#e05050', t: 0, life: 0.4 });
+    this.pushFx({ kind: 'burst', x: enemy.x, y: enemy.y, radius: 0.8, color: '#e05050', t: 0, life: 0.4 });
     // Con compañero, él se lleva parte del mérito (compensa la ayuda).
     const petOn = !!this.pet && !!this.state.pets?.active && !this.state.pets.active.down;
     const share = (this.state.party?.active ? 0.85 : 1) * (petOn ? 0.9 : 1);
@@ -1396,13 +1564,17 @@ export class Game {
     for (const m of qm) this.msg(m, 'good');
     if (qm.length) this.events.emit('questsChanged', {});
     const loot = rollLoot(this.rng, enemy.def.lootTable, enemy.def.level);
+    this.cfx({
+      type: 'kill', enemy, xp, gold: loot.gold, boss: !!enemy.def.boss, lead: this.actionLead,
+      items: loot.items.map((it) => ({ name: itemDef(it).name, rarity: RARITY_RANK[it.rarity] ?? 0 })),
+    });
     if (loot.items.length || loot.gold) this.dropLoot(enemy.x, enemy.y, loot.items, loot.gold);
   }
 
   /** Deja botín en una casilla (se junta con lo que ya hubiera). */
   dropLoot(x: number, y: number, items: ItemInstance[], gold: number): void {
     let g = this.ground.find((l) => l.x === x && l.y === y);
-    if (!g) this.ground.push((g = { x, y, items: [], gold: 0 }));
+    if (!g) this.ground.push((g = { x, y, items: [], gold: 0, age: -this.actionLead }));
     g.items.push(...items);
     g.gold += gold;
   }
@@ -1476,7 +1648,7 @@ export class Game {
       this.combat.buffs.push({ ...use.buff, turns: use.buff.turns + 1 });
       this.msg(`${def.name}: +${use.buff.amount} ${use.buff.stat}.`, 'good');
     }
-    this.fx.push({ kind: 'burst', x: pos.x, y: pos.y, radius: 0.8, color: '#60e070', t: 0, life: 0.4 });
+    this.pushFx({ kind: 'burst', x: pos.x, y: pos.y, radius: 0.8, color: '#60e070', t: 0, life: 0.4 });
     removeQty(p, uid, 1);
     if (combat) this.afterAction();
     return null;
@@ -1536,7 +1708,7 @@ export class Game {
       const m = this.spawnEnemy(id, spot.x, spot.y);
       if (m) {
         m.alerted = true;
-        this.fx.push({ kind: 'burst', x: m.x, y: m.y, radius: 0.7, color: '#a040ff', t: 0, life: 0.5 });
+        this.pushFx({ kind: 'burst', x: m.x, y: m.y, radius: 0.7, color: '#a040ff', t: 0, life: 0.5 });
       }
     }
   }
@@ -1568,8 +1740,12 @@ export class Game {
     this.cancelPath();
     p.mp -= this.skillCost(skill);
     if (skill.cooldown > 0) this.combat.cooldowns[skill.id] = skill.cooldown + 1;
+    this.beginAction(true);
+    this.skillContext = skill.name;
+    this.actionName = skill.name;
     this.msg(`${skill.icon} ${skill.name}`, 'combat');
     for (const eff of skill.effects) this.applySkillEffect(skill, eff, center);
+    this.skillContext = null;
     this.afterAction();
   }
 
@@ -1617,13 +1793,13 @@ export class Game {
             .sort((a, b) => dist(a.x, a.y, first.x, first.y) - dist(b.x, b.y, first.x, first.y))
             .slice(0, bounce);
           for (const n of near) {
-            this.fx.push({ kind: 'bolt', fx: first.x, fy: first.y, tx: n.x, ty: n.y, color, t: 0, life: 0.35 });
+            this.pushFx({ kind: 'bolt', fx: first.x, fy: first.y, tx: n.x, ty: n.y, color, t: 0, life: 0.35 });
             targets.push(n);
           }
           if (near.length) this.msg('¡El hechizo rebota!', 'good');
         }
-        if (skill.target !== 'self') this.fx.push({ kind: 'bolt', fx: pos.x, fy: pos.y, tx: center.x, ty: center.y, color, t: 0, life: 0.3 });
-        if (radius > 0) this.fx.push({ kind: 'burst', x: center.x, y: center.y, radius: radius + 0.5, color, t: 0, life: 0.5 });
+        if (skill.target !== 'self') this.pushFx({ kind: 'bolt', fx: pos.x, fy: pos.y, tx: center.x, ty: center.y, color, t: 0, life: 0.3 });
+        if (radius > 0) this.pushFx({ kind: 'burst', x: center.x, y: center.y, radius: radius + 0.5, color, t: 0, life: 0.5 });
         const mod = abilityModifier(this.derived.stats[eff.stat]);
         const dc = this.spellDC(eff.stat);
         this.killContext = 'spell';
@@ -1660,7 +1836,7 @@ export class Game {
         // Talento: la curación quema a los no-muertos cercanos
         for (const t of this.talentList('healSmite')) {
           const undead = this.enemies.filter((e) => e.def.family === 'no-muerto' && dist(e.x, e.y, pos.x, pos.y) <= t.radius);
-          if (undead.length) this.fx.push({ kind: 'burst', x: pos.x, y: pos.y, radius: t.radius + 0.5, color: '#fff0a0', t: 0, life: 0.5 });
+          if (undead.length) this.pushFx({ kind: 'burst', x: pos.x, y: pos.y, radius: t.radius + 0.5, color: '#fff0a0', t: 0, life: 0.5 });
           this.killContext = 'spell';
           for (const u of undead) this.damageEnemy(u, roll(this.rng, t.dice).total, 'sagrado');
           this.killContext = 'other';
@@ -1668,7 +1844,7 @@ export class Game {
         const before = p.hp;
         p.hp = Math.min(p.maxHp, p.hp + amount);
         this.floatText(pos.x, pos.y, `+${p.hp - before}`, '#60e070');
-        this.fx.push({ kind: 'burst', x: pos.x, y: pos.y, radius: 0.9, color: '#60e070', t: 0, life: 0.5 });
+        this.pushFx({ kind: 'burst', x: pos.x, y: pos.y, radius: 0.9, color: '#60e070', t: 0, life: 0.5 });
         this.msg(`Recuperas ${p.hp - before} PV.`, 'good');
         break;
       }
@@ -1847,7 +2023,7 @@ export class Game {
       if (!ally) return false;
       const amount = roll(this.rng, sp.dice ?? '1d8').total;
       ally.hp = Math.min(ally.maxHp, ally.hp + amount);
-      this.fx.push({ kind: 'bolt', fx: e.x, fy: e.y, tx: ally.x, ty: ally.y, color: '#60e070', t: 0, life: 0.3 });
+      this.pushFx({ kind: 'bolt', fx: e.x, fy: e.y, tx: ally.x, ty: ally.y, color: '#60e070', t: 0, life: 0.3 });
       this.floatText(ally.x, ally.y, `+${amount}`, '#60e070');
       this.msg(`${e.def.name} usa ${sp.name} y cura ${amount} a ${ally === e ? 'sí mismo' : ally.def.name}.`, 'combat');
       return true;
@@ -1860,22 +2036,25 @@ export class Game {
     }
     if (d > sp.range || !this.los(e, p)) return false;
     // Daño
+    this.actionName = sp.name;
     const color = SPELL_COLORS[sp.damageType ?? 'arcano'] ?? '#ffffff';
-    this.fx.push({ kind: 'bolt', fx: e.x, fy: e.y, tx: p.x, ty: p.y, color, t: 0, life: 0.3 });
-    if (sp.radius) this.fx.push({ kind: 'burst', x: p.x, y: p.y, radius: sp.radius + 0.5, color, t: 0, life: 0.5 });
+    this.pushFx({ kind: 'bolt', fx: e.x, fy: e.y, tx: p.x, ty: p.y, color, t: 0, life: 0.3 });
+    if (sp.radius) this.pushFx({ kind: 'burst', x: p.x, y: p.y, radius: sp.radius + 0.5, color, t: 0, life: 0.5 });
     let dmg = roll(this.rng, sp.dice ?? '1d6').total + e.damageBonus;
     let saved = false;
     if (sp.save && sp.dc) {
       const bonus = abilityModifier(this.derived.stats[sp.save]);
       const s = savingThrow(this.rng, bonus, sp.dc);
       saved = s.success;
+      this.sawAttack = true;
       this.events.emit('dice', {
         label: `Salvación de ${sp.save}`, natural: s.natural, bonus, total: s.total, target: sp.dc, targetLabel: 'CD', outcome: saved ? 'success' : 'fail',
+        attacker: { kind: 'enemy', uid: e.uid }, defender: { kind: 'player' }, action: sp.name, lead: this.actionLead,
       });
       if (saved) dmg = Math.max(1, Math.floor(dmg / 2));
     }
-    this.msg(`${e.def.name} lanza ${sp.name}${saved ? ' (mitad de daño)' : ''}.`, 'combat');
-    this.damagePlayer(dmg, sp.name);
+    this.msg(`${e.def.name} lanza ${sp.name}${saved ? ' (mitad de daño)' : ''}.`, 'combat', 'dmg-in');
+    this.damagePlayer(dmg, sp.name, false, sp.damageType ?? 'arcano');
     if (this.phase !== 'dead' && sp.applyStatus && !saved) this.applyStatusToPlayer(sp.applyStatus);
     return true;
   }
@@ -1883,26 +2062,25 @@ export class Game {
   private enemyAttack(e: Enemy): void {
     const p = this.playerPos;
     const atk = e.def.attack;
+    this.actionName = atk.name;
     e.facing = p.x >= e.x ? 'right' : 'left';
     if (atk.range === 1) {
-      e.bumpT = 1;
-      e.bumpDx = Math.sign(p.x - e.x);
-      e.bumpDy = Math.sign(p.y - e.y);
+      this.strike(e, Math.sign(p.x - e.x), Math.sign(p.y - e.y));
     } else {
-      this.fx.push({ kind: 'bolt', fx: e.x, fy: e.y, tx: p.x, ty: p.y, color: '#d8d0bc', t: 0, life: 0.25 });
+      this.pushFx({ kind: 'bolt', fx: e.x, fy: e.y, tx: p.x, ty: p.y, color: '#d8d0bc', t: 0, life: 0.25 });
     }
     const mode: RollMode = hasStatus(e.statuses, 'veneno') ? 'desventaja' : 'normal';
     const ac = this.playerAC();
     const r = attackRoll(this.rng, atk.toHit + e.toHitBonus, ac, mode);
-    if (this.combatSpeed !== 'normal') {
-      this.events.emit('dice', {
-        label: `${e.def.name}: ${atk.name}`, natural: r.natural, bonus: atk.toHit + e.toHitBonus, total: r.total, target: ac, targetLabel: 'CA',
-        outcome: r.fumble ? 'fumble' : r.crit ? 'crit' : r.hit ? 'hit' : 'miss', small: true,
-      });
-    }
+    this.sawAttack = true;
+    this.events.emit('dice', {
+      label: `${e.def.name}: ${atk.name}`, natural: r.natural, bonus: atk.toHit + e.toHitBonus, total: r.total, target: ac, targetLabel: 'CA',
+      outcome: r.fumble ? 'fumble' : r.crit ? 'crit' : r.hit ? 'hit' : 'miss', small: true,
+      attacker: { kind: 'enemy', uid: e.uid }, defender: { kind: 'player' }, action: atk.name, lead: this.actionLead,
+    });
     if (!r.hit) {
       this.floatText(p.x, p.y, r.fumble ? 'Pifia' : 'Esquivas', '#a49c8a');
-      this.msg(`${e.def.name} falla su ${atk.name.toLowerCase()} (${r.total} vs tu CA ${ac}).`, 'combat');
+      this.msg(`${e.def.name} falla su ${atk.name.toLowerCase()} (${r.total} vs tu CA ${ac}).`, 'combat', 'miss');
       // Talento: contraataque cuando te fallan cuerpo a cuerpo
       const counter = this.talentList('counter').reduce((a, t) => Math.max(a, t.chance), 0);
       if (atk.range === 1 && counter > 0 && dist(e.x, e.y, p.x, p.y) === 1 && this.rng.chance(counter)) {
@@ -1919,8 +2097,8 @@ export class Game {
       return;
     }
     const dmg = damageRoll(this.rng, atk.dice, e.damageBonus, r.crit).total;
-    this.msg(`${r.crit ? '¡Crítico! ' : ''}${e.def.name} te alcanza con ${atk.name.toLowerCase()}: ${dmg} de daño.`, 'combat');
-    this.damagePlayer(dmg, e.def.name, r.crit);
+    this.msg(`${r.crit ? '¡Crítico! ' : ''}${e.def.name} te alcanza con ${atk.name.toLowerCase()}: ${dmg} de daño.`, 'combat', 'dmg-in');
+    this.damagePlayer(dmg, e.def.name, r.crit, atk.damageType);
     if (this.phase !== 'dead' && atk.applyStatus) this.applyStatusToPlayer(atk.applyStatus);
     // Talento: espinas (daño a quien te golpea cuerpo a cuerpo)
     if (this.phase !== 'dead' && atk.range === 1) {
@@ -1940,12 +2118,23 @@ export class Game {
     }
   }
 
-  damagePlayer(amount: number, cause: string, crit = false): void {
+  damagePlayer(amount: number, cause: string, crit = false, type: DamageType | null = null): void {
     const p = this.state.player;
+    // El HUD no baja la vida hasta que la tarjeta de duelo revela el golpe.
+    if (this.actionLead > 0 && this.shownPlayerHp === undefined) {
+      this.shownPlayerHp = p.hp;
+      this.later(this.actionLead, () => {
+        this.shownPlayerHp = undefined;
+      });
+    }
     p.hp = Math.max(0, p.hp - amount);
-    this.view.flashT = 1;
+    this.flash(this.view);
     this.interrupt = true;
     this.floatText(this.playerPos.x, this.playerPos.y, `-${amount}`, crit ? '#ff4040' : '#ff8080');
+    this.cfx({
+      type: 'hit', target: { kind: 'player' }, pos: this.playerPos, amount, dmgType: type, crit, note: '', killed: p.hp <= 0,
+      attacker: this.currentActor?.kind === 'enemy' ? this.currentActor : null, action: this.actionName || cause, lead: this.actionLead,
+    });
     this.events.emit('playerHurt', { amount });
     this.sfx('herido');
     if (p.hp <= 0) {
@@ -2053,7 +2242,7 @@ export class Game {
       p.hp = p.maxHp;
       p.mp = p.maxMp;
       const skills = unlockedSkills(this.cls, p.level).filter((s) => s.unlockLevel === p.level);
-      this.fx.push({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 1.5, color: '#f2d888', t: 0, life: 0.8 });
+      this.pushFx({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 1.5, color: '#f2d888', t: 0, life: 0.8 });
       this.sfx('nivel');
       if (this.state.party?.active) this.state.party.hp = this.allyStats().maxHp;
       this.companionSay('nivel', 0.5);
@@ -2189,7 +2378,7 @@ export class Game {
     });
     let dmg = roll(this.rng, t.damage).total;
     if (s.success) dmg = Math.max(1, Math.floor(dmg / 2));
-    this.fx.push({ kind: 'burst', x: f.x, y: f.y, radius: 0.9, color: t.damageType === 'fuego' ? '#ff8030' : '#d0d0d0', t: 0, life: 0.5 });
+    this.pushFx({ kind: 'burst', x: f.x, y: f.y, radius: 0.9, color: t.damageType === 'fuego' ? '#ff8030' : '#d0d0d0', t: 0, life: 0.5 });
     this.msg(`¡${t.name}!${s.success ? ' Reaccionas a tiempo y recibes la mitad.' : ''}`, 'warn');
     this.damagePlayer(dmg, t.name);
     if (!this.isDead && !s.success && t.applyStatus) this.applyStatusToPlayer(t.applyStatus);
@@ -2233,7 +2422,7 @@ export class Game {
     }
     this.markUsed(f);
     const loot = rollLoot(this.rng, f.loot ?? 'cofre', level);
-    this.fx.push({ kind: 'burst', x: f.x, y: f.y, radius: 0.8, color: '#f2d888', t: 0, life: 0.5 });
+    this.pushFx({ kind: 'burst', x: f.x, y: f.y, radius: 0.8, color: '#f2d888', t: 0, life: 0.5 });
     if (!loot.items.length && !loot.gold) {
       this.msg('El cofre está vacío. Alguien llegó antes.', 'info');
       return;
@@ -2262,7 +2451,7 @@ export class Game {
     const hits = (this.mineHits.get(key) ?? 0) + 1;
     this.mineHits.set(key, hits);
     this.floatText(f.x, f.y, '⛏', '#d0d8e8');
-    this.fx.push({ kind: 'burst', x: f.x, y: f.y, radius: 0.4, color: '#d0d8e8', t: 0, life: 0.25 });
+    this.pushFx({ kind: 'burst', x: f.x, y: f.y, radius: 0.4, color: '#d0d8e8', t: 0, life: 0.25 });
     if (hits < ore.hits) {
       this.msg(`Picas la ${ore.name.toLowerCase()}... (${hits}/${ore.hits})`, 'info');
       return true;
@@ -2417,8 +2606,8 @@ export class Game {
     return null;
   }
 
-  private sfx(id: SfxId): void {
-    this.events.emit('sfx', { id });
+  private sfx(id: SfxId, rate?: number): void {
+    this.events.emit('sfx', { id, delay: this.actionLead, ...(rate ? { rate } : {}) });
   }
 
   /** Stock actual de una tienda (se renueva si ha pasado el tiempo). */
@@ -2471,7 +2660,7 @@ export class Game {
     p.gold -= price;
     p.hp = p.maxHp;
     this.combat.statuses = [];
-    this.fx.push({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 1.2, color: '#fff0a0', t: 0, life: 0.7 });
+    this.pushFx({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 1.2, color: '#fff0a0', t: 0, life: 0.7 });
     this.msg(`Donas ${price} de oro. La Llama Blanca cierra tus heridas. Si caes, despertarás aquí.`, 'good');
     return null;
   }
@@ -2649,17 +2838,21 @@ export class Game {
     const def = this.companionDef!;
     const st = this.allyStats();
     a.facing = e.x >= a.x ? 'right' : 'left';
+    this.actionName = def.attack.name;
     if (def.attack.range > 1) {
-      this.fx.push({ kind: 'bolt', fx: a.x, fy: a.y, tx: e.x, ty: e.y, color: '#d8d0bc', t: 0, life: 0.25 });
-    } else {
-      a.bumpT = 1;
-      a.bumpDx = Math.sign(e.x - a.x);
-      a.bumpDy = Math.sign(e.y - a.y);
-    }
+      this.pushFx({ kind: 'bolt', fx: a.x, fy: a.y, tx: e.x, ty: e.y, color: '#d8d0bc', t: 0, life: 0.25 });
+    } else this.strike(a, Math.sign(e.x - a.x), Math.sign(e.y - a.y));
     const r = attackRoll(this.rng, st.toHit, e.def.ac);
     e.alerted = true;
+    this.sawAttack = true;
+    this.events.emit('dice', {
+      label: `${def.name}: ${def.attack.name}`, natural: r.natural, bonus: st.toHit, total: r.total, target: e.def.ac, targetLabel: 'CA',
+      outcome: r.fumble ? 'fumble' : r.crit ? 'crit' : r.hit ? 'hit' : 'miss', small: true,
+      attacker: { kind: 'ally' }, defender: { kind: 'enemy', uid: e.uid }, action: def.attack.name, lead: this.actionLead,
+    });
     if (!r.hit) {
       this.floatText(e.x, e.y, 'Fallo', '#a49c8a');
+      this.msg(`${def.name} falla contra ${e.def.name}.`, 'combat', 'miss');
       return;
     }
     const dmg = damageRoll(this.rng, def.attack.dice, st.dmgBonus, r.crit).total;
@@ -2675,12 +2868,18 @@ export class Game {
     const def = this.companionDef!;
     const atk = e.def.attack;
     e.facing = a.x >= e.x ? 'right' : 'left';
+    this.actionName = atk.name;
     if (atk.range === 1) {
-      e.bumpT = 1;
-      e.bumpDx = Math.sign(a.x - e.x);
-      e.bumpDy = Math.sign(a.y - e.y);
-    } else this.fx.push({ kind: 'bolt', fx: e.x, fy: e.y, tx: a.x, ty: a.y, color: '#d8d0bc', t: 0, life: 0.25 });
-    const r = attackRoll(this.rng, atk.toHit + e.toHitBonus, this.allyStats().ac);
+      this.strike(e, Math.sign(a.x - e.x), Math.sign(a.y - e.y));
+    } else this.pushFx({ kind: 'bolt', fx: e.x, fy: e.y, tx: a.x, ty: a.y, color: '#d8d0bc', t: 0, life: 0.25 });
+    const allyAc = this.allyStats().ac;
+    const r = attackRoll(this.rng, atk.toHit + e.toHitBonus, allyAc);
+    this.sawAttack = true;
+    this.events.emit('dice', {
+      label: `${e.def.name}: ${atk.name}`, natural: r.natural, bonus: atk.toHit + e.toHitBonus, total: r.total, target: allyAc, targetLabel: 'CA',
+      outcome: r.fumble ? 'fumble' : r.crit ? 'crit' : r.hit ? 'hit' : 'miss', small: true,
+      attacker: { kind: 'enemy', uid: e.uid }, defender: { kind: 'ally' }, action: atk.name, lead: this.actionLead,
+    });
     if (!r.hit) {
       this.floatText(a.x, a.y, 'Esquiva', '#a49c8a');
       return;
@@ -2688,9 +2887,13 @@ export class Game {
     const dmg = damageRoll(this.rng, atk.dice, e.damageBonus, r.crit).total;
     const party = this.state.party;
     party.hp = Math.max(0, party.hp - dmg);
-    a.flashT = 1;
+    this.flash(a);
     this.floatText(a.x, a.y, `-${dmg}`, '#ff9a60');
-    this.msg(`${e.def.name} hiere a ${def.name}: ${dmg} de daño.`, 'combat');
+    this.msg(`${e.def.name} hiere a ${def.name}: ${dmg} de daño.`, 'combat', 'dmg-in');
+    this.cfx({
+      type: 'hit', target: { kind: 'ally' }, pos: { x: a.x, y: a.y }, amount: dmg, dmgType: atk.damageType, crit: r.crit, note: '',
+      killed: party.hp <= 0, attacker: { kind: 'enemy', uid: e.uid }, action: atk.name, lead: this.actionLead,
+    });
     if (party.hp <= 0) {
       this.companionSay('caido');
       party.down = true;
@@ -2859,14 +3062,14 @@ export class Game {
         const before = pl.hp;
         pl.hp = Math.min(pl.maxHp, pl.hp + amount);
         this.floatText(this.playerPos.x, this.playerPos.y, `+${pl.hp - before}`, '#60e070');
-        this.fx.push({ kind: 'bolt', fx: u.x, fy: u.y, tx: this.playerPos.x, ty: this.playerPos.y, color: '#60e070', t: 0, life: 0.3 });
+        this.pushFx({ kind: 'bolt', fx: u.x, fy: u.y, tx: this.playerPos.x, ty: this.playerPos.y, color: '#60e070', t: 0, life: 0.3 });
       }
       this.msg(`${name} usa ${m.icon} ${m.name}.`, 'good');
       return;
     }
     if (m.kind === 'proteger' && m.shield) {
       this.combat.buffs.push({ stat: 'ca', amount: m.shield.amount, turns: m.shield.turns + 1 });
-      this.fx.push({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 0.9, color, t: 0, life: 0.5 });
+      this.pushFx({ kind: 'burst', x: this.playerPos.x, y: this.playerPos.y, radius: 0.9, color, t: 0, life: 0.5 });
       this.msg(`${name} usa ${m.icon} ${m.name}: +${m.shield.amount} a tu CA.`, 'good');
       return;
     }
@@ -2878,19 +3081,17 @@ export class Game {
     }
     if (!target) return;
     u.facing = target.x >= u.x ? 'right' : 'left';
-    if (m.range > 1) this.fx.push({ kind: 'bolt', fx: u.x, fy: u.y, tx: target.x, ty: target.y, color, t: 0, life: 0.3 });
-    else {
-      u.bumpT = 1;
-      u.bumpDx = Math.sign(target.x - u.x);
-      u.bumpDy = Math.sign(target.y - u.y);
-    }
-    if (m.radius) this.fx.push({ kind: 'burst', x: target.x, y: target.y, radius: m.radius + 0.5, color, t: 0, life: 0.5 });
+    this.actionName = m.name;
+    if (m.range > 1) this.pushFx({ kind: 'bolt', fx: u.x, fy: u.y, tx: target.x, ty: target.y, color, t: 0, life: 0.3 });
+    else this.strike(u, Math.sign(target.x - u.x), Math.sign(target.y - u.y));
+    if (m.radius) this.pushFx({ kind: 'burst', x: target.x, y: target.y, radius: m.radius + 0.5, color, t: 0, life: 0.5 });
     const targets = m.radius ? this.enemies.filter((e) => dist(e.x, e.y, target.x, target.y) <= m.radius! && this.los(target, e)) : [target];
     pi.bond = Math.min(100, pi.bond + 0.2);
     for (const t of targets) {
       t.alerted = true;
       if (!this.rng.chance(m.accuracy ?? 0.9)) {
         this.floatText(t.x, t.y, 'Fallo', '#a49c8a');
+        this.cfx({ type: 'miss', target: { kind: 'enemy', uid: t.uid }, pos: { x: t.x, y: t.y }, attacker: { kind: 'pet' }, action: m.name, lead: this.actionLead });
         continue;
       }
       const defType = t.def.pet ? Pets.getSpecies(t.def.pet.species).type : Pets.familyType(t.def.family);
@@ -2930,21 +3131,31 @@ export class Game {
     const pi = this.petInstance!;
     const atk = e.def.attack;
     e.facing = u.x >= e.x ? 'right' : 'left';
+    this.actionName = atk.name;
     if (atk.range === 1) {
-      e.bumpT = 1;
-      e.bumpDx = Math.sign(u.x - e.x);
-      e.bumpDy = Math.sign(u.y - e.y);
-    } else this.fx.push({ kind: 'bolt', fx: e.x, fy: e.y, tx: u.x, ty: u.y, color: '#d8d0bc', t: 0, life: 0.25 });
-    const r = attackRoll(this.rng, atk.toHit + e.toHitBonus, this.petAC());
+      this.strike(e, Math.sign(u.x - e.x), Math.sign(u.y - e.y));
+    } else this.pushFx({ kind: 'bolt', fx: e.x, fy: e.y, tx: u.x, ty: u.y, color: '#d8d0bc', t: 0, life: 0.25 });
+    const petAc = this.petAC();
+    const r = attackRoll(this.rng, atk.toHit + e.toHitBonus, petAc);
+    this.sawAttack = true;
+    this.events.emit('dice', {
+      label: `${e.def.name}: ${atk.name}`, natural: r.natural, bonus: atk.toHit + e.toHitBonus, total: r.total, target: petAc, targetLabel: 'CA',
+      outcome: r.fumble ? 'fumble' : r.crit ? 'crit' : r.hit ? 'hit' : 'miss', small: true,
+      attacker: { kind: 'enemy', uid: e.uid }, defender: { kind: 'pet' }, action: atk.name, lead: this.actionLead,
+    });
     if (!r.hit) {
       this.floatText(u.x, u.y, 'Esquiva', '#a49c8a');
       return;
     }
     const dmg = damageRoll(this.rng, atk.dice, e.damageBonus, r.crit).total;
     pi.hp = Math.max(0, pi.hp - dmg);
-    u.flashT = 1;
+    this.flash(u);
     this.floatText(u.x, u.y, `-${dmg}`, '#ff9a60');
-    this.msg(`${e.def.name} hiere a ${Pets.petName(pi)}: ${dmg} de daño.`, 'combat');
+    this.msg(`${e.def.name} hiere a ${Pets.petName(pi)}: ${dmg} de daño.`, 'combat', 'dmg-in');
+    this.cfx({
+      type: 'hit', target: { kind: 'pet' }, pos: { x: u.x, y: u.y }, amount: dmg, dmgType: atk.damageType, crit: r.crit, note: '',
+      killed: pi.hp <= 0, attacker: { kind: 'enemy', uid: e.uid }, action: atk.name, lead: this.actionLead,
+    });
     if (pi.hp <= 0) {
       pi.down = true;
       this.msg(`${Pets.petName(pi)} está debilitada. Se recuperará fuera de combate.`, 'warn');
@@ -2981,7 +3192,7 @@ export class Game {
     if (gain.levels > 0) {
       this.events.emit('petEvent', { kind: 'nivel', text: `¡${name} sube al nivel ${pi.level}!` });
       this.msg(`¡${name} sube al nivel ${pi.level}!`, 'good');
-      if (this.pet) this.fx.push({ kind: 'burst', x: this.pet.x, y: this.pet.y, radius: 1, color: '#80c0ff', t: 0, life: 0.6 });
+      if (this.pet) this.pushFx({ kind: 'burst', x: this.pet.x, y: this.pet.y, radius: 1, color: '#80c0ff', t: 0, life: 0.6 });
     }
     for (const m of gain.learned) this.msg(`${name} aprende ${Pets.getMove(m)?.name ?? m}.`, 'good');
     if (pi.pendingMoves.length) this.events.emit('petEvent', { kind: 'movimiento', text: `${name} quiere aprender un movimiento nuevo.` });
@@ -3037,7 +3248,7 @@ export class Game {
     const natural = this.rng.int(1, 20);
     const ok = natural >= dc;
     this.events.emit('dice', { label: `Vínculo (${Math.round(chance * 100)} %)`, natural, bonus: 0, total: natural, target: dc, targetLabel: 'CD', outcome: ok ? 'success' : 'fail' });
-    this.fx.push({ kind: 'burst', x: target.x, y: target.y, radius: 1, color: '#c080ff', t: 0, life: 0.6 });
+    this.pushFx({ kind: 'burst', x: target.x, y: target.y, radius: 1, color: '#c080ff', t: 0, life: 0.6 });
     if (!ok) {
       this.msg(`La runa brilla... pero ${sp.name} se libera.`, 'warn');
       this.afterAction();

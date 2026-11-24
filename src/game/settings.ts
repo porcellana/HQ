@@ -26,6 +26,13 @@ export interface Settings {
   questGuide: boolean;
   /** Velocidad del combate: paso a paso (pulsar «Siguiente»), lenta o normal. */
   combatSpeed: 'paso' | 'lenta' | 'normal';
+  /**
+   * Efectos de combate (v0.5): completos (zoom, temblor, partículas y sonido en capas),
+   * reducidos (sin zoom ni temblor, menos partículas) o mínimos (solo lo esencial).
+   */
+  combatFx: 'completos' | 'reducidos' | 'minimos';
+  /** Nivel de zoom del mapa elegido por el jugador (índice en ZOOM_LEVELS; ver engine/zoom.ts). */
+  zoomLevel: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -40,6 +47,9 @@ export const DEFAULT_SETTINGS: Settings = {
   dayNight: true,
   questGuide: true,
   combatSpeed: 'paso',
+  combatFx: 'completos',
+  /** -1 = el nivel por defecto de cada pantalla. */
+  zoomLevel: -1,
 };
 
 const KEY = 'ecos.settings';

@@ -80,6 +80,11 @@ export function settingsScreen(
         { value: 'lenta', label: 'Lenta' },
         { value: 'normal', label: 'Normal' },
       ]),
+      row('Efectos de combate', 'combatFx', [
+        { value: 'completos', label: 'Completos' },
+        { value: 'reducidos', label: 'Reducidos' },
+        { value: 'minimos', label: 'Mínimos' },
+      ]),
       row('Joystick virtual', 'joystick', onOff),
       row('Mano dominante', 'hand', [
         { value: 'derecha', label: 'Derecha' },

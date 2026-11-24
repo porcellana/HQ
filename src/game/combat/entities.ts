@@ -30,6 +30,8 @@ export interface Enemy {
   flashT: number;
   /** Para enemigos lentos/ralentizados: alterna turnos. */
   skipNext: boolean;
+  /** Vida mostrada en la barra mientras la tarjeta de duelo aún no ha revelado el golpe. */
+  shownHp?: number;
   /** Casillas pendientes de animar (movimiento de varias casillas por turno). */
   trail?: Array<{ x: number; y: number }>;
 }
