@@ -23,7 +23,10 @@ import { actorName, actorSprite } from './actorSprite';
 export interface HudActions {
   onWait(): void;
   onSheet(): void;
-  onMenu(): void;
+  /** Diario de misiones (botón directo en la barra). */
+  onJournal(): void;
+  /** Ajustes (botón ⚙ directo en la barra). */
+  onSettings(): void;
   onInventory(): void;
   onJoystick(dir: { dx: number; dy: number } | null): void;
   onSkill(skill: SkillDef): void;
@@ -87,6 +90,8 @@ export class Hud {
   readonly combatUi: CombatUi;
   /** Columna izquierda bajo el panel: barra de turnos, estados y misiones. */
   private readonly leftCol: HTMLDivElement;
+  /** Botón ✨ de la barra de exploración (abre el desplegable de habilidades). */
+  private readonly drawerBtn: HTMLButtonElement;
 
   constructor(actions: HudActions) {
     this.portrait = h('canvas', { class: 'hud-portrait' });
@@ -113,14 +118,27 @@ export class Hud {
 
     const btn = (ico: string, label: string, fn: () => void) =>
       h('button', { onClick: fn, attrs: { 'aria-label': label } }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
+    // Barra inferior de exploración (una sola línea): accesos directos a todo.
+    this.drawerBtn = btn('✨', 'Habilidad', () => {
+      this.combatUi.skillsOpen = !this.combatUi.skillsOpen;
+    });
     this.actionBar = h('div', { class: 'action-bar' }, [
       btn('⏳', 'Esperar', actions.onWait),
-      btn('📜', 'Ficha', actions.onSheet),
+      this.drawerBtn,
       btn('🎒', 'Mochila', actions.onInventory),
-      btn('☰', 'Menú', actions.onMenu),
+      btn('📜', 'Ficha', actions.onSheet),
+      btn('📖', 'Misiones', actions.onJournal),
+      btn('⚙', 'Ajustes', actions.onSettings),
     ]);
 
-    this.skillBar = new SkillBar(actions.onSkill, actions.onDash, actions.onPotion, actions.onBind, actions.onPetOrders);
+    // El desplegable de habilidades se cierra al elegir cualquier opción.
+    const closing = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A): void => {
+      this.combatUi.skillsOpen = false;
+      fn(...a);
+    };
+    this.skillBar = new SkillBar(
+      closing(actions.onSkill), closing(actions.onDash), closing(actions.onPotion), closing(actions.onBind), closing(actions.onPetOrders),
+    );
     this.duel = new DuelCard(
       {
         name: (a) => (this.game ? actorName(this.game, a) : ''),
@@ -192,7 +210,8 @@ export class Hud {
     const tbBottom = tb.style.display !== 'none' && tb.childElementCount ? tb.getBoundingClientRect().bottom : 0;
     const top = Math.max(hudBottom, rowBottom, tbBottom);
     // Abajo: la barra de acciones, el menú de combate o la de habilidades (lo que esté visible más arriba).
-    const tops = [this.actionBar, this.combatUi.menu, this.combatUi.nextBtn, this.skillBar.el]
+    // (El desplegable de habilidades es transitorio: no empuja la cámara.)
+    const tops = [this.actionBar, this.combatUi.menu, this.combatUi.nextBtn]
       .filter((el) => el.style.display !== 'none' && el.childElementCount + (el.textContent ? 1 : 0) > 0)
       .map((el) => el.getBoundingClientRect().top)
       .filter((t) => t > 0);
@@ -201,6 +220,13 @@ export class Hud {
     // (así el personaje no queda tapado por la tarjeta de duelo).
     const reserve = this.root.classList.contains('in-combat') ? 54 : 0;
     return { top: top + 4, bottom: Math.max(0, window.innerHeight - barTop) + 4 + reserve };
+  }
+
+  /** Cierra el desplegable de habilidades si estaba abierto. Devuelve true si lo cerró. */
+  dismissDrawer(): boolean {
+    if (!this.combatUi.skillsOpen) return false;
+    this.combatUi.skillsOpen = false;
+    return true;
   }
 
   setPortrait(colors: HumanoidColors): void {
@@ -259,7 +285,9 @@ export class Hud {
     // En combate el menú de acciones sustituye a la barra normal; las habilidades se despliegan aparte.
     const combat = game.inCombat && !game.isDead;
     this.actionBar.style.display = combat ? 'none' : '';
-    this.skillBar.el.style.display = combat && !this.combatUi.skillsOpen ? 'none' : '';
+    // El desplegable de habilidades sólo se ve mientras está abierto (en combate y fuera).
+    this.skillBar.el.style.display = this.combatUi.skillsOpen ? '' : 'none';
+    this.drawerBtn.classList.toggle('active', this.combatUi.skillsOpen);
     this.root.classList.toggle('in-combat', combat);
     // Compañero: nombre y vida
     const cd = game.companionDef;

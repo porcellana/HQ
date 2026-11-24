@@ -5,8 +5,9 @@
  *  - Cartel de acción centrado: qué ha hecho cada actor.
  *  - Menú de acciones en tu turno, en UNA sola línea: Atacar, Habilidad, Objeto,
  *    Defender, Huir y Terminar. Correr, Vincular y las órdenes a la mascota
- *    están dentro de «Habilidad» (junto a tus habilidades). Una pastilla
- *    flotante muestra el movimiento 👣 y si la acción está lista.
+ *    están dentro del desplegable de «Habilidad». Los pasos que te quedan (👣)
+ *    salen como una insignia sobre «Terminar»; con la acción usada, los botones
+ *    de acción se apagan.
  *  - Botón grande «▶ Siguiente» en el modo paso a paso.
  */
 import type { Actor, Game, TurnEntry } from '@/game/game';
@@ -41,6 +42,7 @@ export class CombatUi {
   heroColors: HumanoidColors | null = null;
   private barSig = '';
   private menuSig = '';
+  private wasCombat = false;
   private captionTimer = 0;
 
   constructor(private readonly root: HTMLElement, private readonly actions: CombatActions) {
@@ -109,12 +111,14 @@ export class CombatUi {
     const bindable = game.bindTargets().length > 0 && game.state.player.inventory.some((x) => x.id === 'runa_vinculo');
     const holding = game.holdT > 0;
     const msig = [myTurn, waiting, game.awaitingContinue, holding, game.canSkipRound, game.combatSpeed, game.attackMode, this.skillsOpen, bindable, !!game.petInstance, game.turnMove, game.turnMoveMax, game.actionUsed].join('|');
+    // Al empezar o acabar el combate, el desplegable de habilidades se cierra.
+    if (combat !== this.wasCombat) {
+      this.wasCombat = combat;
+      this.skillsOpen = false;
+    }
     if (msig === this.menuSig) return;
     this.menuSig = msig;
-    if (!combat && !game.awaitingContinue) {
-      this.skillsOpen = false;
-      this.hideAction();
-    }
+    if (!combat && !game.awaitingContinue) this.hideAction();
     this.menu.style.display = myTurn ? '' : 'none';
     document.body.classList.toggle('combat-turn', myTurn);
     const waitLabel = game.combatSpeed === 'paso' && game.awaitingContinue ? '▶ Siguiente' : 'Turno de los demás…';
@@ -126,27 +130,22 @@ export class CombatUi {
     if (!myTurn) return;
     const used = game.actionUsed;
     if (used && this.skillsOpen) this.skillsOpen = false;
-    const b = (ico: string, label: string, fn: () => void, extra = '', isAction = true) =>
+    const b = (ico: string, label: string, fn: () => void, extra = '', isAction = true, badge = '') =>
       h('button', {
         class: `cbtn${extra}`, onClick: fn, disabled: isAction && used,
         attrs: { 'aria-label': label },
-      }, [h('span', { class: 'ico', text: ico }), h('span', { class: 'lbl', text: label })]);
-    // Nada útil que hacer: «Terminar turno» destacado.
+      }, [h('span', { class: 'ico', text: ico }), h('span', { class: 'lbl', text: label }), badge ? h('span', { class: `badge${game.turnMove <= 0 ? ' empty' : ''}`, text: badge }) : null]);
+    // Nada útil que hacer: «Terminar» destacado.
     const done = used && (game.turnMove <= 0);
-    const status = h('div', { class: 'turn-status' }, [
-      h('span', { class: `moves${game.turnMove <= 0 ? ' empty' : ''}`, text: `👣 ${game.turnMove}/${game.turnMoveMax}` }),
-      h('span', { class: `act${used ? ' used' : ''}`, text: used ? '⚔ ✕' : '⚔ ✓', attrs: { title: used ? 'Acción usada' : 'Acción lista' } }),
-    ]);
-    // Panel de UNA sola línea. Correr, Vincular y Órdenes viven en «Habilidad».
+    // Panel de UNA sola línea. Correr, Vincular y Órdenes viven en el desplegable de «Habilidad».
     this.menu.replaceChildren(
-      status,
       h('div', { class: 'cm-row main' }, [
         b('⚔', 'Atacar', this.actions.onAttack, game.attackMode ? ' active' : ''),
         b('✨', 'Habilidad', this.actions.onToggleSkills, this.skillsOpen ? ' active' : ''),
         b('🧪', 'Objeto', () => this.onItems?.()),
         b('🛡', 'Defender', this.actions.onDefend),
         b('🏃', 'Huir', this.actions.onFlee),
-        b('⏭', 'Terminar', this.actions.onWait, done || used ? ' end highlight' : ' end', false),
+        b('⏭', 'Terminar', this.actions.onWait, done || used ? ' end highlight' : ' end', false, `👣${game.turnMove}`),
       ]),
     );
   }

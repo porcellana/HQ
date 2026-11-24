@@ -6,6 +6,7 @@ const SECTIONS: Array<[string, string[]]> = [
     'Toca una casilla del mapa y tu personaje camina hasta allí.',
     'Toca el minimapa (arriba a la derecha) para ir directo a ese punto.',
     'La brújula verde del borde te lleva a tu objetivo (se puede desactivar en Ajustes → Guía de misión). Las salidas se ven brillar en dorado y en el minimapa.',
+    'Barra de abajo (una línea): ⏳ Esperar, ✨ Habilidad (se despliega con tus habilidades y la poción), 🎒 Mochila, 📜 Ficha, 📖 Misiones y ⚙ Ajustes. En Ajustes también están Guardar partida, esta ayuda y Guardar y salir.',
     'Opcional: joystick virtual en Ajustes.',
     'Zoom del mapa: pellizca con dos dedos, o usa los botones + y − bajo el minimapa (⟲ vuelve al normal). En PC: rueda del ratón o teclas + − 0.',
   ]],
@@ -44,7 +45,7 @@ const SECTIONS: Array<[string, string[]]> = [
   ['📜 Misiones', [
     'Los aldeanos con ❗ tienen una misión; con ❓, puedes entregarla.',
     'Tu objetivo actual aparece arriba, bajo el panel de vida, con la zona donde cumplirlo.',
-    'Diario completo: Ficha → Misiones.',
+    'Diario completo: botón 📖 Misiones de la barra de abajo (ahí eliges cuál seguir y la lees entera).',
   ]],
   ['🏰 Mazmorras', [
     'Los cofres dan botín; algunos están cerrados (el Pícaro los abre mejor).',

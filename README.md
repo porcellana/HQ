@@ -167,6 +167,9 @@ Otros comandos:
   barra de vida es su nivel (rojo con ☠ = mortal para ti).
 - En PC: flechas/WASD para moverse, espacio para esperar, 1-5 habilidades, F huir,
   C ficha, I mochila, J diario, Q poción, Esc pausa.
+- **Barra de abajo (una línea):** ⏳ Esperar · ✨ Habilidad (desplegable con tus habilidades,
+  la poción rápida y, en combate, Correr/Vincular/Órdenes) · 🎒 Mochila · 📜 Ficha ·
+  📖 Misiones · ⚙ Ajustes (aquí también están Guardar partida, Cómo se juega y Guardar y salir).
 - Las casillas que brillan en dorado son **salidas** a otras zonas (rotuladas cuando estás
   cerca). Ya no hay flechas doradas en el borde: la única flecha es la **brújula verde** de
   la guía de misión (desactivable en Ajustes).

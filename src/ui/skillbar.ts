@@ -1,4 +1,9 @@
-/** Barra de habilidades (encima de los botones). En combate también trae Correr y las órdenes a la mascota. */
+/**
+ * DESPLEGABLE DE HABILIDADES (pegado encima de la barra inferior). Una rejilla de
+ * dos columnas con tus habilidades (icono, nombre y coste) y, a continuación, la
+ * poción rápida, Vincular, y en combate Correr y las órdenes a la mascota.
+ * Se abre con «Habilidad» y se cierra al elegir algo o al tocar fuera.
+ */
 import type { SkillDef } from '@/data/schema';
 import type { Game } from '@/game/game';
 import { unlockedSkills } from '@/game/rules/character';
@@ -51,24 +56,20 @@ export class SkillBar {
     if (sig === this.sig) return;
     this.sig = sig;
 
+    const item = (cls: string, ico: string, name: string, badge: string, onClick: () => void, opts: { disabled?: boolean; title?: string } = {}) =>
+      h('button', {
+        class: `dr-item ${cls}`, onClick, disabled: opts.disabled ?? false, attrs: { 'aria-label': name, ...(opts.title ? { title: opts.title } : {}) },
+      }, [h('span', { class: 'ico', text: ico }), h('span', { class: 'nm', text: name }), badge ? h('span', { class: 'bd', text: badge }) : null]);
     this.el.replaceChildren(
       ...skills.map((sk) => {
         const cd = c.cooldowns[sk.id] ?? 0;
         const blocked = cd > 0 || p.mp < sk.cost;
-        const b = h('button', {
-          class: `skill${game.targeting?.id === sk.id ? ' selected' : ''}${blocked ? ' blocked' : ''}`,
-          attrs: { 'aria-label': sk.name, title: `${sk.name}: ${sk.description}` },
-          onClick: () => this.onSkill(sk),
-        }, [
-          h('span', { class: 'ico', text: sk.icon }),
-          h('small', { text: cd > 0 ? `⏳${cd}` : `${sk.cost}` }),
-        ]);
-        return b;
+        return item(`${game.targeting?.id === sk.id ? 'selected' : ''}${blocked ? ' blocked' : ''}`, sk.icon, sk.name, cd > 0 ? `⏳${cd}` : `${sk.cost}`, () => this.onSkill(sk), { title: sk.description });
       }),
-      ...(bindable.length ? [h('button', { class: 'skill bind', onClick: this.onBind, attrs: { 'aria-label': 'Vincular criatura' } }, [h('span', { class: 'ico', text: '🔮' }), h('small', { text: `${Math.round(bestBind * 100)}%` })])] : []),
-      ...(potions > 0 ? [h('button', { class: 'skill potion', onClick: this.onPotion, attrs: { 'aria-label': 'Poción de curación' } }, [h('span', { class: 'ico', text: '🧪' }), h('small', { text: `×${potions}` })])] : []),
-      ...(combat ? [h('button', { class: 'skill dash', onClick: this.onDash, disabled: game.actionUsed, attrs: { 'aria-label': 'Correr (gasta la acción: doble movimiento)' } }, [h('span', { class: 'ico', text: '👟' }), h('small', { text: 'Correr' })])] : []),
-      ...(combat && game.petInstance ? [h('button', { class: 'skill pet', onClick: this.onPetOrders, attrs: { 'aria-label': 'Órdenes a la mascota' } }, [h('span', { class: 'ico', text: '🐾' }), h('small', { text: 'Órdenes' })])] : []),
+      ...(potions > 0 ? [item('potion', '🧪', 'Poción', `×${potions}`, this.onPotion, { title: 'Beber una poción de curación' })] : []),
+      ...(bindable.length ? [item('bind', '🔮', 'Vincular', `${Math.round(bestBind * 100)}%`, this.onBind, { title: 'Vincular una criatura debilitada' })] : []),
+      ...(combat ? [item('dash', '👟', 'Correr', '', this.onDash, { disabled: game.actionUsed, title: 'Gasta la acción: doble movimiento' })] : []),
+      ...(combat && game.petInstance ? [item('pet', '🐾', 'Órdenes', '', this.onPetOrders, { title: 'Órdenes a la mascota' })] : []),
     );
 
     const chips: HTMLElement[] = [];

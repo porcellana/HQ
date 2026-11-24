@@ -155,6 +155,20 @@ export class App {
               }
             },
         { onExport: () => void this.exportSave(), onImport: () => this.importSave(back) },
+        // Dentro de una partida, aquí van también Guardar, Cómo se juega y Salir (antes en el menú ☰).
+        this.game
+          ? {
+              onSave: () => {
+                void this.autosave('manual').then(() => this.hud?.pushMessage('Partida guardada.', 'good'));
+                this.setScreen(null);
+              },
+              onHelp: () => this.setScreen(helpScreen(() => this.showSettings(back))),
+              onQuit: () => {
+                this.setScreen(null);
+                void this.quitToMenu();
+              },
+            }
+          : undefined,
       ),
     );
   }
@@ -273,7 +287,12 @@ export class App {
     const hud = new Hud({
       onWait: () => game.waitTurn(),
       onSheet: () => this.showSheet(),
-      onMenu: () => this.togglePause(),
+      onJournal: () => this.showJournal(),
+      onSettings: () => {
+        if (this.screen || this.pauseClose) return;
+        game.heldDir = null;
+        this.showSettings(() => this.setScreen(null));
+      },
       onInventory: () => this.showInventory(),
       onJoystick: (d) => this.setHeldDir(d),
       onSkill: (sk) => {
@@ -674,6 +693,8 @@ export class App {
 
   private onTap(sx: number, sy: number): void {
     if (!this.game || this.pauseClose || this.screen || this.ui.querySelector('.modal-back, .dialog-back')) return;
+    // Un toque en el mapa con el desplegable de habilidades abierto sólo lo cierra.
+    if (this.hud?.dismissDrawer()) return;
     // Paso a paso: tocar la pantalla también sirve como «Siguiente».
     if (this.game.awaitingContinue) {
       if (this.game.holdT <= 0) {

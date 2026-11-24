@@ -820,3 +820,46 @@ body.combat-turn .hud { --dock: 94px; }
 }
 .skill-bar button.skill.dash small, .skill-bar button.skill.pet small { font-size: 0.55em; }
 .skill-bar button.skill:disabled { opacity: 0.35; }
+
+/* =====================================================================
+   v0.5.7 — BARRA CON ACCESOS DIRECTOS Y DESPLEGABLE DE HABILIDADES
+   ===================================================================== */
+body.combat-turn .hud { --dock: 68px; }
+
+/* Barra de exploración: 6 botones en una línea */
+.action-bar button { font-size: 0.64em; letter-spacing: -0.01em; position: relative; }
+.action-bar button.active { background: rgba(242,216,136,0.16); border-color: var(--gold); color: var(--gold-l); }
+.action-bar button .ico { font-size: 1.85em; }
+
+/* Desplegable de habilidades: panel pegado encima de la barra, rejilla de 2 columnas */
+.skill-bar, .hud.in-combat .skill-bar {
+  left: 6px; right: 6px; bottom: calc(var(--dock) + 2px + env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 7px; flex-wrap: nowrap; justify-content: stretch;
+  background: linear-gradient(rgba(30,26,38,0.97), rgba(12,10,16,0.98)); border: 1px solid var(--border-l); border-radius: 16px 16px 6px 6px;
+  box-shadow: 0 -6px 18px rgba(0,0,0,0.5); pointer-events: auto; z-index: 6; animation: drawerin 0.16s ease-out;
+}
+@keyframes drawerin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.dr-item {
+  display: flex; align-items: center; gap: 7px; min-height: 42px; padding: 0 10px; text-align: left; font-size: 0.8em; border-radius: 11px;
+  background: linear-gradient(#2e2838, #1c1824); border: 1px solid #4d4230; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.dr-item .ico { font-size: 1.35em; flex: none; }
+.dr-item .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dr-item .bd { flex: none; font-size: 0.8em; padding: 1px 7px; border-radius: 9px; background: #0b0a10; border: 1px solid var(--border); color: var(--gold-l); }
+.dr-item.blocked { opacity: 0.45; }
+.dr-item.selected { border-color: var(--gold); box-shadow: 0 0 10px rgba(242,216,136,0.5); }
+.dr-item:disabled { opacity: 0.35; }
+.dr-item.bind { border-color: #a070e0; }
+
+/* Menú de combate: los pasos que quedan, como insignia sobre «Terminar» */
+.combat-menu .cbtn { position: relative; }
+.cbtn .badge {
+  position: absolute; top: -8px; right: -2px; padding: 0 6px; border-radius: 10px; font-size: 0.95em; line-height: 1.5; pointer-events: none;
+  background: #0b0a10; border: 1px solid #7ab0e0; color: #9ad0ff;
+}
+.cbtn .badge.empty { border-color: var(--border); color: var(--muted); }
+.cm-row.main .cbtn { font-size: 0.62em; letter-spacing: -0.01em; }
+
+/* Las pantallas completas y los diálogos van siempre por encima del HUD (zoom, mensajes…) */
+.screen { z-index: 10; }
+.modal-back { z-index: 20; }

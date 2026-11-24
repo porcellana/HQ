@@ -2,6 +2,19 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.7 · 2026-11-24 — Barra con accesos directos y desplegable de habilidades
+
+- Barra inferior de exploración en una línea con accesos directos: ⏳ Esperar, ✨ Habilidad,
+  🎒 Mochila, 📜 Ficha, **📖 Misiones** y **⚙ Ajustes** (sustituyen al botón ☰ Menú; Esc/Atrás
+  siguen abriendo la pausa).
+- **Habilidades en un desplegable** pegado a la barra (rejilla de 2 columnas con icono, nombre y
+  coste): se cierra al elegir y al tocar el mapa. Incluye la poción rápida y, en combate, Correr,
+  Vincular y Órdenes. Ya no hay botones redondos sueltos por el mapa.
+- Los pasos que te quedan (👣) salen como insignia sobre «Terminar»; desaparece la pastilla
+  flotante del centro.
+- Ajustes, dentro de una partida: Guardar partida, Cómo se juega y Guardar y salir al menú.
+- Arreglado: los botones de zoom se veían por encima de las pantallas completas.
+
 ## v0.5.6 · 2026-11-24 — Menú de combate en una línea
 
 - El menú de «Tu turno» pasa de dos filas a **una sola línea**: Atacar, Habilidad, Objeto,
