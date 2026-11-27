@@ -2,6 +2,12 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.5.9 · 2026-11-27 — Misiones sin avisos y enemigos a tu nivel
+
+- Quitados los avisos de misión (nueva, progreso) que salían en pantalla; la línea de abajo y el menú 📖 las muestran.
+- Los encuentros aleatorios salen a tu nivel ±1 (vida, ataque, daño y CA escalan); los jefes no se escalan.
+- Añadido `CLAUDE.md` con el contexto del proyecto para nuevas sesiones.
+
 ## v0.5.8 · 2026-11-24 — Menú de misiones claro y desplegable cuadrado
 
 - **Menú de misiones rehecho (📖):** cada misión en curso muestra la tarea de ahora resaltada (▶),

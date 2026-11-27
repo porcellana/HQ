@@ -15,7 +15,7 @@ import type { CombatFxEvent, MsgCat } from './combat/presentation';
 import { RARITY_RANK } from './combat/presentation';
 import { findPath, type Point } from '@/engine/pathfinding';
 import { Rng, hashString } from '@/engine/rng';
-import { createEnemy, enemySave, type Enemy } from './combat/entities';
+import { createEnemy, scaleEnemyDef, enemySave, type Enemy } from './combat/entities';
 import { advanceWalker, pushStep } from './combat/walk';
 import {
   applyDefenses,
@@ -670,8 +670,7 @@ export class Game {
       const cn = this.companionNpc();
       if (cn) {
         this.cancelPath();
-        const qm = Quests.onTalk(this.state, cn.id);
-        for (const m of qm) this.msg(m, 'good');
+        void Quests.onTalk(this.state, cn.id);
         this.events.emit('npcTalk', { npc: cn });
         return;
       }
@@ -1339,7 +1338,7 @@ export class Game {
     const firstVisit = !this.state.visitedZones.includes(this.zone.id);
     if (firstVisit) this.state.visitedZones.push(this.zone.id);
     this.events.emit('zoneChanged', { zone: this.zone, firstVisit });
-    for (const m of Quests.onVisit(this.state, this.zone.id)) this.msg(m, 'good');
+    void Quests.onVisit(this.state, this.zone.id);
     this.events.emit('questsChanged', {});
     if (firstVisit && (this.zone.def.kind === 'wild' || this.zone.def.kind === 'dungeon')) {
       this.gainXp(this.zone.def.discoverXp ?? 20 * this.zone.def.level, `descubres ${this.zone.def.name}`);
@@ -1416,7 +1415,9 @@ export class Game {
     for (let i = 0; i < count; i++) {
       const pos = i === 0 ? spot : this.freeSpotNear(spot, 2);
       if (!pos) break;
-      const e = createEnemy(def, pos.x, pos.y, this.rng);
+      const lvl = Math.min(20, Math.max(1, this.state.player.level + this.rng.int(-1, 1)));
+      const sc = scaleEnemyDef(def, lvl);
+      const e = createEnemy(sc.def, pos.x, pos.y, this.rng, sc.hpMul);
       this.enemies.push(e);
       out.push(e);
     }
@@ -1585,7 +1586,6 @@ export class Game {
     }
     this.gainXp(xp, enemy.def.name);
     const qm = Quests.onKill(this.state, enemy.def);
-    for (const m of qm) this.msg(m, 'good');
     if (qm.length) this.events.emit('questsChanged', {});
     const loot = rollLoot(this.rng, enemy.def.lootTable, enemy.def.level);
     this.cfx({
@@ -1626,7 +1626,7 @@ export class Game {
         this.msg(`Recoges: ${def.name}${qty - rest > 1 ? ` ×${qty - rest}` : ''}${r.id !== 'comun' ? ` (${r.name})` : ''}.`, r.id === 'comun' ? 'info' : 'good');
       }
       if (rest > 0) left.push({ ...it, qty: rest });
-      if (rest < qty) for (const m of Quests.collectNotes(this.state, it.id)) this.msg(m, 'good');
+      if (rest < qty) void Quests.collectNotes(this.state, it.id);
     }
     g.items = left;
     if (left.length) this.msg('¡La mochila está llena! Parte del botín se queda en el suelo.', 'warn');
@@ -2523,7 +2523,6 @@ export class Game {
     const p = this.playerPos;
     if (npc.x !== p.x) this.view.facing = npc.x > p.x ? 'right' : 'left';
     const qm = Quests.onTalk(this.state, npc.id);
-    for (const m of qm) this.msg(m, 'good');
     if (qm.length) this.events.emit('questsChanged', {});
     this.events.emit('npcTalk', { npc });
   }
@@ -2531,9 +2530,8 @@ export class Game {
   acceptQuest(id: string): string | null {
     const err = Quests.accept(this.state, id);
     if (!err) {
-      this.msg(`Nueva misión: ${Quests.getQuest(id).name}`, 'good');
       // Los objetivos de "visitar" la zona donde ya estás cuentan al momento.
-      for (const m of Quests.onVisit(this.state, this.zone.id)) this.msg(m, 'good');
+      void Quests.onVisit(this.state, this.zone.id);
       this.events.emit('questsChanged', {});
     }
     return err;
@@ -3292,7 +3290,7 @@ export class Game {
       this.events.emit('petEvent', { kind: 'vinculo', text: `¡${sp.name} se une a ti!` });
       if (where === 'activa') this.spawnPet();
     }
-    for (const m of Quests.onBind(this.state, sp.id)) this.msg(m, 'good');
+    void Quests.onBind(this.state, sp.id);
     this.events.emit('questsChanged', {});
     this.gainXp(Math.round(target.def.xp * 0.5), `vínculo con ${sp.name}`);
     this.sfx('mision');
