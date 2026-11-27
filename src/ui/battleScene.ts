@@ -30,6 +30,7 @@ import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
 import { ambientPos, ambientSpec, attackKind, damageStyle, elementOf, ghostStep, healStyle, hitStop, hpColor, missStyle, type AmbientSpec, type NumStyle } from '@/gfx/battleFx';
 import { drawArrow, drawAura, drawCritStar, drawExplosion, drawHealLight, drawOrb, drawShock, drawSlash, drawThrust, makeVignette } from './battleFxDraw';
 import { h } from './dom';
+import { lootSummary } from './lootSummary';
 
 export interface BattleSceneDeps {
   root: HTMLElement;
@@ -1039,8 +1040,7 @@ export class BattleScene {
     if (res.outcome === 'victory') {
       const xp = g.battleXp(res);
       lines.push(h('h3', { text: 'Victoria' }));
-      lines.push(h('p', { text: `+${xp} XP${res.gold ? ` · +${res.gold} oro` : ''}` }));
-      if (res.items.length) lines.push(h('p', { class: 'b-loot', text: res.items.map((i) => `${i.name}${i.qty > 1 ? ` ×${i.qty}` : ''}`).join(', ') }));
+      lines.push(...lootSummary(res, xp));
     } else lines.push(h('h3', { text: 'Has caído...' }), h('p', { text: 'Despertarás en un lugar seguro.' }));
     lines.push(h('button', { class: 'primary b-continue', text: 'Continuar', onClick: () => this.finish() }));
     this.panelEl.replaceChildren(...lines);

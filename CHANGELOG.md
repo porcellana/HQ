@@ -2,6 +2,10 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.9.5 · 2026-11-27 — Fichas de botín
+
+- Al ganar una batalla, el botín sale como fichas con icono, color de rareza y destello.
+
 ## v0.9.4 · 2026-11-27 — Botín, economía, comercio y +130 objetos
 
 - **Objetos**: ~135 nuevos (armas por clase y nivel hasta 19, armaduras y escudos por clase, anillos y amuletos, pociones, elixires, pergaminos, **bombas** con estados, comida, materiales, minerales, hierbas y objetos de misión). Requisitos de **clase y nivel** (`classes`, `reqLevel`), 7 iconos nuevos (varita, lanza, ballesta, bomba, lingote, pergamino, llave).
