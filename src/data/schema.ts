@@ -79,9 +79,75 @@ export interface ZoneDef {
   /** Cofres, trampas y nodos de mineral colocados en el mapa. */
   features?: ZoneFeature[];
   /** Jefe que aparece en esta zona (salas de jefe de mazmorra). */
-  bossSpawn?: { enemy: string; x: number; y: number; guards?: Array<{ enemy: string; x: number; y: number }> };
+  bossSpawn?: { enemy: string; x: number; y: number; level?: number; guards?: Array<{ enemy: string; x: number; y: number }> };
   /** Rellenado por el generador: a qué mazmorra y piso pertenece la zona. */
   dungeon?: { id: string; floor: number | 'jefe'; run: number };
+  /** Zona generada por el mundo procedural (v0.8): su nivel queda fijado al descubrirla. */
+  generated?: GeneratedInfo;
+  /** Niebla de exploración también fuera de las mazmorras (cuevas generadas). */
+  fog?: boolean;
+  /** Tinte de color del bioma sobre el mapa. */
+  tint?: { color: string; alpha: number };
+}
+
+/** Datos de una zona procedural. */
+export interface GeneratedInfo {
+  /** Celda del mundo (cx, cy); las subzonas (mazmorra, cueva) comparten la de su entrada. */
+  cx: number;
+  cy: number;
+  biome: string;
+  /** Tipo de lugar. */
+  place: PlaceKind;
+  /** Música/ambiente del bioma (id de data/biomes). */
+  music: string;
+  /** Escenario de batalla (ver game/battle/biome.ts). */
+  battle: string;
+}
+
+export type PlaceKind = 'wild' | 'aldea' | 'pueblo' | 'ciudad' | 'campamento' | 'ruinas' | 'cueva' | 'mazmorra';
+
+/**
+ * Bioma del mundo procedural (data/biomes). El motor sólo lee estos datos:
+ * clima, vecinos permitidos, tiles, enemigos, botín y nombres.
+ */
+export interface BiomeDef {
+  id: string;
+  name: string;
+  icon: string;
+  /** Rango de temperatura y humedad (0..1) donde aparece. */
+  climate: { temp: [number, number]; moist: [number, number]; elev?: [number, number] };
+  /** Prioridad al clasificar (menor = antes). El bioma puente va el último. */
+  order: number;
+  /** Biomas que pueden ser vecinos directos (el resto se separa con un bioma puente). */
+  neighbors: string[];
+  /** Bioma "puente" (compatible con todos). */
+  bridge?: boolean;
+  ground: string;
+  groundAlt?: { tile: string; chance: number };
+  path: string;
+  /** Tile de los bordes del mapa (obstáculo). */
+  border: string;
+  /** Obstáculos esparcidos: tile y densidad (0..1) dentro de los agrupamientos. */
+  props: Array<{ tile: string; density: number }>;
+  /** Suelo decorativo sin colisión (flores, etc.): densidad. */
+  deco?: Array<{ tile: string; density: number }>;
+  water?: { tile: string; ponds: [number, number] };
+  roof: string;
+  wall: string;
+  darkness: number;
+  tint?: { color: string; alpha: number };
+  /** Id de música/ambiente (para quien la reproduzca). */
+  music: string;
+  /** Escenario de batalla. */
+  battle: string;
+  /** Enemigos del bioma (se filtran por nivel de la zona). */
+  enemies: Array<{ enemy: string; weight: number; min?: number; max?: number }>;
+  /** Tabla de botín de los cofres. */
+  chestLoot: string;
+  ores: OreType[];
+  /** Nombres de lugares salvajes: sustantivo + epíteto. */
+  nouns: string[];
+  epithets: string[];
 }
 
 // ===========================================================================
@@ -684,6 +750,8 @@ export interface QuestDef {
   minLevel?: number;
   /** Repetibles: turnos hasta que se puede volver a coger. */
   cooldownTurns?: number;
+  /** Misiones generadas: zona donde se cumple el objetivo (para la guía). */
+  zoneHint?: string;
 }
 
 // ===========================================================================

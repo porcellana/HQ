@@ -301,7 +301,7 @@ describe('guardado v5', () => {
     const s = testState() as unknown as Record<string, unknown>;
     delete s['world'];
     const v5 = migrate(s, 4, CURRENT_SAVE_VERSION) as unknown as GameState;
-    expect(v5.world).toEqual({ dungeons: {}, features: {} });
+    expect(v5.world).toMatchObject({ dungeons: {}, features: {} });
     const g = new Game(v5);
     expect(g.state.world.features).toEqual({});
   });

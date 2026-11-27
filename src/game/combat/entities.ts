@@ -56,9 +56,9 @@ export function enemySave(e: Enemy, stat: keyof NonNullable<EnemyDef['saves']>):
  * Por cada nivel de diferencia: ±20 % de vida, ±1 al ataque y al daño cada 2, ±1 a la CA cada 3.
  * Los jefes y las criaturas con ficha especial no se escalan.
  */
-export function scaleEnemyDef(def: EnemyDef, level: number): { def: EnemyDef; hpMul: number } {
+export function scaleEnemyDef(def: EnemyDef, level: number, force = false): { def: EnemyDef; hpMul: number } {
   const d = level - def.level;
-  if (d === 0 || def.boss || def.pet) return { def, hpMul: 1 };
+  if (d === 0 || (def.boss && !force) || def.pet) return { def, hpMul: 1 };
   const half = Math.trunc(d / 2);
   const dmg = parseDice(def.attack.dice);
   const attack = { ...def.attack, toHit: def.attack.toHit + half, dice: formatDice({ ...dmg, modifier: dmg.modifier + half }) };

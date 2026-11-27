@@ -33,6 +33,7 @@ import * as Quests from './quests/quests';
 import * as Shop from './economy/shop';
 import type { EquipSlot } from '@/data/schema';
 import { buildZone, type Zone, type ZoneExit } from './world/zone';
+import { activateGenWorld, assignQuests, emptyGen, ensureZone, genZoneDef } from './world/procgen';
 import { dungeonZoneDef, emptyWorld, featureKey, parseDungeonZone, progressOf } from './world/dungeons';
 
 /** Turnos que tarda en volver a crecer una veta de mineral fuera de las mazmorras. */
@@ -240,8 +241,10 @@ export class Game {
     state.quests ??= {};
     state.shops ??= {};
     state.world ??= emptyWorld();
-    // Los pisos de mazmorra se generan bajo demanda con la semilla de esta partida.
-    setDynamicZoneResolver((id) => dungeonZoneDef(state.seed, state.world, id));
+    state.world.gen ??= emptyGen();
+    // Los pisos de mazmorra y las zonas del mundo procedural se generan bajo demanda con la semilla de esta partida.
+    activateGenWorld(state.seed, state.world.gen);
+    setDynamicZoneResolver((id) => dungeonZoneDef(state.seed, state.world, id) ?? genZoneDef(id));
     recalcPlayer(state.player);
     if (state.player.hp <= 0) state.player.hp = Math.ceil(state.player.maxHp / 2);
     this.rng = new Rng(hashString(`${state.seed}:${state.turn}:${Date.now()}:${gameCounter++}`));
@@ -520,7 +523,7 @@ export class Game {
 
   /** ¿Se ha visto esta casilla? Fuera de las mazmorras se ve todo el mapa. */
   isExplored(x: number, y: number): boolean {
-    if (!this.zone.def.dungeon) return true;
+    if (!this.zone.def.dungeon && !this.zone.def.fog) return true;
     return (this.explored.get(this.zone.id)?.[y * this.zone.width + x] ?? 0) === 1;
   }
 
@@ -738,6 +741,10 @@ export class Game {
       const petOn = !!this.state.pets?.active && !this.state.pets.active.down;
       if (petOn && res.petXp > 0) this.givePetXp(res.petXp);
       const dz = this.zone.def.dungeon;
+      if (this.zone.def.generated && res.kills.some((k) => k.def.boss)) {
+        this.state.flags[`gz_clear_${this.zone.id}`] = true;
+        this.msg('El jefe ha caído. Esta guarida queda en calma.', 'info');
+      }
       if (dz && res.kills.some((k) => k.def.boss)) {
         progressOf(this.state.world, dz.id).cleared = true;
         this.msg('El pasadizo a la superficie se abre. Si vuelves a entrar desde fuera, la mazmorra será distinta.', 'info');
@@ -780,7 +787,7 @@ export class Game {
         }
       }
     }
-    const def = getZoneDef(exit.to);
+    const def = ensureZone(exit.to, this.state.player.level) ?? getZoneDef(exit.to);
     if (!def) {
       this.cancelPath();
       this.heldDir = null;
@@ -823,6 +830,10 @@ export class Game {
     }
     const firstVisit = !this.state.visitedZones.includes(this.zone.id);
     if (firstVisit) this.state.visitedZones.push(this.zone.id);
+    if (firstVisit && this.zone.def.generated) {
+      const fresh = assignQuests(this.zone.id, this.state.player.level);
+      if (fresh.length) this.msg(`${fresh.length === 1 ? 'Hay una misión' : `Hay ${fresh.length} misiones`} disponible${fresh.length === 1 ? '' : 's'} aquí.`, 'info');
+    }
     this.events.emit('zoneChanged', { zone: this.zone, firstVisit });
     void Quests.onVisit(this.state, this.zone.id);
     this.events.emit('questsChanged', {});
@@ -849,8 +860,8 @@ export class Game {
     }
     const boss = this.zone.def.bossSpawn;
     const dz = this.zone.def.dungeon;
-    if (boss && !(dz && progressOf(this.state.world, dz.id).cleared)) {
-      this.spawnEnemy(boss.enemy, boss.x, boss.y);
+    if (boss && !(dz && progressOf(this.state.world, dz.id).cleared) && !this.state.flags[`gz_clear_${this.zone.id}`]) {
+      this.spawnEnemy(boss.enemy, boss.x, boss.y, boss.level);
       for (const g of boss.guards ?? []) this.spawnEnemy(g.enemy, g.x, g.y);
     }
     const enc = this.zone.def.encounters;
@@ -900,7 +911,9 @@ export class Game {
     for (let i = 0; i < count; i++) {
       const pos = i === 0 ? spot : this.freeSpotNear(spot, 2);
       if (!pos) break;
-      const lvl = Math.min(20, Math.max(1, this.state.player.level + this.rng.int(-1, 1)));
+      // Zonas generadas: nivel fijado al descubrirlas; el resto, nivel del jugador ±1.
+      const gz = this.zone.def.generated;
+      const lvl = gz ? Math.min(25, Math.max(1, this.zone.def.level)) : Math.min(20, Math.max(1, this.state.player.level + this.rng.int(-1, 1)));
       const sc = scaleEnemyDef(def, lvl);
       const e = createEnemy(sc.def, pos.x, pos.y, this.rng, sc.hpMul);
       this.enemies.push(e);
@@ -910,10 +923,11 @@ export class Game {
   }
 
   /** Crea un enemigo concreto (jefes, invocaciones, tests). */
-  spawnEnemy(id: string, x: number, y: number): Enemy | null {
+  spawnEnemy(id: string, x: number, y: number, level?: number): Enemy | null {
     const def = getEnemy(id);
     if (!def || !this.freeForEnemy(x, y)) return null;
-    const e = createEnemy(def, x, y, this.rng);
+    const sc = level ? scaleEnemyDef(def, level, true) : { def, hpMul: 1 };
+    const e = createEnemy(sc.def, x, y, this.rng, sc.hpMul);
     this.enemies.push(e);
     return e;
   }

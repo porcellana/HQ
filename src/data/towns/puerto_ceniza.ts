@@ -13,6 +13,7 @@ export default {
   exitTile: 'adoquin',
   description: 'Una ciudad portuaria de piedra negra. Huele a sal, brea y secretos.',
   exits: {
+    '8': { to: 'w_-1_2', arrive: '4', label: 'Hacia las tierras del oeste' },
     '1': { to: 'paso_gris', arrive: '2', label: 'Al Paso Gris' },
     '2': { to: 'ciudad_gremio', arrive: '1', label: 'Gremio de Aventureros', tile: 'puerta', door: true },
     '3': { to: 'ciudad_alquimista', arrive: '1', label: 'Alquimista', tile: 'puerta', door: true },
@@ -38,8 +39,8 @@ export default {
     '#pWWW4WWWpppppWWW3WWWppp~~~~~~',
     '#ppppppppppppppppppppppp~~~~~~',
     '#ppppppppppLpppppppppLpp~~~~~~',
-    '#ppppppppppppppppppppppp~~~~~~',
-    '#pppppppppppLppppppppLpp~~~~~~',
+    '8ppppppppppppppppppppppp~~~~~~',
+    '8pppppppppppLppppppppLpp~~~~~~',
     '#ppppppppppppppppppppppp~~~~~~',
     '#pMMMMMMMMMppppppppppppp~~~~~~',
     '#pMMMMMMMMMppppppppppppp~~~~~~',

@@ -24,7 +24,7 @@ export interface Volume {
 
 const WALLS = new Set(['stoneWall', 'woodWall', 'caveWall', 'silkWall', 'cryptWall']);
 const ROOFS = new Set(['roof', 'roofSlate']);
-const OBJ_H: Record<string, number> = { tree: 7, pine: 8, bush: 4, rock: 4 };
+const OBJ_H: Record<string, number> = { tree: 7, pine: 8, bush: 4, rock: 4, cactus: 6, palm: 7, snowPine: 8, deadTree: 7, crag: 5, tent: 5 };
 const WALL_H = 5;
 
 type Kind = 'none' | 'wall' | 'roof' | 'object';
@@ -110,7 +110,7 @@ export function buildVolume(zone: Zone): Volume {
       const px = x * TILE, py = y * TILE;
       if (k === 'object') {
         const sp = sprites[y * W + x]!;
-        const rx = sp === 'tree' || sp === 'pine' ? 8 : 6;
+        const rx = sp === 'tree' || sp === 'pine' || sp === 'snowPine' || sp === 'palm' ? 8 : 6;
         m.beginPath();
         m.ellipse(px + 10, py + 13.5, rx, rx / 2.2, 0, 0, Math.PI * 2);
         m.fill();

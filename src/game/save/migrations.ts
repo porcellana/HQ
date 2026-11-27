@@ -13,7 +13,7 @@
  * Nunca borres migraciones antiguas.
  */
 
-export const CURRENT_SAVE_VERSION = 8;
+export const CURRENT_SAVE_VERSION = 9;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
@@ -67,6 +67,12 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     ...s,
     pets: s['pets'] ?? { active: null, stable: [], starterChosen: false, seen: [], caught: [] },
   }),
+  /** v8 → v9 (v0.8): mundo procedural. Se añade el estado vacío; las zonas se generan al explorar. */
+  8: (s) => {
+    const world = { ...((s['world'] as Record<string, unknown>) ?? { dungeons: {}, features: {} }) };
+    world['gen'] ??= { zones: {}, npcs: {}, shops: {}, quests: {}, assigned: {} };
+    return { ...s, world };
+  },
 };
 
 export class SaveMigrationError extends Error {}

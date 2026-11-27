@@ -6,9 +6,12 @@ export interface ZoneLike {
   kind: string;
   darkness?: number;
   dungeon?: { id: string } | undefined;
+  /** Zona del mundo procedural: trae su escenario de batalla. */
+  generated?: { battle: string } | undefined;
 }
 
 export function biomeOf(z: ZoneLike): Biome {
+  if (z.generated) return z.generated.battle as Biome;
   const dung = z.dungeon?.id ?? '';
   if (dung.includes('cripta')) return 'cripta';
   if (dung.includes('galerias') || dung.includes('arana')) return 'galerias';

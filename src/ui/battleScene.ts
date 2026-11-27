@@ -139,7 +139,7 @@ export class BattleScene {
 
   constructor(private readonly d: BattleSceneDeps) {
     const zone = d.game.zone.def;
-    this.biome = biomeOf({ id: zone.id, kind: zone.kind, ...(zone.darkness !== undefined ? { darkness: zone.darkness } : {}), dungeon: zone.dungeon });
+    this.biome = biomeOf({ id: zone.id, kind: zone.kind, ...(zone.darkness !== undefined ? { darkness: zone.darkness } : {}), dungeon: zone.dungeon, generated: zone.generated });
     this.density = LEVEL_DENSITY[d.fx];
     this.speedK = d.speed === 'rapida' ? 0.55 : 1;
     this.canvas = h('canvas', { class: 'b-canvas' });

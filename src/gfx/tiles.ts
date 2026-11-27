@@ -555,6 +555,108 @@ const oreGen = (vein: string, light: string): Gen => (c, r) => {
   }
 };
 
+
+// --- Biomas del mundo procedural (v0.8) ---------------------------------------
+const sand: Gen = (c, r) => {
+  px(c, 0, 0, '#d8c080', TILE, TILE);
+  speckle(c, r, 24, ['#c0a868', '#c0a868', '#e8d498']);
+  for (let i = 0; i < 2; i++) px(c, r.int(1, 11), r.int(2, 13), '#b89c5c', 4, 1);
+};
+const cactus: Gen = (c, r) => {
+  sand(c, r);
+  px(c, 7, 4, '#2f6a34', 3, 11);
+  px(c, 7, 4, '#4a9a4a', 1, 10);
+  px(c, 3, 7, '#2f6a34', 4, 2); px(c, 3, 5, '#2f6a34', 2, 3);
+  px(c, 10, 9, '#2f6a34', 3, 2); px(c, 12, 6, '#2f6a34', 2, 4);
+  for (let i = 0; i < 4; i++) px(c, r.int(6, 10), r.int(5, 13), '#e8e0a0');
+};
+const palm: Gen = (c, r) => {
+  sand(c, r);
+  px(c, 7, 6, PAL.woodD, 2, 9);
+  px(c, 7, 6, PAL.wood, 1, 8);
+  const leaf = ['#2f7a3a', '#4aa04a'];
+  for (const [dx, dy] of [[-5, 1], [-3, -1], [3, -1], [5, 1], [0, -2], [-4, 3], [4, 3]] as const) {
+    px(c, 8 + dx - 1, 4 + dy, r.pick(leaf), 3, 2);
+  }
+  px(c, 6, 3, '#2f7a3a', 4, 3);
+};
+const snow: Gen = (c, r) => {
+  px(c, 0, 0, '#e8eef8', TILE, TILE);
+  speckle(c, r, 18, ['#c8d4e8', '#ffffff', '#d8e2f0']);
+  if (r.chance(0.3)) px(c, r.int(2, 12), r.int(2, 12), '#b8c6dc', 3, 1);
+};
+const snowPine: Gen = (c, r) => {
+  snow(c, r);
+  px(c, 7, 13, PAL.woodD, 2, 3);
+  const layers: Array<[number, number]> = [[1, 2], [4, 4], [7, 6], [10, 7]];
+  for (const [y0, half] of layers) {
+    for (let y = 0; y < 4; y++) {
+      const w = Math.max(1, Math.round((half * (y + 1)) / 4));
+      for (let x = 8 - w; x < 8 + w; x++) {
+        const edge = x === 8 - w || x === 8 + w - 1 || y === 3;
+        px(c, x, y0 + y - 1, edge ? '#2a4a3a' : y === 0 || x < 7 ? '#f4f8ff' : '#7aa08a');
+      }
+    }
+  }
+};
+const ice: Gen = (c, r) => {
+  px(c, 0, 0, '#a8d0e8', TILE, TILE);
+  speckle(c, r, 10, ['#c8e8f8', '#88b8d8']);
+  for (let i = 0; i < 3; i++) px(c, r.int(0, 10), r.int(1, 14), '#e8f8ff', 4, 1);
+};
+const mud: Gen = (c, r) => {
+  px(c, 0, 0, '#4a4430', TILE, TILE);
+  speckle(c, r, 22, ['#3a3424', '#5a5438', '#3a4a2a']);
+  if (r.chance(0.4)) px(c, r.int(2, 11), r.int(2, 13), '#2e3a24', 3, 2);
+};
+const swampWater: Gen = (c, r) => {
+  px(c, 0, 0, '#2e4a3a', TILE, TILE);
+  speckle(c, r, 12, ['#243a2e', '#3a5a40']);
+  if (r.chance(0.6)) { const x = r.int(2, 11), y = r.int(2, 12); px(c, x, y, '#4a8a3a', 3, 2); px(c, x + 1, y, '#6ab04a'); }
+};
+const deadTree: Gen = (c, r) => {
+  mud(c, r);
+  px(c, 7, 5, '#3a2c20', 2, 10);
+  px(c, 7, 5, '#5a4630', 1, 9);
+  px(c, 4, 6, '#3a2c20', 3, 1); px(c, 3, 4, '#3a2c20', 1, 3);
+  px(c, 9, 8, '#3a2c20', 4, 1); px(c, 12, 5, '#3a2c20', 1, 4);
+  px(c, 6, 2, '#3a2c20', 1, 3); px(c, 9, 3, '#3a2c20', 1, 3);
+};
+const gravel: Gen = (c, r) => {
+  px(c, 0, 0, '#6a6660', TILE, TILE);
+  speckle(c, r, 26, ['#58544e', '#7c7870', '#4a4640']);
+};
+const crag: Gen = (c, r) => {
+  gravel(c, r);
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const dx = x - 7.5, dy = y - 8;
+      const d = dx * dx * 0.7 + dy * dy * 0.9;
+      if (d < 44) px(c, x, y, d > 36 ? '#2a2a30' : dx + dy > 2 ? '#4a4a54' : '#8a8a96');
+    }
+  }
+  for (let i = 0; i < 4; i++) px(c, r.int(4, 11), r.int(3, 11), r.pick(['#9a9aa8', '#3a3a44']));
+};
+const tent: Gen = (c, r) => {
+  grass(c, r);
+  const col = r.pick(['#a8442c', '#3a6aa0', '#a8843c']);
+  for (let y = 3; y < 14; y++) {
+    const w = Math.round(((y - 3) / 11) * 7) + 1;
+    for (let x = 8 - w; x < 8 + w; x++) px(c, x, y, x < 8 ? col : '#00000040');
+  }
+  px(c, 7, 9, '#241810', 2, 5);
+  px(c, 8, 2, PAL.woodD, 1, 2);
+};
+const campfire: Gen = (c, r) => {
+  dirt(c, r);
+  px(c, 4, 11, PAL.woodD, 8, 2);
+  px(c, 5, 10, PAL.wood, 6, 1);
+  px(c, 6, 5, '#e0742c', 4, 6);
+  px(c, 7, 3, '#f2c84a', 2, 5);
+  px(c, 7, 6, '#fff4b0', 2, 3);
+  for (let i = 0; i < 3; i++) px(c, r.int(4, 11), r.int(2, 8), '#f2c84a');
+};
+
 export const TILE_GENERATORS: Readonly<Record<string, Gen>> = {
   streetLamp, woodFloor, carpet, counter, table, barrel, shelf, altar, hearth, bed, anvil, dock,
   grass, flowers, dirt, cobble, stoneFloor, stoneWall, water, tree, pine, bush, rock,
@@ -578,6 +680,7 @@ export const TILE_GENERATORS: Readonly<Record<string, Gen>> = {
   oreIron: oreGen('#c08a6a', '#f0c0a0'),
   oreSilver: oreGen('#d8e0f0', '#ffffff'),
   oreGem: oreGen('#d04080', '#ff90c0'),
+  sand, cactus, palm, snow, snowPine, ice, mud, swampWater, deadTree, gravel, crag, tent, campfire,
 };
 
 /** Número de variantes por tile. */
@@ -610,7 +713,10 @@ export function variantFor(x: number, y: number): number {
 }
 
 /** Suelo que hay bajo los objetos altos (el mismo generador que usa su sprite completo). */
-const OBJECT_GROUND: Readonly<Record<string, Gen>> = { tree: grass, pine: pineGround, bush: grass, rock: grass };
+const OBJECT_GROUND: Readonly<Record<string, Gen>> = {
+  tree: grass, pine: pineGround, bush: grass, rock: grass,
+  cactus: sand, palm: sand, snowPine: snow, deadTree: mud, crag: gravel, tent: grass,
+};
 
 /** ¿Es un objeto alto con suelo separable (árbol, pino, arbusto, roca)? */
 export function isObjectSprite(spriteId: string): boolean {

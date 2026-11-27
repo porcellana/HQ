@@ -50,6 +50,21 @@ const tiles: TileDef[] = [
   { id: 'suelo_cripta', char: 'j', name: 'Losas de la cripta', walkable: true, blocksSight: false, sprite: 'cryptFloor', minimap: '#3a3446' },
   { id: 'escalera_bajada', char: 'v', name: 'Escaleras de bajada', walkable: true, blocksSight: false, sprite: 'stairsDown', minimap: '#f2d888' },
   { id: 'escalera_subida', char: 'n', name: 'Escaleras de subida', walkable: true, blocksSight: false, sprite: 'stairsUp', minimap: '#f2d888' },
+  // --- Biomas del mundo procedural (v0.8) ---
+  { id: 'arena', char: 'a', name: 'Arena', walkable: true, blocksSight: false, sprite: 'sand', minimap: '#b89c5c' },
+  { id: 'cactus', char: 'c', name: 'Cactus', walkable: false, blocksSight: false, sprite: 'cactus', minimap: '#2f6a34' },
+  { id: 'palmera', char: 'F', name: 'Palmera', walkable: false, blocksSight: true, sprite: 'palm', minimap: '#2f7a3a' },
+  { id: 'nieve', char: 'i', name: 'Nieve', walkable: true, blocksSight: false, sprite: 'snow', minimap: '#dce4f0' },
+  { id: 'pino_nevado', char: 'P', name: 'Pino nevado', walkable: false, blocksSight: true, sprite: 'snowPine', minimap: '#7aa08a' },
+  { id: 'hielo', char: 'h', name: 'Hielo', walkable: true, blocksSight: false, sprite: 'ice', minimap: '#a8d0e8' },
+  { id: 'cieno', char: 'm', name: 'Cieno', walkable: true, blocksSight: false, sprite: 'mud', minimap: '#4a4430' },
+  { id: 'agua_cieno', char: 'x', name: 'Aguas pantanosas', walkable: false, blocksSight: false, sprite: 'swampWater', minimap: '#2e4a3a' },
+  { id: 'arbol_seco', char: 'y', name: 'Árbol seco', walkable: false, blocksSight: false, sprite: 'deadTree', minimap: '#3a2c20' },
+  { id: 'grava', char: 'k', name: 'Grava', walkable: true, blocksSight: false, sprite: 'gravel', minimap: '#6a6660' },
+  { id: 'pena', char: 'S', name: 'Peña', walkable: false, blocksSight: false, sprite: 'crag', minimap: '#4a4a54' },
+  { id: 'tienda_campana', char: 'u', name: 'Tienda de campaña', walkable: false, blocksSight: false, sprite: 'tent', minimap: '#a8442c' },
+  { id: 'fogata', char: 'd', name: 'Fogata', walkable: false, blocksSight: false, sprite: 'campfire', minimap: '#e0742c' },
+  { id: 'muro_ruina', char: 'e', name: 'Muro en ruinas', walkable: false, blocksSight: true, sprite: 'stoneWall', minimap: '#3a3640' },
 ];
 
 export default tiles;

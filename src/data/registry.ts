@@ -6,7 +6,7 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef, PetMoveDef, PetSpeciesDef, PetType, PetTypeDef } from './schema';
+import type { BiomeDef, DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef, PetMoveDef, PetSpeciesDef, PetType, PetTypeDef } from './schema';
 import { FAMILY_TYPE, PET_TYPES } from './config/pet_types';
 import rarityList from './config/rarities';
 import trapList from './config/traps';
@@ -112,9 +112,34 @@ export const LOOT_TABLES: ReadonlyMap<string, LootTableDef> = collect<LootTableD
 );
 
 // --- PNJ, tiendas y misiones ------------------------------------------------------
-export const NPCS: ReadonlyMap<string, NpcDef> = collect<NpcDef>(import.meta.glob('./npcs/*.{ts,json}', { eager: true }), 'PNJ');
-export const SHOPS: ReadonlyMap<string, ShopDef> = collect<ShopDef>(import.meta.glob('./shops/*.{ts,json}', { eager: true }), 'tienda');
-export const QUESTS: ReadonlyMap<string, QuestDef> = collect<QuestDef>(import.meta.glob('./quests/*.{ts,json}', { eager: true }), 'misión');
+const npcMap = collect<NpcDef>(import.meta.glob('./npcs/*.{ts,json}', { eager: true }), 'PNJ');
+const shopMap = collect<ShopDef>(import.meta.glob('./shops/*.{ts,json}', { eager: true }), 'tienda');
+const questMap = collect<QuestDef>(import.meta.glob('./quests/*.{ts,json}', { eager: true }), 'misión');
+export const NPCS: ReadonlyMap<string, NpcDef> = npcMap;
+export const SHOPS: ReadonlyMap<string, ShopDef> = shopMap;
+export const QUESTS: ReadonlyMap<string, QuestDef> = questMap;
+
+/** Ids generados por el mundo procedural (se registran al cargar/crear una partida y se pueden quitar). */
+const generatedIds = { npcs: new Set<string>(), shops: new Set<string>(), quests: new Set<string>() };
+export function registerGenerated(g: { npcs?: Iterable<NpcDef>; shops?: Iterable<ShopDef>; quests?: Iterable<QuestDef> }): void {
+  for (const n of g.npcs ?? []) { npcMap.set(n.id, n); generatedIds.npcs.add(n.id); }
+  for (const s of g.shops ?? []) { shopMap.set(s.id, s); generatedIds.shops.add(s.id); }
+  for (const q of g.quests ?? []) { questMap.set(q.id, q); generatedIds.quests.add(q.id); }
+}
+/** Quita todo lo generado (al cambiar de partida). */
+export function clearGenerated(): void {
+  for (const id of generatedIds.npcs) npcMap.delete(id);
+  for (const id of generatedIds.shops) shopMap.delete(id);
+  for (const id of generatedIds.quests) questMap.delete(id);
+  generatedIds.npcs.clear();
+  generatedIds.shops.clear();
+  generatedIds.quests.clear();
+}
+
+// --- Biomas del mundo procedural (v0.8) -------------------------------------------
+export const BIOMES: ReadonlyMap<string, BiomeDef> = collect<BiomeDef>(import.meta.glob('./biomes/*.{ts,json}', { eager: true }), 'bioma');
+/** Biomas por orden de clasificación. */
+export const BIOME_LIST: readonly BiomeDef[] = [...BIOMES.values()].sort((a, b) => a.order - b.order);
 
 /** PNJ de una zona. */
 export function npcsInZone(zoneId: string, flags: Record<string, unknown> = {}): NpcDef[] {

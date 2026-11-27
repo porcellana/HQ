@@ -11,6 +11,8 @@ import { DUNGEONS, getEnemy, getZoneDef } from '@/data/registry';
 import type { DungeonDef, ZoneDef, ZoneFeature } from '@/data/schema';
 import { Rng, hashString } from '@/engine/rng';
 import { generateFloor } from './dungeonGen';
+import type { GenWorld } from './procgen';
+import { emptyGen } from './procgen';
 
 export interface DungeonProgress {
   /** Número de reinicio (cambia la semilla al rejugarla). */
@@ -29,10 +31,12 @@ export interface WorldState {
    * (cofre abierto, trampa desactivada o disparada, veta agotada).
    */
   features: Record<string, number>;
+  /** Mundo procedural (v0.8): zonas, PNJ, tiendas y misiones generadas al explorar. */
+  gen: GenWorld;
 }
 
 export function emptyWorld(): WorldState {
-  return { dungeons: {}, features: {} };
+  return { dungeons: {}, features: {}, gen: emptyGen() };
 }
 
 export type FloorRef = number | 'jefe';

@@ -7,6 +7,7 @@
 import { DUNGEONS, ENEMIES, LOOT_TABLES, NPCS, ORES, PET_SPECIES, ZONES } from '@/data/registry';
 import type { QuestDef, QuestObjective } from '@/data/schema';
 import { parseDungeonZone } from '../world/dungeons';
+import { activeSeed, genZoneDef, plannedName, plannedNeighbors } from '../world/procgen';
 import type { Zone } from '../world/zone';
 import { isReady, objectiveProgress, type QuestHolder } from './quests';
 
@@ -89,6 +90,8 @@ export function itemSourceZone(itemId: string): string | null {
 export function questGoalZone(h: QuestHolder, q: QuestDef): string | null {
   const step = questStep(h, q);
   if (!step) return null;
+  // Misiones generadas: la zona del objetivo está guardada en la propia misión.
+  if (q.zoneHint && (step.kind === 'recoger' || (step.kind === 'cazar' && !step.wild))) return q.zoneHint;
   switch (step.kind) {
     case 'ir':
       return step.zone;
@@ -110,9 +113,11 @@ export function questGoalZone(h: QuestHolder, q: QuestDef): string | null {
 
 /** Vecinos de una zona fija (destinos de sus salidas). */
 function neighbors(zoneId: string): string[] {
-  const def = ZONES.get(zoneId);
-  if (!def) return [];
-  return Object.values(def.exits ?? {}).map((e) => e.to);
+  const def = ZONES.get(zoneId) ?? genZoneDef(zoneId);
+  const out = def ? Object.values(def.exits ?? {}).map((e) => e.to) : [];
+  // Mundo procedural: la rejilla se conoce sin generar las zonas, así la guía llega también a las no descubiertas.
+  out.push(...plannedNeighbors(activeSeed(), zoneId));
+  return [...new Set(out)];
 }
 
 /**
@@ -187,5 +192,5 @@ export function routeNames(fromZoneId: string, goalZoneId: string): string[] | n
 export function zoneName(id: string): string {
   const d = parseDungeonZone(id);
   if (d) return d.floor === 'jefe' ? `${d.dungeon.name} (guarida del jefe)` : d.dungeon.name;
-  return ZONES.get(id)?.name ?? id;
+  return ZONES.get(id)?.name ?? genZoneDef(id)?.name ?? plannedName(activeSeed(), id) ?? id;
 }
