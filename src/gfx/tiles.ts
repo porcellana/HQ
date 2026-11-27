@@ -110,8 +110,6 @@ const water: Gen = (c, r) => {
 
 const tree: Gen = (c, r) => {
   grass(c, r);
-  // Sombra
-  px(c, 3, 13, PAL.grassD, 10, 2);
   // Tronco
   px(c, 7, 10, PAL.woodD, 2, 5);
   px(c, 7, 10, PAL.wood, 1, 4);
@@ -132,10 +130,13 @@ const tree: Gen = (c, r) => {
   for (let i = 0; i < 6; i++) px(c, r.int(3, 11), r.int(1, 8), r.pick([PAL.leafL, PAL.leafD, PAL.grassL]));
 };
 
-const pine: Gen = (c, r) => {
+const pineGround: Gen = (c, r) => {
   px(c, 0, 0, PAL.grassD, TILE, TILE);
   speckle(c, r, 12, [PAL.grass, PAL.leafD]);
-  px(c, 3, 14, PAL.black, 10, 2);
+};
+
+const pine: Gen = (c, r) => {
+  pineGround(c, r);
   px(c, 7, 13, PAL.woodD, 2, 3);
   // Capas de ramas de arriba a abajo, con contorno oscuro y luz a la izquierda.
   const layers: Array<[number, number]> = [[1, 2], [4, 4], [7, 6], [10, 7]];
@@ -606,4 +607,47 @@ export function getTileSprite(spriteId: string, variant: number): HTMLCanvasElem
 /** Variante estable para una casilla (para que el mapa no "parpadee"). */
 export function variantFor(x: number, y: number): number {
   return ((Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0) % TILE_VARIANTS;
+}
+
+/** Suelo que hay bajo los objetos altos (el mismo generador que usa su sprite completo). */
+const OBJECT_GROUND: Readonly<Record<string, Gen>> = { tree: grass, pine: pineGround, bush: grass, rock: grass };
+
+/** ¿Es un objeto alto con suelo separable (árbol, pino, arbusto, roca)? */
+export function isObjectSprite(spriteId: string): boolean {
+  return spriteId in OBJECT_GROUND;
+}
+
+const groundCache = new Map<string, HTMLCanvasElement>();
+const objectCache = new Map<string, HTMLCanvasElement>();
+
+/** Sólo el suelo bajo un objeto alto (mismo patrón de ruido que el sprite completo). */
+export function getGroundSprite(spriteId: string, variant: number): HTMLCanvasElement {
+  const key = `${spriteId}#${variant}`;
+  let canvas = groundCache.get(key);
+  if (!canvas) {
+    canvas = makeCanvas(TILE, TILE);
+    OBJECT_GROUND[spriteId]!(ctx2d(canvas), new Rng(hashString(key)));
+    groundCache.set(key, canvas);
+  }
+  return canvas;
+}
+
+/** El objeto solo, con fondo transparente (sprite completo menos el suelo). */
+export function getObjectSprite(spriteId: string, variant: number): HTMLCanvasElement {
+  const key = `${spriteId}#${variant}`;
+  let canvas = objectCache.get(key);
+  if (!canvas) {
+    canvas = makeCanvas(TILE, TILE);
+    const c = ctx2d(canvas);
+    c.drawImage(getTileSprite(spriteId, variant), 0, 0);
+    const img = c.getImageData(0, 0, TILE, TILE);
+    const gd = ctx2d(getGroundSprite(spriteId, variant)).getImageData(0, 0, TILE, TILE).data;
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] === gd[i] && d[i + 1] === gd[i + 1] && d[i + 2] === gd[i + 2]) d[i + 3] = 0;
+    }
+    c.putImageData(img, 0, 0);
+    objectCache.set(key, canvas);
+  }
+  return canvas;
 }

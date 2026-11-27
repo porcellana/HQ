@@ -107,6 +107,7 @@ export function settingsScreen(
         { value: 'medio', label: 'Medio' },
         { value: 'alto', label: 'Alto' },
       ]),
+      row('Volumen 3D', 'volume3d', onOff),
       row('Día y noche', 'dayNight', onOff),
       row('Guía de misión (flecha GPS)', 'questGuide', onOff),
       inGame ? h('button', { text: '💾 Guardar partida', onClick: inGame.onSave }) : null,

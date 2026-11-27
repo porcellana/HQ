@@ -33,6 +33,8 @@ export interface Settings {
   combatFx: 'completos' | 'reducidos' | 'minimos';
   /** Zoom del mapa: 0 = por defecto, +1 un nivel más cerca, −1 más lejos (ver engine/zoom.ts). */
   zoomStep: number;
+  /** Volumen pseudo-3D (alturas, sombras y oclusión ambiental). */
+  volume3d: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -49,6 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   combatSpeed: 'paso',
   combatFx: 'completos',
   zoomStep: 0,
+  volume3d: true,
 };
 
 const KEY = 'ecos.settings';

@@ -603,7 +603,7 @@ export class App {
       this.pendingVictory = false;
       this.setScreen(victoryScreen(game.state, () => this.setScreen(null), () => void this.quitToMenu()));
     }
-    this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, questGuide: this.settings.questGuide });
+    this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, volume: this.settings.volume3d, questGuide: this.settings.questGuide });
     this.hud?.update(game, dt);
     this.hud?.zoom.update(this.renderer.zoomStep, this.renderer.zoomLimits);
   }

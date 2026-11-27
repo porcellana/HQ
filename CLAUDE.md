@@ -16,10 +16,9 @@ RPG de mazmorreo por turnos (reglas D&D 5e), vista cenital 2D pixel art, móvil 
 - `src/gfx`: pixel art generado por código (tiles, sprites, partículas, cinemática) y `renderer.ts`. `src/ui`: HUD/pantallas en DOM (`styles.css` con bloques por versión, los últimos ganan).
 - `tests/`: vitest (≈400). `scripts/`: iconos y proyecto Android. CI `.github/workflows/android-apk.yml` publica web (GitHub Pages) y APK (Release con enlace fijo).
 
-## Estado (v0.5.9)
+## Estado (v0.6.0)
 Hitos 1-7 + identidad (trasfondos, talentos, compañeros, diálogos con tiradas), mascotas, combate táctico en el mapa con tarjeta de duelo, mapa grande, zoom, misiones claras, sonido. Encuentros aleatorios a nivel del jugador ±1.
 
 ## Pendiente (en este orden)
-1. Aspecto pseudo-3D (volumen: muros/árboles con altura, sombras, iluminación).
-2. Combate estilo Final Fantasy por turnos (escena aparte: grupo a un lado, enemigos al otro, menú Atacar/Magia/Objeto/Defender/Huir).
-3. Mundo procedural por semilla que se genera al explorar (biomas, aldeas/pueblos/ciudades, cuevas, mazmorras, misiones y objetos), coherente y con niveles ±1.
+1. Combate estilo Final Fantasy por turnos (escena aparte: grupo a un lado, enemigos al otro, menú Atacar/Magia/Objeto/Defender/Huir).
+2. Mundo procedural por semilla que se genera al explorar (biomas, aldeas/pueblos/ciudades, cuevas, mazmorras, misiones y objetos), coherente y con niveles ±1.

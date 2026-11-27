@@ -25,6 +25,7 @@ import { PAL } from './palette';
 import { DEFAULT_HERO_COLORS, humanoidSprite, type HumanoidColors } from './sprites';
 import type { NpcDef } from '@/data/schema';
 import { getTileSprite, variantFor } from './tiles';
+import { buildVolume, EXTRUDE, type Volume } from './volume';
 
 /**
  * Radio de visión del jugador (casillas) para ver enemigos. No cambia con el zoom:
@@ -36,6 +37,8 @@ export interface RenderOptions {
   grid: boolean;
   /** Ciclo de día y noche en exteriores. */
   dayNight?: boolean;
+  /** Volumen pseudo-3D (alturas, sombras, oclusión ambiental). Por defecto sí. */
+  volume?: boolean;
   /** Guía de misión (flecha GPS). */
   questGuide?: boolean;
 }
@@ -87,6 +90,11 @@ export class Renderer {
   /** devicePixelRatio efectivo (limitado a 3 por rendimiento). */
   pixelRatio = 1;
   private zoneCache: { zone: Zone; canvas: HTMLCanvasElement } | null = null;
+  private volCache: { zone: Zone; vol: Volume } | null = null;
+  /** Lienzo de pantalla para oscurecer la capa alta en zonas oscuras. */
+  private scratch: HTMLCanvasElement | null = null;
+  /** Volumen 3D activo en este fotograma. */
+  private vol = true;
   private time = 0;
   /** Foco suavizado de la cámara (en casillas). */
   private camFX = 0;
@@ -197,8 +205,16 @@ export class Renderer {
     return canvas;
   }
 
+  private getVolume(zone: Zone): Volume {
+    if (this.volCache?.zone === zone) return this.volCache.vol;
+    const vol = buildVolume(zone);
+    this.volCache = { zone, vol };
+    return vol;
+  }
+
   render(game: Game, dt: number, opts: RenderOptions): void {
     this.time += dt;
+    this.vol = opts.volume !== false;
     const { ctx, canvas, camera } = this;
     // Zoom del jugador (transición suave) × zoom de acción del combate.
     if (this.zoomCur !== this.zoomTarget) {
@@ -212,7 +228,8 @@ export class Renderer {
     camera.viewH = canvas.height / zoom;
     this.applyInsets();
     const zone = game.zone;
-    const zc = this.getZoneCanvas(zone);
+    const vol = this.vol ? this.getVolume(zone) : null;
+    const zc = vol ? vol.base : this.getZoneCanvas(zone);
     const v = game.view;
 
     // Cámara centrada en el jugador; en combate se desplaza suavemente hacia
@@ -254,6 +271,7 @@ export class Renderer {
     ctx.setTransform(zoom, 0, 0, zoom, -camX * zoom, -camY * zoom);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(zc, 0, 0);
+    if (vol) this.drawWater(vol, camX, camY);
 
     if (opts.grid) this.drawGrid(zone);
     this.drawTargeting(game);
@@ -265,11 +283,12 @@ export class Renderer {
     this.drawLoot(game);
     this.drawCombatMarks(game);
     cin?.drawGhosts(ctx, silhouette);
-    this.drawEntities(game);
+    this.drawEntities(game, vol, camX, camY, opts.dayNight ?? false);
     cin?.drawWorld(ctx);
     this.drawFx(game);
     this.drawFog(game, camX, camY);
-    this.drawVignette(cin?.vignette ?? 0);
+    if (vol) this.drawLightGrade();
+    this.drawVignette(Math.max(cin?.vignette ?? 0, vol ? 0.4 : 0));
     this.drawExitPointers(game, camX, camY, opts.questGuide ?? true);
     if (opts.questGuide ?? true) this.drawQuestGuide(game, camX, camY);
   }
@@ -551,8 +570,11 @@ export class Renderer {
     }
   }
 
-  /** Enemigos y jugador ordenados por fila (los de abajo tapan a los de arriba). */
-  private drawEntities(game: Game): void {
+  /**
+   * Entidades ordenadas por fila. Con volumen, la capa alta (muros, árboles…) se dibuja por
+   * franjas de fila intercaladas: lo alto tapa a lo que tiene detrás y deja pasar a lo de delante.
+   */
+  private drawEntities(game: Game, vol: Volume | null, camX: number, camY: number, dayNight: boolean): void {
     const list: Array<{ y: number; draw: () => void }> = game.enemies.map((e) => ({ y: e.ry, draw: () => this.drawEnemy(game, e) }));
     for (const n of game.npcs) list.push({ y: n.y, draw: () => this.drawNpc(game, n) });
     list.push({ y: game.view.ry, draw: () => this.drawPlayer(game) });
@@ -561,7 +583,110 @@ export class Renderer {
     const pu = game.pet;
     if (pu) list.push({ y: pu.ry, draw: () => this.drawPet(game) });
     list.sort((a, b) => a.y - b.y);
-    for (const it of list) it.draw();
+    if (!vol) {
+      for (const it of list) it.draw();
+      return;
+    }
+    const { ctx, camera, zoom, canvas } = this;
+    const zone = game.zone;
+    const x0 = Math.max(0, Math.floor(camX) - 2);
+    const x1 = Math.min(zone.width * TILE, Math.ceil(camX + camera.viewW) + 2);
+    const r0 = Math.max(0, Math.floor((camY - 2) / TILE));
+    const r1 = Math.min(zone.height - 1, Math.ceil((camY + camera.viewH + EXTRUDE) / TILE));
+    // En zonas oscuras la capa alta se oscurece en un lienzo aparte (como el suelo) y se copia por franjas.
+    const kind = zone.def.kind;
+    const outdoor = kind === 'town' || kind === 'wild' || kind === 'world';
+    const night = dayNight && outdoor ? nightAmount(game.state.turn) : 0;
+    const dark = Math.max(zone.def.darkness ?? 0, night * 0.33) > 0 || night > 0;
+    let scratch: HTMLCanvasElement | null = null;
+    if (dark) {
+      if (!this.scratch || this.scratch.width !== canvas.width || this.scratch.height !== canvas.height) this.scratch = makeCanvas(canvas.width, canvas.height);
+      scratch = this.scratch;
+      const sc = scratch.getContext('2d')!;
+      sc.setTransform(1, 0, 0, 1, 0, 0);
+      sc.clearRect(0, 0, scratch.width, scratch.height);
+      sc.setTransform(zoom, 0, 0, zoom, -camX * zoom, -camY * zoom);
+      sc.imageSmoothingEnabled = false;
+      sc.drawImage(vol.tall, x0, Math.max(0, camY - EXTRUDE), x1 - x0, camera.viewH + EXTRUDE + TILE, x0, Math.max(0, camY - EXTRUDE), x1 - x0, camera.viewH + EXTRUDE + TILE);
+      sc.globalCompositeOperation = 'source-atop';
+      this.drawDarkness(game, camX, camY, dayNight, sc);
+      sc.globalCompositeOperation = 'source-over';
+    }
+    const strip = (r: number): void => {
+      const sy = Math.max(0, r * TILE - EXTRUDE);
+      const sh = r * TILE + TILE - sy;
+      if (!scratch) {
+        ctx.drawImage(vol.tall, x0, sy, x1 - x0, sh, x0, sy, x1 - x0, sh);
+        return;
+      }
+      const ex0 = Math.round((x0 - camX) * zoom), ex1 = Math.round((x1 - camX) * zoom);
+      const ey0 = Math.round((sy - camY) * zoom), ey1 = Math.round((sy + sh - camY) * zoom);
+      if (ex1 <= ex0 || ey1 <= ey0) return;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(scratch, ex0, ey0, ex1 - ex0, ey1 - ey0, ex0, ey0, ex1 - ex0, ey1 - ey0);
+      ctx.restore();
+    };
+    let i = 0;
+    for (let r = r0; r <= r1; r++) {
+      strip(r);
+      while (i < list.length && Math.floor(list[i]!.y + 0.5) <= r) list[i++]!.draw();
+    }
+    while (i < list.length) list[i++]!.draw();
+  }
+
+  /** Brillo y ondas ligeras en el agua visible (sin sombras difuminadas por fotograma). */
+  private drawWater(vol: Volume, camX: number, camY: number): void {
+    const { ctx, camera } = this;
+    const W = this.volCache!.zone.width;
+    const t = this.time;
+    const cx0 = Math.floor(camX / TILE) - 1, cx1 = Math.ceil((camX + camera.viewW) / TILE) + 1;
+    const cy0 = Math.floor(camY / TILE) - 1, cy1 = Math.ceil((camY + camera.viewH) / TILE) + 1;
+    for (let n = 0; n < vol.water.length; n++) {
+      const idx = vol.water[n]!;
+      const x = idx % W, y = (idx - x) / W;
+      if (x < cx0 || x > cx1 || y < cy0 || y > cy1) continue;
+      const h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0;
+      const ph = t * 1.1 + (h % 628) / 100;
+      const wave = Math.sin(ph);
+      ctx.fillStyle = `rgba(210,240,255,${(0.1 + 0.12 * (wave * 0.5 + 0.5)).toFixed(3)})`;
+      ctx.fillRect(x * TILE + 2 + Math.round(wave * 2) + (h % 5), y * TILE + 3 + (h % 7), 5, 1);
+      ctx.fillStyle = `rgba(10,30,60,${(0.1 + 0.08 * (1 - wave * 0.5 - 0.5)).toFixed(3)})`;
+      ctx.fillRect(x * TILE + 6 + ((h >> 4) % 6) - Math.round(wave * 2), y * TILE + 11 - ((h >> 8) % 4), 4, 1);
+      if (Math.sin(ph * 1.7 + 2) > 0.93) {
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.fillRect(x * TILE + 3 + (h % 9), y * TILE + 2 + ((h >> 3) % 10), 1, 1);
+      }
+    }
+  }
+
+  /** Degradado vertical de luz: algo más claro arriba y más sombrío abajo. */
+  private drawLightGrade(): void {
+    const { ctx, canvas } = this;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    g.addColorStop(0, 'rgba(255,240,205,0.07)');
+    g.addColorStop(0.5, 'rgba(255,240,205,0)');
+    g.addColorStop(1, 'rgba(8,10,36,0.16)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  /** Sombra suave bajo un personaje, proyectada hacia abajo-derecha (dos elipses, sin desenfoque). */
+  private shadow(cx: number, cy: number, rx: number, ry: number): void {
+    const { ctx } = this;
+    if (!this.vol) {
+      this.shadow(cx, cy, rx, ry);
+      return;
+    }
+    ctx.fillStyle = 'rgba(8,6,20,0.13)';
+    ctx.beginPath();
+    ctx.ellipse(cx + 2, cy, rx + 2, ry + 1.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(8,6,20,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(cx + 1.2, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   /**
@@ -619,10 +744,7 @@ export class Renderer {
       ...(l.hat ? { hat: l.hat } : {}), ...(l.overlay ? { overlay: l.overlay } : {}),
     });
     const down = game.state.party.down;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(x + 8, y + 15, 5, 2, 0, 0, Math.PI * 2);
-    ctx.fill();
+    this.shadow(x + 8, y + 15, 5, 2);
     ctx.globalAlpha = down ? 0.4 : 1;
     ctx.drawImage(a.facing === 'right' ? spr.right : spr.left, Math.round(x), Math.round(y) - 1);
     ctx.globalAlpha = 1;
@@ -652,10 +774,7 @@ export class Renderer {
     const hop = pi.down ? 0 : Math.abs(Math.sin(this.time * 4 + u.x)) * 0.8;
     const x = u.rx * TILE + u.bumpDx * bump;
     const y = u.ry * TILE + u.bumpDy * bump - hop;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(u.rx * TILE + 8, u.ry * TILE + 15, 4.5, 1.8, 0, 0, Math.PI * 2);
-    ctx.fill();
+    this.shadow(u.rx * TILE + 8, u.ry * TILE + 15, 4.5, 1.8);
     const spr = petSprite(sp.look, sp.stage);
     ctx.globalAlpha = pi.down ? 0.4 : 1;
     ctx.drawImage(u.facing === 'right' ? spr.right : spr.left, Math.round(x), Math.round(y));
@@ -688,10 +807,7 @@ export class Renderer {
     const { ctx } = this;
     const x = n.x * TILE;
     const y = n.y * TILE;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(x + 8, y + 15, 5, 2, 0, 0, Math.PI * 2);
-    ctx.fill();
+    this.shadow(x + 8, y + 15, 5, 2);
     const l = n.look;
     const spr = humanoidSprite({
       hair: l.hair ?? PAL.hair, skin: l.skin ?? PAL.skin, cloth: l.cloth, clothDark: l.clothDark, pants: l.pants,
@@ -730,10 +846,7 @@ export class Renderer {
       ctx.ellipse(x + 8, y + 13, pulse, pulse / 2.5, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(x + 8, y + 15, 5, 2, 0, 0, Math.PI * 2);
-    ctx.fill();
+    this.shadow(x + 8, y + 15, 5, 2);
     const wild = e.def.pet ? PET_SPECIES.get(e.def.pet.species) : undefined;
     const spr = wild ? petSprite(wild.look, wild.stage) : monsterSprite(e.def.look);
     const img = e.facing === 'right' ? spr.right : spr.left;
@@ -887,10 +1000,7 @@ export class Renderer {
     const x = v.rx * TILE;
     const y = v.ry * TILE;
     // Sombra
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(x + 8, y + 15, 5, 2, 0, 0, Math.PI * 2);
-    ctx.fill();
+    this.shadow(x + 8, y + 15, 5, 2);
     // Pequeño salto al caminar
     const bob = v.stepT >= 0 ? -Math.round(Math.sin(v.stepT * Math.PI) * 1.5) : 0;
     const bump = lungeOffset(v.bumpT);
@@ -954,8 +1064,9 @@ export class Renderer {
   }
 
   /** Oscuridad ambiental con un halo de luz alrededor del jugador. */
-  private drawDarkness(game: Game, camX: number, camY: number, dayNight: boolean): void {
-    const { ctx, camera } = this;
+  private drawDarkness(game: Game, camX: number, camY: number, dayNight: boolean, target?: CanvasRenderingContext2D): void {
+    const { camera } = this;
+    const ctx = target ?? this.ctx;
     const kind = game.zone.def.kind;
     const outdoor = kind === 'town' || kind === 'wild' || kind === 'world';
     const night = dayNight && outdoor ? nightAmount(game.state.turn) : 0;

@@ -2,6 +2,13 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.6.0 · 2026-11-27 — Volumen pseudo-3D
+
+- Muros, paredes, tejados, árboles, pinos, arbustos y rocas se dibujan con altura (cara frontal oscura + cara superior clara, luz arriba-izquierda) y se ordenan por fila: lo alto tapa lo de detrás y personajes/enemigos/mascotas pasan por delante o detrás.
+- Sombras suaves proyectadas abajo-derecha bajo objetos altos y personajes; oclusión ambiental junto a muros y objetos; degradado vertical de luz y viñeta suave; agua con ondas y destellos.
+- Todo lo estático va en caché por zona; por fotograma solo entidades y agua (sin shadowBlur). Compatible con oscuridad, halo de luz y día/noche.
+- Ajustes: «Volumen 3D» Sí/No (por defecto Sí). Jugabilidad, coordenadas y colisiones sin cambios.
+
 ## v0.5.9 · 2026-11-27 — Misiones sin avisos y enemigos a tu nivel
 
 - Quitados los avisos de misión (nueva, progreso) que salían en pantalla; la línea de abajo y el menú 📖 las muestran.
