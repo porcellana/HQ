@@ -2,6 +2,17 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.8.0 · 2026-11-27 — Mundo procedural por semilla
+
+- **El mundo se genera al explorar**: la aldea, el bosque, el Paso Gris y Puerto Ceniza siguen siendo el núcleo; ahora tienen salidas extra (oeste/este/norte) hacia una rejilla de zonas generadas (radio 8) con la semilla de la partida (misma semilla = mismo mundo). Cada zona se crea al cruzar la salida y se **guarda en la partida** (migración v8→v9, `world.gen`).
+- **Biomas** (en `src/data/biomes`): praderas, bosque, montañas, nieve, desierto, pantano y costa, con tiles nuevos (arena, cactus, palmeras, nieve, pino nevado, hielo, cieno, árbol seco, grava, peñas, tiendas de campaña, fogata, muros en ruinas), enemigos propios (lobo de las nieves, yeti, escorpión, momia, sapo, cangrejo, pirata, bandido, oso, jabalí), botín y materiales propios, tinte de color y ambiente. Los biomas vecinos son siempre compatibles (si chocan, un bioma «puente» los separa).
+- **Lugares**: aldeas, pueblos y ciudades (casas, tienda, posada, herrero, templo/gremio y vecinos con nombre y rumores sobre sitios cercanos), campamentos con mercader, ruinas con tumbas, cofres y trampas, cuevas y mazmorras (reutilizan el generador de pisos; la mazmorra acaba en un jefe), cofres y minerales.
+- **Niveles**: cada zona nace con el nivel del jugador ±1 y queda fijado; sus enemigos, cofres y jefe escalan a ese nivel (rarezas y afijos según nivel).
+- **Misiones generadas** (matar, recolectar, visitar, entregar a un PNJ lejano y jefe de mazmorra) ligadas a zonas reales cercanas, con recompensa acorde. La guía GPS y la brújula funcionan también hacia zonas aún no descubiertas.
+- **Mapa del mundo** (botón 🌍 en el mapa grande): zonas descubiertas, salidas sin explorar «?» y objetivo 📍.
+- **Rótulo de zona** más pequeño y elegante, con iconos: 🛒 tienda, 💬 gente, ❗ misión, ⚔ peligro, ⛏ minerales.
+- Tests nuevos (`tests/procgen.test.ts`): determinismo, coherencia de biomas, conectividad, niveles ±1, serialización/migración y misiones completables.
+
 ## v0.7.0 · 2026-11-27 — Batalla por turnos estilo Final Fantasy
 
 - **Escena de batalla aparte** (vista lateral): tu grupo (jugador, compañero y mascota) a la derecha, los enemigos a la izquierda, sprites ampliados con respiración y fondo pixel art según la zona (pradera, bosque, montaña, cueva, cripta, galerías, puerto, aldea, interior). Se entra con una transición breve cuando un enemigo te ve o lo embistes.

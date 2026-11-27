@@ -762,3 +762,23 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .b-panel p { margin: 2px 0; font-size: 0.9em; }
 .b-panel .b-loot { color: #b8f0b0; font-size: 0.8em; }
 .b-panel .b-continue { margin-top: 8px; min-height: 48px; width: 70%; }
+
+/* v0.8: rótulo de zona más pequeño y elegante, con iconos de lo que hay. */
+.zone-banner {
+  top: 15%; padding: 3px 12px 4px; border: 1px solid var(--gold); border-radius: 999px; font-size: 0.8em; letter-spacing: 0.04em;
+  background: linear-gradient(rgba(30,26,38,0.82), rgba(12,10,16,0.88)); box-shadow: 0 2px 10px rgba(0,0,0,0.5); max-width: 86%;
+}
+.zone-banner b { font-weight: normal; color: var(--gold-l); }
+.zone-banner .zb-icons { display: block; margin-top: 1px; font-size: 0.95em; letter-spacing: 0.35em; line-height: 1.2; }
+.zone-banner small { font-size: 0.78em; margin-top: 1px; }
+
+/* v0.8: mapa del mundo (sobre el mapa de la zona). */
+.map-world { position: absolute; inset: 44px 8px 70px; z-index: 4; display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 8px;
+  background: #0a080e; border: 1px solid var(--border-l); border-radius: var(--radius); }
+.map-world .wm-scroll { flex: 1; overflow: auto; width: 100%; display: flex; }
+.map-world .wm-grid { display: grid; gap: 2px; margin: auto; }
+.wm-cell { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; border-radius: 4px; border: 1px solid #0006; }
+.wm-cell.empty { background: transparent; border-color: transparent; }
+.wm-cell.unknown { color: #6a6676; font-size: 14px; border: 1px dashed #3a3646; }
+.wm-cell.here { outline: 2px solid #fff; }
+.wm-cell.goal { outline: 2px solid #a8f08a; }

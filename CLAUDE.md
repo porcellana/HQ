@@ -16,9 +16,9 @@ RPG de mazmorreo por turnos (reglas D&D 5e), vista cenital 2D pixel art, móvil 
 - `src/gfx`: pixel art generado por código (tiles, sprites, partículas, fondos de batalla) y `renderer.ts`. `src/ui`: HUD/pantallas en DOM; `battleScene.ts` es la escena de batalla (canvas + menú) (`styles.css` con bloques por versión, los últimos ganan).
 - `tests/`: vitest (≈400). `scripts/`: iconos y proyecto Android. CI `.github/workflows/android-apk.yml` publica web (GitHub Pages) y APK (Release con enlace fijo).
 
-## Estado (v0.7.0)
-Hitos 1-7 + identidad (trasfondos, talentos, compañeros, diálogos con tiradas), mascotas, **batalla por turnos estilo Final Fantasy en escena aparte** (grupo a la derecha, enemigos a la izquierda, iniciativa, menú Atacar/Habilidad/Objeto/Defender/Huir, fondos por bioma; el combate táctico del mapa se eliminó), mapa grande, zoom, misiones claras, sonido. Encuentros aleatorios a nivel del jugador ±1. Ajuste «Velocidad de batalla».
+## Estado (v0.8.0)
+Hitos 1-7 + identidad (trasfondos, talentos, compañeros, diálogos con tiradas), mascotas, **batalla por turnos estilo Final Fantasy en escena aparte** (grupo a la derecha, enemigos a la izquierda, iniciativa, menú Atacar/Habilidad/Objeto/Defender/Huir, fondos por bioma; el combate táctico del mapa se eliminó), mapa grande, zoom, misiones claras, sonido. **Mundo procedural por semilla** (`src/game/world/procgen`, biomas en `src/data/biomes`, guardado en `state.world.gen`, save v9; aldeas/pueblos/ciudades, campamentos, ruinas, cuevas, mazmorras con jefe, misiones generadas, mapa del mundo 🌍, rótulo de zona con iconos). Zonas generadas: nivel jugador ±1 fijado al descubrirlas. Ajuste «Velocidad de batalla».
 
 ## Pendiente (en este orden)
-1. Mundo procedural por semilla que se genera al explorar (biomas, aldeas/pueblos/ciudades, cuevas, mazmorras, misiones y objetos), coherente y con niveles ±1.
+1. Interiores de casas en el mundo procedural, música/ambiente real por bioma, misiones de escolta y eventos al viajar.
 2. Pulido de batalla: más animaciones por clase/enemigo, fondos por hora del día, selección de objetivo con información (nombre/nivel) al mantener pulsado.

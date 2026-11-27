@@ -8,6 +8,8 @@ const SECTIONS: Array<[string, string[]]> = [
     'La brújula verde del borde te lleva a tu objetivo (se puede desactivar en Ajustes → Guía de misión). Las salidas se ven brillar en dorado y en el minimapa.',
     'Barra de abajo (una línea): ⏳ Esperar, ✨ Habilidad (se despliega con tus habilidades y la poción), 🎒 Mochila, 📜 Ficha, 📖 Misiones y ⚙ Ajustes. En Ajustes también están Guardar partida, esta ayuda y Guardar y salir.',
     'Opcional: joystick virtual en Ajustes.',
+    'El mundo es enorme: al cruzar los bordes de la aldea, el bosque, el paso o el puerto se generan zonas nuevas (praderas, bosques, montañas, nieve, desierto, pantano, costa) con aldeas, pueblos, ciudades, campamentos, ruinas, cuevas y mazmorras. Cada zona nace a tu nivel ±1 y se queda así. En el mapa grande, 🌍 muestra el mundo descubierto.',
+    'Al entrar en una zona, el rótulo muestra qué hay: 🛒 tienda, 💬 gente, ❗ misión, ⚔ peligro, ⛏ minerales.',
     'Zoom del mapa: pellizca con dos dedos, o usa los botones + y − bajo el minimapa (⟲ vuelve al normal). En PC: rueda del ratón o teclas + − 0.',
   ]],
   ['❤️ Barras', [

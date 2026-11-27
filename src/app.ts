@@ -7,6 +7,7 @@
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { getClass, getZoneDef } from '@/data/registry';
+import { zoneIcons } from '@/game/zoneInfo';
 import { GameLoop } from '@/engine/loop';
 import { Input } from '@/engine/input';
 import { randomSeed } from '@/engine/rng';
@@ -327,7 +328,7 @@ export class App {
     });
     game.events.on('npcTalk', ({ npc }) => this.showNpcDialog(npc));
     game.events.on('zoneChanged', ({ zone, firstVisit }) => {
-      hud.showBanner(zone.def.name, firstVisit ? zone.def.description : undefined);
+      hud.showBanner(zone.def.name, firstVisit ? zone.def.description : undefined, zoneIcons(zone.def, game.npcs, state));
       buzz(this.settings.vibration, 20);
       void this.autosave('cambio de zona');
     });
@@ -336,7 +337,7 @@ export class App {
     });
 
     const def = getZoneDef(state.player.pos.zone);
-    hud.showBanner(def?.name ?? '', undefined);
+    hud.showBanner(def?.name ?? '', undefined, def ? zoneIcons(def, game.npcs, state) : []);
     this.layout();
     this.loop.start();
     // Sólo en desarrollo (npm run dev): acceso desde la consola del navegador para depurar.

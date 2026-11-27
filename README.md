@@ -34,6 +34,7 @@ v0.2 se centra en el estilo Baldur's Gate / D&D en tres fases:
 | B | **Mundo con sorpresas**: eventos al viajar (emboscadas, viajeros, mercaderes raros) resueltos con tiradas, misiones con varios finales, mapa del mundo con viaje rápido | ⏳ |
 | — | **v0.2.1**: joystick arreglado, diario con ficha y misión seguida, guía GPS opcional y mapa grande | ✅ |
 | — | **v0.3.0 Mascotas**: criaturas que luchan contigo, aprenden, evolucionan y entrenan en el establo | ✅ |
+| — | **v0.8.0**: mundo procedural por semilla (biomas, aldeas/ciudades, cuevas, mazmorras y misiones generadas al explorar) | ✅ |
 | — | **v0.7.0**: batalla por turnos estilo Final Fantasy en escena aparte (lógica pura en `src/game/battle`) | ✅ |
 | — | **v0.4.0**: combate turno a turno (paso a paso, barra de turnos, cartel de acción, menú de acciones, Defender), seguimiento de misiones estilo WoW, mascotas fáciles de encontrar y como recompensa | ✅ |
 | C | **Expediciones roguelike**: elegir camino entre salas (combate, tesoro, evento, tienda), recompensas a elegir y mejoras que se conservan aunque mueras | ⏳ |
@@ -515,6 +516,13 @@ encounters: {
   groups: [{ enemy: 'goblin', weight: 4, min: 1, max: 3 }],
 },
 ```
+
+### Mundo procedural (v0.8)
+- Rejilla de celdas (`w_<x>_<y>`, radio 8). El núcleo fijo ocupa (0,-1) bosque, (0,0) aldea, (0,1) Paso Gris y (0,2) Puerto Ceniza y tiene salidas extra (dígitos 3/4/5/8/9) hacia las celdas vecinas. `src/game/world/procgen/plan.ts` es puro (semilla + celda → bioma, tipo de lugar, nombre, enlaces); `generate.ts` construye el mapa ASCII, PNJ, tiendas y subterráneo (`w_x_y.d`); `quests.ts` crea las misiones; `index.ts` guarda/activa todo en `state.world.gen`.
+- Contenido editable: `src/data/biomes/*.ts` (clima, vecinos —simétricos—, tiles, enemigos, botín, nombres), `src/data/worldgen/nombres.ts` (nombres, diálogos, plantillas de misión, subterráneos y jefes) y los tiles/enemigos/materiales/cofres de bioma.
+- Coherencia: el bioma sale del clima (temperatura/humedad/relieve, ruido suave); si choca con un vecino pasa a «praderas» (bioma puente). Los asentamientos siguen una retícula: toda celda tiene exactamente un asentamiento vecino.
+- Nivel: al descubrir una zona = nivel del jugador ±1 (determinista por semilla y zona) y queda fijado en el guardado; sus encuentros salen a ese nivel exacto y el jefe de mazmorra a nivel+1.
+- *Decisiones (v0.8.0)*: casas y puertas son decorado (sin interiores); tienda/posada/herrero/templo son PNJ junto a su puerta con cartel. Las misiones se reparten la primera vez que entras en el asentamiento y pueden generar (y fijar el nivel de) zonas cercanas. No hay misiones de escolta (no existen PNJ que sigan al jugador). La «música» de bioma es un id (`music`) y un tinte de color; aún no hay pistas de audio. Las zonas generadas no tienen criaturas vinculables propias (hábitats fijos).
 
 ### Batalla (v0.7)
 

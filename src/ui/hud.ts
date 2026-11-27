@@ -179,8 +179,11 @@ export class Hud {
     c.drawImage(humanoidSprite(colors).right, 0, 0);
   }
 
-  showBanner(title: string, subtitle?: string): void {
-    this.banner.replaceChildren(title, ...(subtitle ? [h('small', { text: subtitle })] : []));
+  showBanner(title: string, subtitle?: string, icons: ReadonlyArray<{ icon: string; label: string }> = []): void {
+    const row = icons.length
+      ? [h('span', { class: 'zb-icons' }, icons.map((i) => h('span', { text: i.icon, attrs: { title: i.label, 'aria-label': i.label } })))]
+      : [];
+    this.banner.replaceChildren(h('b', { text: title }), ...row, ...(subtitle ? [h('small', { text: subtitle })] : []));
     this.banner.classList.add('show');
     window.clearTimeout(this.bannerTimer);
     this.bannerTimer = window.setTimeout(() => this.banner.classList.remove('show'), 2400);

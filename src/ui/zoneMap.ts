@@ -8,6 +8,9 @@ import type { Game } from '@/game/game';
 import { npcMarker } from '@/game/quests/quests';
 import { GOAL_ICON } from '@/game/quests/guide';
 import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
+import { getZoneDef } from '@/data/registry';
+import { activeSeed } from '@/game/world/procgen';
+import { worldOverview } from '@/game/world/procgen/overview';
 import { h } from './dom';
 
 
@@ -42,10 +45,47 @@ export function zoneMapScreen(
         h('button', { class: 'mini big', text: '−', attrs: { 'aria-label': 'Alejar' }, onClick: () => zoomBy(1 / 1.4) }),
         h('button', { class: 'mini big', text: '+', attrs: { 'aria-label': 'Acercar' }, onClick: () => zoomBy(1.4) }),
         h('button', { class: 'mini big', text: '◎', attrs: { 'aria-label': 'Centrar en mí' }, onClick: () => centerOn(game.playerPos.x, game.playerPos.y) }),
+        h('button', { class: 'mini big', text: '🌍', attrs: { 'aria-label': 'Mapa del mundo' }, onClick: () => toggleWorld() }),
         goBtn,
       ]),
     ]),
   ]);
+
+  // Mapa del mundo: zonas descubiertas (fijas y generadas) y salidas aún sin explorar.
+  let worldEl: HTMLElement | null = null;
+  const toggleWorld = () => {
+    if (worldEl) {
+      worldEl.remove();
+      worldEl = null;
+      return;
+    }
+    const cells = worldOverview(activeSeed(), game.state.visitedZones, (id) => getZoneDef(id)?.name ?? id);
+    const xs = cells.map((c) => c.cx), ys = cells.map((c) => c.cy);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys), x1 = Math.max(...xs), y1 = Math.max(...ys);
+    const here = zone.def.generated ? `w_${zone.def.generated.cx}_${zone.def.generated.cy}` : zone.id;
+    const goalId = (game.questGoal?.zone ?? '').replace(/\.d$/, '');
+    const grid = h('div', { class: 'wm-grid' });
+    grid.style.gridTemplateColumns = `repeat(${x1 - x0 + 1}, 44px)`;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const c = cells.find((k) => k.cx === x && k.cy === y);
+        const el = h('div', { class: `wm-cell${c ? (c.discovered ? '' : ' unknown') : ' empty'}${c && c.id === here ? ' here' : ''}${c && c.id === goalId ? ' goal' : ''}` });
+        if (c) {
+          el.style.background = c.discovered ? c.color : '#1a1822';
+          el.textContent = c.id === goalId ? '📍' : c.discovered ? c.icon : '?';
+          el.title = c.discovered ? c.name : 'Sin explorar';
+        }
+        grid.append(el);
+      }
+    }
+    worldEl = h('div', { class: 'map-world' }, [
+      h('b', { text: 'Mapa del mundo' }),
+      h('div', { class: 'wm-scroll' }, [grid]),
+      h('small', { class: 'muted', text: '▣ tú · 📍 objetivo · ? sin explorar' }),
+      h('button', { class: 'mini', text: 'Cerrar', onClick: toggleWorld }),
+    ]);
+    root.append(worldEl);
+  };
 
   // Vista: px CSS por casilla y desplazamiento (px CSS) del mapa en el lienzo.
   let scale = 0;

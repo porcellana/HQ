@@ -936,6 +936,14 @@ export class Renderer {
     const { camera } = this;
     const ctx = target ?? this.ctx;
     const kind = game.zone.def.kind;
+    const tint = game.zone.def.tint;
+    if (tint) {
+      // Tinte del bioma (zonas generadas).
+      ctx.globalAlpha = tint.alpha;
+      ctx.fillStyle = tint.color;
+      ctx.fillRect(camX, camY, camera.viewW, camera.viewH);
+      ctx.globalAlpha = 1;
+    }
     const outdoor = kind === 'town' || kind === 'wild' || kind === 'world';
     const night = dayNight && outdoor ? nightAmount(game.state.turn) : 0;
     if (night > 0) {
