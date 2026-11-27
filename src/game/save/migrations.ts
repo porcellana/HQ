@@ -13,11 +13,19 @@
  * Nunca borres migraciones antiguas.
  */
 
-export const CURRENT_SAVE_VERSION = 9;
+import { PET_NATURES } from '@/data/config/pet_natures';
+
+export const CURRENT_SAVE_VERSION = 10;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
 export type Migration = (data: RawSave) => RawSave;
+
+function natureOf(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return PET_NATURES[h % PET_NATURES.length]!.id;
+}
 
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   /**
@@ -72,6 +80,18 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     const world = { ...((s['world'] as Record<string, unknown>) ?? { dungeons: {}, features: {} }) };
     world['gen'] ??= { zones: {}, npcs: {}, shops: {}, quests: {}, assigned: {} };
     return { ...s, world };
+  },
+  /** v9 → v10 (v0.9.1): las mascotas tienen naturaleza (determinista por uid). */
+  9: (s) => {
+    const pets = s['pets'] as { active?: Record<string, unknown> | null; stable?: Array<Record<string, unknown>> } | undefined;
+    const fix = (p: Record<string, unknown> | null | undefined) => {
+      if (p && !p['nature']) p['nature'] = natureOf(String(p['uid'] ?? p['species'] ?? ''));
+    };
+    if (pets) {
+      fix(pets.active);
+      for (const p of pets.stable ?? []) fix(p);
+    }
+    return s;
   },
 };
 

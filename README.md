@@ -39,6 +39,13 @@ v0.2 se centra en el estilo Baldur's Gate / D&D en tres fases:
 | — | **v0.4.0**: combate turno a turno (paso a paso, barra de turnos, cartel de acción, menú de acciones, Defender), seguimiento de misiones estilo WoW, mascotas fáciles de encontrar y como recompensa | ✅ |
 | C | **Expediciones roguelike**: elegir camino entre salas (combate, tesoro, evento, tienda), recompensas a elegir y mejoras que se conservan aunque mueras | ⏳ |
 
+### Mascotas v0.9.1: especies, ramas y poderes
+
+- **42 especies, 8 tipos** (fuego, agua, planta, tierra, sombra, luz, hielo, rayo) con hábitats por zona, bioma (`bioma:<id>`) o lugar (`lugar:cueva|mazmorra|ruinas`); etapas 2 y 3 sólo en zonas de nivel 8+ / 16+.
+- **Evoluciones ramificadas** (`evolutions` en `src/data/pets`): nivel + vínculo, naturaleza u objeto (piedras de trueno/escarcha/solar, en el establo).
+- **Movimientos** (`src/data/pet_moves`): estados, golpes múltiples (`hits`), drenaje (`drain`), limpiar (`cleanse`) y apoyo (`teamBuff`). **Pasivas** por especie (`passive`): regen, cuidador, furia, tenaz, vigía, cazador.
+- **Naturalezas** (`src/data/config/pet_natures.ts`, ±10 %) y **vínculo** con 4 niveles; acariciar da +3 cada 30 min. Nivel máximo 30. Guardado v10.
+
 ### Mascotas (v0.3)
 
 Criaturas originales que te acompañan, luchan, aprenden movimientos y evolucionan:

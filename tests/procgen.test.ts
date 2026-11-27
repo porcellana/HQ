@@ -225,7 +225,7 @@ describe('mundo procedural: niveles, guardado y misiones', () => {
     const z = ensureZone('w_1_0', 6)!;
     g.enterZone(z.id, '3');
     const wild = z.encounters ? g.spawnGroup() : [];
-    for (const e of wild) expect(e.def.level).toBe(z.level);
+    for (const e of wild.filter((x) => !x.def.pet)) expect(e.def.level).toBe(z.level);
   });
 
   it('el estado generado se serializa, guarda y recarga igual', async () => {

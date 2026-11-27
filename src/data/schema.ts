@@ -880,7 +880,7 @@ export interface CompanionDef {
 // ===========================================================================
 
 /** Tipos elementales de las mascotas (ver data/config/pet_types.ts). */
-export type PetType = 'fuego' | 'agua' | 'planta' | 'tierra' | 'sombra' | 'luz';
+export type PetType = 'fuego' | 'agua' | 'planta' | 'tierra' | 'sombra' | 'luz' | 'hielo' | 'rayo';
 
 /** Estadísticas de una mascota: vida, ataque, defensa, velocidad y magia. */
 export interface PetStats {
@@ -912,8 +912,10 @@ export interface PetSpeciesDef {
   growth: PetStats;
   /** Movimientos que aprende al llegar a cada nivel (los de nivel 1 los sabe de serie). */
   learnset: Array<{ level: number; move: string }>;
-  /** Evoluciona a esta especie al llegar a este nivel. */
-  evolvesTo?: { species: string; level: number };
+  /** Evoluciones posibles (ramificadas por nivel + vínculo, naturaleza u objeto). */
+  evolutions?: PetEvolution[];
+  /** Poder pasivo de la especie (en combate). */
+  passive?: PetPassive;
   rarity: 'comun' | 'raro' | 'epico';
   /** Zonas (ids de zona o de mazmorra) donde aparece en estado salvaje. */
   habitats: string[];
@@ -922,6 +924,35 @@ export interface PetSpeciesDef {
   /** Se ofrece como mascota inicial en el establo. */
   starter?: boolean;
   look: PetLook;
+}
+
+/** Una rama evolutiva: hace falta `level` y TODAS las condiciones indicadas. */
+export interface PetEvolution {
+  species: string;
+  level: number;
+  /** Vínculo mínimo (0..100). */
+  minBond?: number;
+  /** Naturalezas que la permiten. */
+  natures?: string[];
+  /** Objeto (piedra) que se consume al evolucionar; se usa desde la pantalla de mascotas. */
+  item?: string;
+}
+
+/** Poder pasivo: regen (PV/turno), cuidador (cura al jugador/turno), furia (+ataque/magia con <50 % PV),
+ *  tenaz (reduce el daño recibido), vigia (+CA al jugador), cazador (+daño a objetivos con estados). */
+export interface PetPassive {
+  id: 'regen' | 'cuidador' | 'furia' | 'tenaz' | 'vigia' | 'cazador';
+  name: string;
+  description: string;
+  power: number;
+}
+
+/** Naturaleza: +10 % a una estadística y −10 % a otra. */
+export interface PetNatureDef {
+  id: string;
+  name: string;
+  up: keyof PetStats;
+  down: keyof PetStats;
 }
 
 /** Movimiento de mascota. */
@@ -949,6 +980,14 @@ export interface PetMoveDef {
   shield?: { amount: number; turns: number };
   /** Mejora temporal de la propia mascota. */
   buff?: { stat: keyof PetStats; amount: number; turns: number };
+  /** Golpes por uso (cada uno tira acierto y daño). */
+  hits?: number;
+  /** Fracción del daño que cura a la mascota. */
+  drain?: number;
+  /** Curar: además quita los estados del jugador. */
+  cleanse?: boolean;
+  /** Mejora al jugador (CA, daño o ataque) en lugar de a la mascota. */
+  teamBuff?: { stat: 'ca' | 'daño' | 'ataque'; amount: number; turns: number };
   /** Turnos de recarga. */
   cooldown: number;
 }

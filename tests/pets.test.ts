@@ -1,6 +1,6 @@
 /** v0.3: mascotas (tipos, aprendizaje, evolución, captura, establo, combate). */
 import { describe, expect, it } from 'vitest';
-import { DUNGEONS, NPCS, PET_MOVES, PET_SPECIES, PET_TYPES, ZONES } from '@/data/registry';
+import { BIOMES, DUNGEONS, NPCS, PET_MOVES, PET_NATURES, PET_SPECIES, PET_TYPES, ZONES, getItem } from '@/data/registry';
 import { Rng } from '@/engine/rng';
 import { Game } from '@/game/game';
 import { addItem } from '@/game/items/inventory';
@@ -24,13 +24,20 @@ describe('datos de mascotas', () => {
   for (const s of PET_SPECIES.values()) {
     it(`${s.id}: coherente`, () => {
       for (const l of s.learnset) expect(PET_MOVES.has(l.move), `movimiento ${l.move}`).toBe(true);
-      if (s.evolvesTo) {
-        const next = PET_SPECIES.get(s.evolvesTo.species);
-        expect(next, `evoluciona a ${s.evolvesTo.species}`).toBeDefined();
+      for (const e of s.evolutions ?? []) {
+        const next = PET_SPECIES.get(e.species);
+        expect(next, `evoluciona a ${e.species}`).toBeDefined();
         expect(next!.stage).toBe(s.stage + 1);
-        expect(s.evolvesTo.level).toBeGreaterThan(1);
+        expect(e.level).toBeGreaterThan(1);
+        if (e.item) expect(getItem(e.item), `objeto ${e.item}`).toBeDefined();
+        for (const n of e.natures ?? []) expect(PET_NATURES.some((x) => x.id === n), `naturaleza ${n}`).toBe(true);
       }
-      for (const h of s.habitats) expect(ZONES.has(h) || DUNGEONS.has(h), `hábitat ${h}`).toBe(true);
+      if (s.passive) expect(s.passive.power).toBeGreaterThan(0);
+      for (const h of s.habitats) {
+        if (h.startsWith('bioma:')) expect(BIOMES.has(h.slice(6)), `bioma ${h}`).toBe(true);
+        else if (h.startsWith('lugar:')) expect(['cueva', 'mazmorra', 'ruinas']).toContain(h.slice(6));
+        else expect(ZONES.has(h) || DUNGEONS.has(h), `hábitat ${h}`).toBe(true);
+      }
       expect(PET_SHAPES).toContain(s.look.shape);
       if (s.stage === 1) expect(Pets.movesUpTo(s, 1).length).toBeGreaterThan(0);
     });

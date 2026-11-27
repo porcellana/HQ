@@ -32,6 +32,8 @@ const SECTIONS: Array<[string, string[]]> = [
     'Tobías, junto al corral de Brumaroja, te da tu primera mascota y Runas de vínculo.',
     'Las criaturas salvajes llevan 🐾. Debilítalas y usa 🎒 Objeto → Runa de vínculo en batalla: cuanta menos vida les quede, más fácil.',
     'Solo llevas una; las demás entrenan en el establo aunque no juegues.',
+    'Hay 42 especies de 8 tipos (❄ hielo y ⚡ rayo incluidos); cada bioma tiene las suyas. Sus movimientos salen en ✨ Habilidad → Órdenes a la mascota.',
+    'Evolucionan por nivel, vínculo, naturaleza o piedra (se compran en el establo). Si hay varias ramas, tú eliges. Acaricia a tu mascota (cada 30 min) para subir el vínculo: a 50 se recarga antes y a 80 resiste un golpe mortal.',
   ]],
   ['🎒 Botín y equipo', [
     'Lo que sueltan los enemigos brilla en el suelo con el color de su rareza: písalo para recogerlo.',

@@ -116,10 +116,10 @@ export interface Hooks {
 }
 
 const PET_DAMAGE: Record<string, DamageType> = {
-  fuego: 'fuego', agua: 'frio', planta: 'veneno', tierra: 'contundente', sombra: 'necrotico', luz: 'sagrado',
+  fuego: 'fuego', agua: 'frio', planta: 'veneno', tierra: 'contundente', sombra: 'necrotico', luz: 'sagrado', hielo: 'frio', rayo: 'rayo',
 };
 export const PET_TYPE_COLOR: Record<string, string> = {
-  fuego: '#ff8030', agua: '#60b0ff', planta: '#80d040', tierra: '#c8a060', sombra: '#a060ff', luz: '#fff0a0',
+  fuego: '#ff8030', agua: '#60b0ff', planta: '#80d040', tierra: '#c8a060', sombra: '#a060ff', luz: '#fff0a0', hielo: '#a0e0ff', rayo: '#f8f040',
 };
 export const SPELL_COLORS: Partial<Record<DamageType, string>> = {
   fuego: '#ff8030', frio: '#80d0ff', rayo: '#f0f060', veneno: '#80d040', sagrado: '#fff0a0', necrotico: '#a040ff', arcano: '#c080ff',
@@ -154,6 +154,8 @@ export class Battle {
   awaiting: Combatant | null = null;
   /** Movimiento de la mascota ordenado para su próximo turno. */
   petOrder: string | null = null;
+  /** «Inseparable»: ya resistió un golpe mortal en este combate. */
+  private petResisted = false;
   readonly result: BattleResult;
   private get cls() {
     return getClass(this.state.player.classId);
@@ -249,10 +251,25 @@ export class Battle {
     return c.buffs.filter((b) => b.stat === stat).reduce((s, b) => s + b.amount, 0);
   }
 
+  /** Poder pasivo de la mascota activa (si está en pie). */
+  get petPassive() {
+    const pi = this.petInstance;
+    return pi && !pi.down ? Pets.getSpecies(pi.species).passive ?? null : null;
+  }
+
+  private bondTier(): number {
+    return this.petInstance ? Pets.bondTier(this.petInstance.bond) : 0;
+  }
+
   petStatsNow(c: Combatant): PetStats {
     const pi = this.petInstance;
     const st = pi ? Pets.petStats(pi) : { hp: 1, atk: 0, def: 0, spd: 0, mag: 0 };
     for (const b of c.petBuffs) st[b.stat] += b.amount;
+    const ps = this.petPassive;
+    if (ps?.id === 'furia' && this.hp(c) < this.maxHp(c) / 2) {
+      st.atk += ps.power;
+      st.mag += ps.power;
+    }
     return st;
   }
 
@@ -260,7 +277,7 @@ export class Battle {
     const slow = hasStatus(c.statuses, 'ralentizado') ? 2 : 0;
     const buff = this.buffTotal(c, 'ca') + (c.defending ? 2 : 0) - slow;
     switch (c.kind) {
-      case 'player': return this.derived.ac + buff;
+      case 'player': return this.derived.ac + buff + (this.petPassive?.id === 'vigia' ? this.petPassive.power : 0);
       case 'ally': return allyStatsFor(this.companionDef, this.state.player.level).ac + buff;
       case 'pet': return 10 + Math.floor(this.petStatsNow(c).def / 2) + buff;
       default: return c.enemy!.def.ac + buff;
@@ -452,7 +469,16 @@ export class Battle {
   /** Daño con defensas (resistencias/vulnerabilidades de enemigos), eventos y muerte. */
   damage(t: Combatant, raw: number, type: DamageType, o: { crit?: boolean; src?: Combatant | null; ctx?: 'weapon' | 'spell' | 'ally' | 'other'; half?: boolean } = {}): number {
     const d = t.kind === 'enemy' ? applyDefenses(raw, type, t.enemy!.def) : { amount: raw, note: '' as const };
-    const amount = Math.max(1, d.amount);
+    let amount = Math.max(1, d.amount);
+    if (t.kind === 'pet') {
+      const ps = this.petPassive;
+      if (ps?.id === 'tenaz') amount = Math.max(1, amount - ps.power);
+      if (amount >= this.hp(t) && this.hp(t) > 1 && this.bondTier() >= 3 && !this.petResisted) {
+        this.petResisted = true;
+        amount = this.hp(t) - 1;
+        this.emit({ t: 'info', text: `¡${t.name} aguanta por ti!`, kind: 'good' });
+      }
+    }
     this.setHp(t, this.hp(t) - amount);
     const killed = this.hp(t) <= 0;
     const tag = d.note === 'vulnerable' ? 'vulnerable' : d.note === 'resiste' ? 'resiste' : o.half ? 'mitad' : '';
@@ -1071,6 +1097,9 @@ export class Battle {
   private petAct(c: Combatant): void {
     const pi = this.petInstance;
     if (!pi || pi.down) return;
+    const ps = this.petPassive;
+    if (ps?.id === 'regen') this.heal(c, ps.power, true);
+    if (ps?.id === 'cuidador' && this.state.player.hp < this.state.player.maxHp) this.heal(this.player, ps.power, true);
     const order = this.petOrder ? Pets.getMove(this.petOrder) : undefined;
     this.petOrder = null;
     const ready = this.petReady(c);
@@ -1085,7 +1114,11 @@ export class Battle {
       if (heal && pl.hp < pl.maxHp * 0.45) return heal;
       const shield = ready.find((m) => m.kind === 'proteger');
       if (shield && pl.hp < pl.maxHp * 0.7 && !this.player.buffs.some((b) => b.stat === 'ca')) return shield;
-      const buff = ready.find((m) => m.kind === 'mejora');
+      const cleanse = ready.find((m) => m.kind === 'curar' && m.cleanse && !m.self);
+      if (cleanse && this.player.statuses.length) return cleanse;
+      const team = ready.find((m) => m.kind === 'mejora' && m.teamBuff && !this.player.buffs.some((b) => b.stat === m.teamBuff!.stat));
+      if (team && this.rng.chance(0.5)) return team;
+      const buff = ready.find((m) => m.kind === 'mejora' && m.buff);
       if (buff && !c.petBuffs.length && this.rng.chance(0.3)) return buff;
       return null;
     };
@@ -1127,7 +1160,7 @@ export class Battle {
   private usePetMove(c: Combatant, m: PetMoveDef, target: Combatant | null): void {
     const pi = this.petInstance!;
     const st = this.petStatsNow(c);
-    if (m.cooldown > 0) c.cooldowns[m.id] = m.cooldown + 1;
+    if (m.cooldown > 0) c.cooldowns[m.id] = m.cooldown + 1 - (this.bondTier() >= 2 ? 1 : 0);
     const color = PET_TYPE_COLOR[m.type] ?? '#ffffff';
     this.emit({ t: 'say', text: m.name });
     if (m.kind === 'curar') {
@@ -1135,12 +1168,19 @@ export class Battle {
       const to = m.self ? c : this.player;
       this.emit({ t: 'attack', from: c.id, to: [to.id], style: 'self', color: '#60e070' });
       this.heal(to, amount);
+      if (m.cleanse && !m.self) to.statuses = [];
       return;
     }
     if (m.kind === 'proteger' && m.shield) {
       this.emit({ t: 'attack', from: c.id, to: ['player'], style: 'self', color });
       this.player.buffs.push({ stat: 'ca', amount: m.shield.amount, turns: m.shield.turns + 1 });
       this.emit({ t: 'buff', id: 'player', text: `+${m.shield.amount} CA` });
+      return;
+    }
+    if (m.kind === 'mejora' && m.teamBuff) {
+      this.emit({ t: 'attack', from: c.id, to: ['player'], style: 'self', color });
+      this.player.buffs.push({ ...m.teamBuff, turns: m.teamBuff.turns + 1 });
+      this.emit({ t: 'buff', id: 'player', text: `+${m.teamBuff.amount} ${m.teamBuff.stat}` });
       return;
     }
     if (m.kind === 'mejora' && m.buff) {
@@ -1153,17 +1193,21 @@ export class Battle {
     const targets = m.radius ? this.foes() : [target];
     this.emit({ t: 'attack', from: c.id, to: targets.map((x) => x.id), style: m.range > 1 ? 'cast' : 'melee', dmgType: PET_DAMAGE[m.type] ?? 'contundente', color });
     pi.bond = Math.min(100, pi.bond + 0.2);
+    const hunter = this.petPassive?.id === 'cazador' ? this.petPassive.power : 0;
     for (const t of targets) {
-      if (!this.rng.chance(m.accuracy ?? 0.9)) {
-        this.emit({ t: 'miss', id: t.id, text: 'Fallo' });
-        continue;
+      for (let h = 0; h < (m.hits ?? 1) && !t.dead; h++) {
+        if (!this.rng.chance(m.accuracy ?? 0.9)) {
+          this.emit({ t: 'miss', id: t.id, text: 'Fallo' });
+          continue;
+        }
+        const mult = Pets.typeMultiplier(m.type, this.defenderType(t));
+        const raw = roll(this.rng, m.dice ?? '1d4').total + Math.floor(st[m.stat ?? 'atk'] / 3) + (t.statuses.length ? hunter : 0);
+        const dmg = Math.max(1, Math.round(raw * mult));
+        if (mult > 1 && h === 0) this.emit({ t: 'info', text: '¡Muy eficaz!', kind: 'good' });
+        const done = this.damage(t, dmg, PET_DAMAGE[m.type] ?? 'contundente', { src: c, ctx: 'ally' });
+        if (m.drain) this.heal(c, Math.max(1, Math.round(done * m.drain)), true);
+        if (!t.dead && m.applyStatus) this.applyStatus(t, m.applyStatus);
       }
-      const mult = Pets.typeMultiplier(m.type, this.defenderType(t));
-      const raw = roll(this.rng, m.dice ?? '1d4').total + Math.floor(st[m.stat ?? 'atk'] / 3);
-      const dmg = Math.max(1, Math.round(raw * mult));
-      if (mult > 1) this.emit({ t: 'info', text: '¡Muy eficaz!', kind: 'good' });
-      this.damage(t, dmg, PET_DAMAGE[m.type] ?? 'contundente', { src: c, ctx: 'ally' });
-      if (!t.dead && m.applyStatus) this.applyStatus(t, m.applyStatus);
     }
   }
 

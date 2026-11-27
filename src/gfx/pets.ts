@@ -10,7 +10,79 @@ import { TILE, ctx2d, drawPixelArt, makeCanvas } from './canvas';
 
 type Art = readonly string[];
 
-const SHAPES: Readonly<Record<string, { small: Art; big: Art }>> = {
+/** Formas nuevas (v0.9.1): sólo tienen versión grande; la cría se dibuja reducida. */
+const BIG_ONLY: Readonly<Record<string, Art>> = {
+  zorro: [
+    '.........k..k...',
+    '........kmkkmk..',
+    '........kmmmmmk.',
+    '.kk.....kmemmmk.',
+    'kaak..kkkmmmmak.',
+    'kaamkkmmmmmmk...',
+    '.kaammmmmmmmk...',
+    '..kkmmmmmmmdk...',
+    '....kmmmmmmdk...',
+    '....kmdkkmdk....',
+    '....kdk..kdk....',
+    '....kk...kk.....',
+  ],
+  pajaro: [
+    '.......kkk......',
+    '......kmmmk.....',
+    '.....kmmemmkk...',
+    '.....kmmmmaak...',
+    '..kk.kmmmmkk....',
+    '.kddkmmmmmmk....',
+    'kddmmmmammmmk...',
+    '.kdmmmmmmmmdk...',
+    '..kkmmmmmmdk....',
+    '....kkmmmkk.....',
+    '.....kakak......',
+    '.....kk.kk......',
+  ],
+  serpiente: [
+    '.....kkk........',
+    '....kmmmk.......',
+    '...kmemmmk......',
+    '...kmmmaak......',
+    '....kmmmk.......',
+    '.....kmmk.......',
+    '..kkkkmmkkkk....',
+    '.kmmmmmmmmmmk...',
+    'kmmaammaammmmk..',
+    'kmmmmmmmmmmmdk..',
+    '.kddmmmmmmddk...',
+    '..kkkkkkkkkk....',
+  ],
+  escarabajo: [
+    '............k.k.',
+    '.....kkkkk...kk.',
+    '...kkmmmmmkkkkk.',
+    '..kmmmammmmkmmek',
+    '.kmmammmammkmmmk',
+    '.kmmmmmmmmmkkkk.',
+    '.kddmmmmmmdk....',
+    '..kkddddddkk....',
+    '..kk.kk.kk.kk...',
+    '.kk..kk.kk..kk..',
+  ],
+  medusa: [
+    '....kkkkkkk.....',
+    '..kkmmmmmmmkk...',
+    '.kmmmaammmmmmk..',
+    '.kmmmmmmmmmmmk..',
+    '.kmmemmmmemmmk..',
+    '.kmmmmmmmmmmdk..',
+    '..kdddddddddk...',
+    '..kakdkakdkak...',
+    '...k.dk.kd.k....',
+    '..kd.k..k.dk....',
+    '..k..kd.dk..k...',
+  ],
+};
+
+const SHAPES: Readonly<Record<string, { small?: Art; big: Art }>> = {
+  ...Object.fromEntries(Object.entries(BIG_ONLY).map(([k, big]) => [k, { big }])),
   lagarto: {
     small: [
       '', '', '', '', '', '',
@@ -204,10 +276,20 @@ export function petSprite(look: PetLook, stage: number): { right: HTMLCanvasElem
   const hit = cache.get(key);
   if (hit) return hit;
   const shape = SHAPES[look.shape] ?? SHAPES['lagarto']!;
-  const rows = norm(stage <= 1 ? shape.small : shape.big);
+  const rows = norm(stage <= 1 && shape.small ? shape.small : shape.big);
   const map = { k: PAL.black, m: look.main, d: look.dark, a: look.accent, e: look.eye ?? '#101010' };
   const base = makeCanvas(TILE, TILE);
   drawPixelArt(ctx2d(base), rows, map);
+  if (stage <= 1 && !shape.small) {
+    // Cría de una forma sólo grande: versión reducida (3/4) pegada al suelo.
+    const tmp = makeCanvas(TILE, TILE);
+    const tc = ctx2d(tmp);
+    tc.imageSmoothingEnabled = false;
+    tc.drawImage(base, 0, 0, TILE, TILE, 2, 4, 12, 12);
+    const bc = ctx2d(base);
+    bc.clearRect(0, 0, TILE, TILE);
+    bc.drawImage(tmp, 0, 0);
+  }
   const right = makeCanvas(TILE, TILE);
   const rc = ctx2d(right);
   if (stage >= 3) {

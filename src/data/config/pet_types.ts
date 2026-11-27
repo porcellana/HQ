@@ -6,12 +6,14 @@
 import type { EnemyFamily, PetType, PetTypeDef } from '../schema';
 
 export const PET_TYPES: PetTypeDef[] = [
-  { id: 'fuego', name: 'Fuego', icon: '🔥', color: '#f07030', strong: ['planta', 'sombra'], weak: ['agua', 'tierra'] },
-  { id: 'agua', name: 'Agua', icon: '💧', color: '#3a8ad8', strong: ['fuego', 'tierra'], weak: ['planta', 'luz'] },
-  { id: 'planta', name: 'Planta', icon: '🌿', color: '#4ab040', strong: ['agua', 'tierra'], weak: ['fuego', 'sombra'] },
-  { id: 'tierra', name: 'Tierra', icon: '🪨', color: '#a07848', strong: ['fuego', 'luz'], weak: ['agua', 'planta'] },
+  { id: 'fuego', name: 'Fuego', icon: '🔥', color: '#f07030', strong: ['planta', 'sombra', 'hielo'], weak: ['agua', 'tierra'] },
+  { id: 'agua', name: 'Agua', icon: '💧', color: '#3a8ad8', strong: ['fuego', 'tierra'], weak: ['planta', 'luz', 'rayo'] },
+  { id: 'planta', name: 'Planta', icon: '🌿', color: '#4ab040', strong: ['agua', 'tierra'], weak: ['fuego', 'sombra', 'hielo'] },
+  { id: 'tierra', name: 'Tierra', icon: '🪨', color: '#a07848', strong: ['fuego', 'luz', 'rayo'], weak: ['agua', 'planta', 'hielo'] },
   { id: 'sombra', name: 'Sombra', icon: '🌑', color: '#7a4ab0', strong: ['luz', 'planta'], weak: ['fuego', 'sombra'] },
-  { id: 'luz', name: 'Luz', icon: '✨', color: '#f0d860', strong: ['sombra', 'agua'], weak: ['tierra', 'luz'] },
+  { id: 'luz', name: 'Luz', icon: '✨', color: '#f0d860', strong: ['sombra', 'agua', 'hielo'], weak: ['tierra', 'luz'] },
+  { id: 'hielo', name: 'Hielo', icon: '❄️', color: '#80d0f0', strong: ['planta', 'tierra'], weak: ['fuego', 'luz'] },
+  { id: 'rayo', name: 'Rayo', icon: '⚡', color: '#f0e040', strong: ['agua', 'hielo'], weak: ['tierra', 'planta'] },
 ];
 
 /** Tipo de cada familia de enemigos (para la eficacia de los movimientos). */

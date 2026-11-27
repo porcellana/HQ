@@ -7,6 +7,7 @@
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
 import type { BiomeDef, DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef, PetMoveDef, PetSpeciesDef, PetType, PetTypeDef } from './schema';
+import { PET_NATURES } from './config/pet_natures';
 import { FAMILY_TYPE, PET_TYPES } from './config/pet_types';
 import rarityList from './config/rarities';
 import trapList from './config/traps';
@@ -184,4 +185,4 @@ export const PET_MOVES: ReadonlyMap<string, PetMoveDef> = collect<PetMoveDef>(
   'movimiento de mascota',
 );
 export const PET_TYPE_MAP: ReadonlyMap<PetType, PetTypeDef> = new Map(PET_TYPES.map((t) => [t.id, t]));
-export { FAMILY_TYPE, PET_TYPES };
+export { FAMILY_TYPE, PET_NATURES, PET_TYPES };

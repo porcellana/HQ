@@ -7,7 +7,7 @@
  *    entrenamiento mientras no jugabas.
  *  - Elegir qué movimiento olvidar y pantalla de evolución animada.
  */
-import { PET_SPECIES, PET_TYPE_MAP, QUESTS } from '@/data/registry';
+import { BIOMES, PET_SPECIES, PET_TYPE_MAP, QUESTS, getItem } from '@/data/registry';
 import { zoneName } from '@/game/quests/guide';
 import type { PetSpeciesDef } from '@/data/schema';
 import type { Game } from '@/game/game';
@@ -26,14 +26,22 @@ function typeBadge(sp: PetSpeciesDef): HTMLElement {
 /** Dónde vive o cómo se consigue una especie (para el bestiario y la ficha). */
 export function speciesOrigin(sp: PetSpeciesDef): string {
   const parts: string[] = [];
-  if (sp.catchable && sp.habitats.length) parts.push(`Vive en: ${sp.habitats.map((z) => zoneName(z)).join(', ')}`);
+  if (sp.catchable && sp.habitats.length) parts.push(`Vive en: ${sp.habitats.map(habitatName).join(', ')}`);
   if (sp.starter) parts.push('Mascota inicial: pídesela a Tobías en Brumaroja');
   const rewards = [...QUESTS.values()].filter((q) => q.rewards.pet?.species === sp.id).map((q) => `«${q.name}»`);
   if (rewards.length) parts.push(`Recompensa de ${rewards.join(', ')}`);
-  const from = [...PET_SPECIES.values()].find((x) => x.evolvesTo?.species === sp.id);
-  if (from) parts.push(`Evoluciona de ${from.name} (nivel ${from.evolvesTo!.level})`);
+  for (const { from, evo } of Pets.evolvesFrom(sp.id)) parts.push(`Evoluciona de ${from.name} (${Pets.evolutionCondition(evo, itemName)})`);
   return parts.join(' · ') || 'Origen desconocido';
 }
+
+/** Nombre legible de un hábitat (zona, mazmorra, bioma o tipo de lugar). */
+function habitatName(id: string): string {
+  if (id.startsWith('bioma:')) return BIOMES.get(id.slice(6))?.name ?? id;
+  if (id.startsWith('lugar:')) return ({ cueva: 'cuevas', mazmorra: 'mazmorras', ruinas: 'ruinas' } as Record<string, string>)[id.slice(6)] ?? id;
+  return zoneName(id);
+}
+
+const itemName = (id: string): string => getItem(id)?.name ?? id;
 
 function moveRow(id: string, extra?: HTMLElement | null): HTMLElement {
   const m = Pets.getMove(id);
@@ -87,7 +95,7 @@ export function petScreen(game: Game, onClose: () => void, onChanged: () => void
           h('div', { class: 'pet-headinfo' }, [
             h('b', { class: 'pet-species', text: sp.name }),
             typeBadge(sp),
-            h('small', { class: 'muted', text: `Nivel ${pi.level} · Vínculo ${Math.round(pi.bond)} %` }),
+            h('small', { class: 'muted', text: `Nivel ${pi.level} · ${Pets.getNature(pi.nature)?.name ?? ''} · Vínculo ${Math.round(pi.bond)} (${Pets.BOND_TIERS[Pets.bondTier(pi.bond)]!.name})` }),
             h('div', { class: 'bar xp thin' }, [h('i', { attrs: { style: `width:${pi.level >= Pets.PET_MAX_LEVEL ? 100 : (100 * pi.xp) / need}%` } })]),
             h('small', { class: 'muted', text: `PV ${pi.down ? 0 : pi.hp}/${st.hp}${pi.down ? ' (debilitada)' : ''}` }),
             h('label', { class: 'muted' }, ['Mote: ', name]),
@@ -97,6 +105,7 @@ export function petScreen(game: Game, onClose: () => void, onChanged: () => void
         h('p', { class: 'muted pet-origin', text: `📍 ${speciesOrigin(sp)}` }),
         h('div', { class: 'derived' }, (Object.keys(STAT_LABEL) as Array<keyof typeof STAT_LABEL>).map((k) =>
           h('div', { class: 'derived-item' }, [h('small', { text: STAT_LABEL[k] }), h('b', { text: `${st[k]}` })]))),
+        passivePanel(sp, pi, game, onChanged, render),
         h('div', { class: 'panel' }, [h('h3', { text: `Movimientos (${pi.moves.length}/${Pets.MAX_MOVES})` }), ...pi.moves.map((m) => moveRow(m))]),
         h('div', { class: 'panel' }, [
           h('h3', { text: 'Línea evolutiva' }),
@@ -105,9 +114,10 @@ export function petScreen(game: Game, onClose: () => void, onChanged: () => void
             return h('div', { class: `evo-step${s.id === pi.species ? ' current' : ''}` }, [
               petSpriteCanvas(s.look, s.stage, 'evo-canvas', !known),
               h('small', { text: known ? s.name : '???' }),
-              s.evolvesTo && i < line.length - 1 ? h('small', { class: 'muted', text: `Nv ${s.evolvesTo.level} →` }) : null,
+              s.evolutions?.[0] && i < line.length - 1 ? h('small', { class: 'muted', text: `Nv ${s.evolutions[0].level} →` }) : null,
             ]);
           })),
+          ...branchRows(pi, sp, game, onChanged, render),
         ]),
       );
     }
@@ -120,6 +130,33 @@ export function petScreen(game: Game, onClose: () => void, onChanged: () => void
   };
   render();
   return root;
+}
+
+/** Ramas evolutivas de la especie actual con sus condiciones (y botón si hace falta una piedra). */
+function branchRows(pi: Pets.PetInstance, sp: PetSpeciesDef, game: Game, onChanged: () => void, render: () => void): HTMLElement[] {
+  const has = (id: string) => game.state.player.inventory.some((x) => x.id === id);
+  return (sp.evolutions ?? []).map((e) => {
+    const to = Pets.getSpecies(e.species);
+    const ok = Pets.evolutionMet(pi, e, has);
+    return h('div', { class: 'pet-branch' }, [
+      petSpriteCanvas(to.look, to.stage, 'evo-canvas', !game.state.pets.seen.includes(to.id)),
+      h('small', { class: 'muted', text: `→ ${game.state.pets.seen.includes(to.id) ? to.name : '???'}: ${Pets.evolutionCondition(e, itemName)}` }),
+      e.item && ok ? h('button', { class: 'primary', text: `Usar ${itemName(e.item)}`, onClick: () => { game.evolvePetWithItem(to.id); onChanged(); render(); } }) : null,
+    ]);
+  });
+}
+
+/** Poder pasivo, bonos de vínculo y caricias. */
+function passivePanel(sp: PetSpeciesDef, pi: Pets.PetInstance, game: Game, onChanged: () => void, render: () => void): HTMLElement {
+  const tier = Pets.bondTier(pi.bond);
+  const note = h('small', { class: 'muted' });
+  return h('div', { class: 'panel' }, [
+    h('h3', { text: 'Poder y vínculo' }),
+    h('p', { class: 'muted', text: sp.passive ? `⚡ ${sp.passive.name}: ${sp.passive.description}` : 'Sin poder pasivo.' }),
+    h('p', { class: 'muted', text: Pets.BOND_TIERS.filter((_, i) => i > 0 && i <= tier).map((t) => `❤ ${t.name}: ${t.perk}`).join(' · ') || 'Sube el vínculo luchando juntos y acariciándola.' }),
+    h('button', { text: '🤲 Acariciar', onClick: () => { note.textContent = game.caressPet(); onChanged(); render(); } }),
+    note,
+  ]);
 }
 
 function bestiary(game: Game): HTMLElement {
@@ -135,7 +172,7 @@ function bestiary(game: Game): HTMLElement {
         petSpriteCanvas(s.look, s.stage, 'evo-canvas', !seen),
         h('b', { text: seen ? s.name : '???' }),
         h('small', { class: 'muted', text: seen ? `${t?.icon ?? ''} ${t?.name ?? ''}${caught ? ' · ✔' : ''}` : '' }),
-        h('small', { class: 'muted best-origin', text: seen ? speciesOrigin(s) : (s.catchable && s.habitats.length ? `Vive en: ${s.habitats.map((z) => zoneName(z)).join(', ')}` : '') }),
+        h('small', { class: 'muted best-origin', text: seen ? speciesOrigin(s) : (s.catchable && s.habitats.length ? `Vive en: ${s.habitats.map(habitatName).join(', ')}` : '') }),
       ]);
     })),
   ]);
@@ -195,15 +232,32 @@ export function moveChoice(root: HTMLElement, game: Game, done: () => void): voi
 }
 
 /** Pantalla de evolución animada: destellos alternando los dos sprites. */
-export function evolutionScreen(root: HTMLElement, game: Game, done: () => void): void {
+export function evolutionScreen(root: HTMLElement, game: Game, done: () => void, chosen?: string): void {
   const pi = game.petInstance;
   if (!pi?.pendingEvolution) return done();
   const from = Pets.getSpecies(pi.species);
-  const to = from.evolvesTo ? Pets.getSpecies(from.evolvesTo.species) : null;
-  if (!to) {
+  const opts = Pets.evolutionOptions(pi);
+  if (!opts.length) {
     pi.pendingEvolution = false;
     return done();
   }
+  if (opts.length > 1) {
+    // Rama elegible: el jugador decide en qué se convierte.
+    const back = h('div', { class: 'modal-back evo-back' }, [h('div', { class: 'modal evo-modal' }, [
+      h('h3', { text: `¡${Pets.petName(pi)} puede evolucionar!` }),
+      h('p', { class: 'muted', text: 'Elige su camino:' }),
+      ...opts.map((o) => {
+        const t = Pets.getSpecies(o.species);
+        return h('button', { class: 'class-card', onClick: () => { back.remove(); evolutionScreen(root, game, done, o.species); } }, [
+          petSpriteCanvas(t.look, t.stage, 'class-sprite'), h('strong', { text: t.name }), typeBadge(t), h('small', { text: Pets.evolutionCondition(o, itemName) }),
+        ]);
+      }),
+      h('button', { class: 'danger', text: 'Ahora no', onClick: () => { back.remove(); game.declinePetEvolution(); done(); } }),
+    ])]);
+    root.append(back);
+    return;
+  }
+  const to = Pets.getSpecies(chosen ?? opts[0]!.species);
   const name = Pets.petName(pi);
   const a = petSpriteCanvas(from.look, from.stage, 'pet-canvas');
   const b = petSpriteCanvas(to.look, to.stage, 'pet-canvas', true);
@@ -225,7 +279,7 @@ export function evolutionScreen(root: HTMLElement, game: Game, done: () => void)
     if (t >= 36) {
       window.clearInterval(timer);
       if (stopped) return;
-      game.evolvePet();
+      game.evolvePet(to.id);
       const nb = petSpriteCanvas(to.look, to.stage, 'pet-canvas');
       stage.replaceChildren(nb);
       text.textContent = `¡${from.name} ha evolucionado en ${to.name}!`;
@@ -290,6 +344,16 @@ export function stableScreen(game: Game, report: Pets.TrainingReport[], onClose:
         ...(pets.stable.length ? pets.stable.map((p) => petCard(p, [
           h('button', { class: 'primary', text: pi ? 'Cambiar por la actual' : 'Llevar conmigo', onClick: () => { note = game.withdrawPet(p.uid) ?? `${Pets.petName(p)} vuelve a tu lado.`; onChanged(); render(); } }),
         ])) : [h('p', { class: 'muted', text: 'Vacío.' })]),
+      ]));
+      parts.push(h('div', { class: 'panel' }, [
+        h('h3', { text: 'Piedras de evolución' }),
+        ...['piedra_trueno', 'piedra_escarcha', 'piedra_solar'].map((id) => {
+          const d = getItem(id);
+          return d ? h('div', { class: 'pet-branch' }, [
+            h('small', { text: `${d.name} (tienes ${game.state.player.inventory.filter((x) => x.id === id).reduce((a, x) => a + x.qty, 0)})` }),
+            h('button', { text: `Comprar ${d.value} 🪙`, onClick: () => { note = game.buyStone(id) ?? `Compras ${d.name}.`; onChanged(); render(); } }),
+          ]) : null;
+        }),
       ]));
       parts.push(h('button', { text: '💚 Curar a todas (gratis)', onClick: () => { game.healPet(); for (const p of pets.stable) { p.down = false; p.hp = Pets.petStats(p).hp; } note = 'Tobías cura a tus criaturas con hierbas y paciencia.'; onChanged(); render(); } }));
     }

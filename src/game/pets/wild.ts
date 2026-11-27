@@ -7,7 +7,7 @@ import type { DamageType, EnemyDef, PetType } from '@/data/schema';
 import { getMove, getSpecies, statsAt } from './pets';
 
 export const PET_DAMAGE_TYPE: Record<PetType, DamageType> = {
-  fuego: 'fuego', agua: 'frio', planta: 'veneno', tierra: 'contundente', sombra: 'necrotico', luz: 'sagrado',
+  fuego: 'fuego', agua: 'frio', planta: 'veneno', tierra: 'contundente', sombra: 'necrotico', luz: 'sagrado', hielo: 'frio', rayo: 'rayo',
 };
 
 /** Ficha de enemigo para una criatura salvaje de cierta especie y nivel. */
@@ -38,7 +38,12 @@ export function wildEnemyDef(speciesId: string, level: number): EnemyDef {
   };
 }
 
-/** Especies salvajes que viven en una zona o mazmorra. */
-export function wildSpeciesIn(zoneOrDungeonId: string): string[] {
-  return [...PET_SPECIES.values()].filter((s) => s.catchable && s.habitats.includes(zoneOrDungeonId)).map((s) => s.id);
+/**
+ * Especies salvajes de una zona o mazmorra (id), de un bioma procedural y/o de un tipo de lugar.
+ * Con `level`, las etapas 2 y 3 sólo salen en zonas de nivel 8+ y 16+.
+ */
+export function wildSpeciesIn(zoneOrDungeonId: string, biome?: string, place?: string, level?: number): string[] {
+  return [...PET_SPECIES.values()].filter((s) => s.catchable
+    && (level === undefined || level >= (s.stage - 1) * 8)
+    && (s.habitats.includes(zoneOrDungeonId) || (!!biome && s.habitats.includes(`bioma:${biome}`)) || (!!place && s.habitats.includes(`lugar:${place}`)))).map((s) => s.id);
 }

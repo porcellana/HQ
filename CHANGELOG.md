@@ -2,6 +2,15 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.9.1 · 2026-11-27 — Mascotas: especies, evoluciones ramificadas y poderes
+
+- **42 especies** (antes 15) con sprites nuevos (zorro, pájaro, serpiente, escarabajo y medusa) y dos tipos nuevos, **hielo** ❄️ y **rayo** ⚡ (8 tipos con su tabla de eficacia). Hábitats también en el mundo procedural: `bioma:<id>` (nieve, montaña, costa, desierto, pantano, bosque, pradera) y `lugar:<cueva|mazmorra|ruinas>`; las etapas 2 y 3 sólo salen en zonas de nivel 8+ y 16+.
+- **Evoluciones ramificadas**: por nivel, **vínculo** (p. ej. Escarchín → Auroral con vínculo 60), **naturaleza** (Venenal → Sombralisco) u **objeto** (piedras de trueno, escarcha y solar, que se compran en el establo). Si hay varias ramas, eliges el camino. Más líneas de etapa 3 (Montañón, Cristalón, Noctámbulo, Serafón…).
+- **~36 movimientos nuevos** por tipo con estados (ralentizar, aturdir, veneno, sangrado, quemar), golpes múltiples, drenaje de vida, limpiar estados y apoyo al jugador (+CA, +daño, +ataque). Aparecen en ✨ Habilidad → Órdenes a la mascota y la IA los usa sola.
+- **Poderes pasivos** por especie en batalla: regeneración, cuidador (cura al jugador), furia, tenaz, vigía (+CA) y cazador.
+- **Naturalezas** (8, ±10 % a dos estadísticas) y **vínculo** con 4 niveles (Amistosa, Leal: recargas −1 turno, Inseparable: resiste un golpe mortal por combate). Se sube luchando, ganando XP y **acariciando** (+3 cada 30 min).
+- Nivel máximo 30 y crecimiento propio por especie. Ficha con naturaleza, poder, ramas y botón de piedra. Guardado v10 (migración: naturaleza a las mascotas existentes).
+
 ## v0.8.0 · 2026-11-27 — Mundo procedural por semilla
 
 - **El mundo se genera al explorar**: la aldea, el bosque, el Paso Gris y Puerto Ceniza siguen siendo el núcleo; ahora tienen salidas extra (oeste/este/norte) hacia una rejilla de zonas generadas (radio 8) con la semilla de la partida (misma semilla = mismo mundo). Cada zona se crea al cruzar la salida y se **guarda en la partida** (migración v8→v9, `world.gen`).

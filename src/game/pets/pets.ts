@@ -6,8 +6,8 @@
  *  - Eficacia de tipos, probabilidad de vínculo (captura) y entrenamiento en el
  *    establo con el paso del tiempo real.
  */
-import { FAMILY_TYPE, PET_MOVES, PET_SPECIES, PET_TYPE_MAP } from '@/data/registry';
-import type { EnemyFamily, PetMoveDef, PetSpeciesDef, PetStats, PetType } from '@/data/schema';
+import { FAMILY_TYPE, PET_MOVES, PET_NATURES, PET_SPECIES, PET_TYPE_MAP } from '@/data/registry';
+import type { EnemyFamily, PetEvolution, PetMoveDef, PetNatureDef, PetSpeciesDef, PetStats, PetType } from '@/data/schema';
 
 export const MAX_MOVES = 4;
 export const STABLE_CAPACITY = 8;
@@ -20,6 +20,8 @@ export interface PetInstance {
   /** Mote que le pone el jugador (opcional). */
   nickname?: string;
   level: number;
+  /** Naturaleza (id de data/config/pet_natures): +10 % / −10 % a dos estadísticas. */
+  nature: string;
   /** XP dentro del nivel actual. */
   xp: number;
   hp: number;
@@ -34,6 +36,8 @@ export interface PetInstance {
   pendingEvolution: boolean;
   /** Nivel en el que se detuvo la evolución (se vuelve a ofrecer al subir). */
   declinedEvolutionAt?: number;
+  /** Última vez (ms) que se la acarició (sube el vínculo, con espera). */
+  lastPetted?: number;
   /** Instante (ms) desde el que entrena en el establo. */
   restSince?: number;
 }
@@ -66,14 +70,53 @@ export function petName(p: PetInstance): string {
   return p.nickname?.trim() || getSpecies(p.species).name;
 }
 
-/** Estadísticas a un nivel (redondeadas hacia abajo; el vínculo da hasta +10 %). */
-export function statsAt(sp: PetSpeciesDef, level: number, bond = 0): PetStats {
-  const f = (k: keyof PetStats) => Math.floor((sp.base[k] + sp.growth[k] * (level - 1)) * (1 + Math.min(100, bond) / 1000));
+export function getNature(id: string | undefined): PetNatureDef | undefined {
+  return PET_NATURES.find((n) => n.id === id);
+}
+
+/** Naturaleza determinista a partir de un texto (migración de partidas antiguas). */
+export function natureFromSeed(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return PET_NATURES[h % PET_NATURES.length]!.id;
+}
+
+/** Estadísticas a un nivel (hacia abajo): base + crecimiento, naturaleza (±10 %, no la vida) y vínculo (hasta +10 %). */
+export function statsAt(sp: PetSpeciesDef, level: number, bond = 0, nature?: string): PetStats {
+  const n = getNature(nature);
+  const f = (k: keyof PetStats) => {
+    const nat = k === 'hp' || !n ? 1 : n.up === k ? 1.1 : n.down === k ? 0.9 : 1;
+    return Math.floor((sp.base[k] + sp.growth[k] * (level - 1)) * nat * (1 + Math.min(100, bond) / 1000));
+  };
   return { hp: f('hp'), atk: f('atk'), def: f('def'), spd: f('spd'), mag: f('mag') };
 }
 
 export function petStats(p: PetInstance): PetStats {
-  return statsAt(getSpecies(p.species), p.level, p.bond);
+  return statsAt(getSpecies(p.species), p.level, p.bond, p.nature);
+}
+
+// ------------------------------------------------------------------- vínculo
+export const BOND_TIERS = [
+  { min: 0, name: 'Desconfiada', perk: '' },
+  { min: 25, name: 'Amistosa', perk: 'Hasta +10 % de estadísticas con el vínculo.' },
+  { min: 50, name: 'Leal', perk: 'Sus movimientos se recargan 1 turno antes.' },
+  { min: 80, name: 'Inseparable', perk: 'Una vez por combate resiste un golpe mortal con 1 PV.' },
+] as const;
+
+export function bondTier(bond: number): number {
+  let t = 0;
+  BOND_TIERS.forEach((x, i) => { if (bond >= x.min) t = i; });
+  return t;
+}
+
+export const PET_CARESS_WAIT_MS = 30 * 60_000;
+
+/** Acariciar: +3 de vínculo (con espera). Devuelve false si aún no toca. */
+export function caress(p: PetInstance, now: number): boolean {
+  if (p.lastPetted !== undefined && now - p.lastPetted < PET_CARESS_WAIT_MS) return false;
+  p.lastPetted = now;
+  p.bond = Math.min(100, p.bond + 3);
+  return true;
 }
 
 /** XP para pasar de `level` al siguiente. */
@@ -96,8 +139,9 @@ export function newPetUid(): string {
 export function createPet(speciesId: string, level = 1): PetInstance {
   const sp = getSpecies(speciesId);
   const lv = Math.max(1, Math.min(PET_MAX_LEVEL, level));
+  const nature = PET_NATURES[Math.floor(Math.random() * PET_NATURES.length)]!.id;
   return {
-    uid: newPetUid(), species: sp.id, level: lv, xp: 0, hp: statsAt(sp, lv).hp, moves: movesUpTo(sp, lv),
+    uid: newPetUid(), species: sp.id, nature, level: lv, xp: 0, hp: statsAt(sp, lv).hp, moves: movesUpTo(sp, lv),
     bond: 0, down: false, pendingMoves: [], pendingEvolution: false,
   };
 }
@@ -133,7 +177,7 @@ export function gainPetXp(p: PetInstance, amount: number, levelCap = PET_MAX_LEV
         out.learned.push(l.move);
       } else p.pendingMoves.push(l.move);
     }
-    if (sp.evolvesTo && p.level >= sp.evolvesTo.level && p.declinedEvolutionAt !== p.level) p.pendingEvolution = true;
+    if (p.declinedEvolutionAt !== p.level && evolutionOptions(p).length) p.pendingEvolution = true;
   }
   if (p.level >= cap) p.xp = 0;
   return out;
@@ -147,18 +191,50 @@ export function resolveMove(p: PetInstance, move: string, forget: string | null)
   if (i >= 0) p.moves[i] = move;
 }
 
-/** Evoluciona a la siguiente especie (mantiene la proporción de vida). */
-export function evolve(p: PetInstance): PetSpeciesDef | null {
+/** ¿Cumple la rama sus condiciones? (el objeto sólo cuenta si se indica `hasItem`). */
+export function evolutionMet(p: PetInstance, e: PetEvolution, hasItem?: (id: string) => boolean): boolean {
+  if (p.level < e.level) return false;
+  if (e.minBond !== undefined && p.bond < e.minBond) return false;
+  if (e.natures && !e.natures.includes(p.nature)) return false;
+  if (e.item && !(hasItem?.(e.item))) return false;
+  return true;
+}
+
+/** Ramas disponibles ahora. Sin `hasItem` sólo se consideran las que no piden objeto. */
+export function evolutionOptions(p: PetInstance, hasItem?: (id: string) => boolean): PetEvolution[] {
+  return (getSpecies(p.species).evolutions ?? []).filter((e) => (hasItem || !e.item) && evolutionMet(p, e, hasItem));
+}
+
+/** Texto de las condiciones de una rama. */
+export function evolutionCondition(e: PetEvolution, itemName?: (id: string) => string): string {
+  const parts = [`Nv ${e.level}`];
+  if (e.minBond) parts.push(`vínculo ${e.minBond}+`);
+  if (e.natures) parts.push(`naturaleza ${e.natures.map((n) => getNature(n)?.name ?? n).join('/')}`);
+  if (e.item) parts.push(itemName ? itemName(e.item) : e.item);
+  return parts.join(', ');
+}
+
+/**
+ * Evoluciona. `to` elige la rama (por defecto la primera disponible sin objeto).
+ * Mantiene la proporción de vida. Devuelve la nueva especie o null.
+ */
+export function evolve(p: PetInstance, to?: string, hasItem?: (id: string) => boolean): PetSpeciesDef | null {
   const sp = getSpecies(p.species);
-  if (!sp.evolvesTo) {
+  const opts = evolutionOptions(p, hasItem ?? (to ? () => true : undefined));
+  const pick = to ? opts.find((e) => e.species === to) : opts[0] ?? (sp.evolutions ?? []).find((e) => !e.item && p.level >= e.level);
+  if (!pick) {
     p.pendingEvolution = false;
     return null;
   }
   const ratio = p.down ? 0 : p.hp / Math.max(1, petStats(p).hp);
-  p.species = sp.evolvesTo.species;
+  p.species = pick.species;
   p.pendingEvolution = false;
   delete p.declinedEvolutionAt;
   p.hp = Math.max(p.down ? 0 : 1, Math.round(petStats(p).hp * ratio));
+  // Al evolucionar aprende lo que le tocaba hasta su nivel y no sabía (si hay hueco).
+  for (const l of getSpecies(p.species).learnset.filter((x) => x.level <= p.level)) {
+    if (p.moves.length < MAX_MOVES && !p.moves.includes(l.move)) p.moves.push(l.move);
+  }
   return getSpecies(p.species);
 }
 
@@ -279,15 +355,26 @@ export function markSeen(pets: PetsState, species: string): void {
   if (!pets.seen.includes(species)) pets.seen.push(species);
 }
 
-/** Cadena evolutiva completa de una especie (de la cría a la última etapa). */
+/** Cadena evolutiva principal (sigue la primera rama) de la cría a la última etapa. */
 export function evolutionLine(speciesId: string): PetSpeciesDef[] {
   let first = getSpecies(speciesId);
   for (;;) {
-    const prev = [...PET_SPECIES.values()].find((s) => s.evolvesTo?.species === first.id);
+    const prev = [...PET_SPECIES.values()].find((s) => s.evolutions?.some((e) => e.species === first.id));
     if (!prev) break;
     first = prev;
   }
   const line = [first];
-  while (line[line.length - 1]!.evolvesTo) line.push(getSpecies(line[line.length - 1]!.evolvesTo!.species));
+  for (;;) {
+    const next = line[line.length - 1]!.evolutions?.[0];
+    if (!next) break;
+    line.push(getSpecies(next.species));
+  }
   return line;
+}
+
+/** Especies de las que viene (para el bestiario). */
+export function evolvesFrom(speciesId: string): Array<{ from: PetSpeciesDef; evo: PetEvolution }> {
+  const out: Array<{ from: PetSpeciesDef; evo: PetEvolution }> = [];
+  for (const s of PET_SPECIES.values()) for (const evo of s.evolutions ?? []) if (evo.species === speciesId) out.push({ from: s, evo });
+  return out;
 }

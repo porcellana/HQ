@@ -7,7 +7,7 @@
  * src/game/battle (lógica pura) y se reproduce en una escena aparte; al acabar,
  * `finishBattle` aplica el resultado (XP, mapa, muerte).
  */
-import { COMPANIONS, NPCS, ORES, TRAPS, getClass, getEnemy, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
+import { COMPANIONS, NPCS, ORES, TRAPS, getClass, getEnemy, getItem, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
 import type { CompanionDef, CompanionEvent, DamageType, DialogNode, NpcDef, QuestDef, SkillDef, SkillKey, ZoneFeature } from '@/data/schema';
 import { Emitter } from '@/engine/events';
 import { Battle, allyStatsFor, type BattleResult } from './battle/battle';
@@ -25,7 +25,7 @@ import * as Pets from './pets/pets';
 import { wildEnemyDef, wildSpeciesIn } from './pets/wild';
 import { SKILLS, skillBonus } from './rules/skills';
 import { enemiesDropping, enemyMatches, nextHop, questGoalZone, questStep, zoneName, type GoalKind } from './quests/guide';
-import { addItem, equip, removeQty, unequip } from './items/inventory';
+import { addItem, countItem, equip, removeQty, unequip } from './items/inventory';
 import { itemDef, rarityOf, type ItemInstance } from './items/items';
 import { rollLoot } from './items/loot';
 import { createItem } from './items/items';
@@ -868,7 +868,7 @@ export class Game {
     if (!enc) return;
     for (let i = 0; i < enc.initial; i++) this.spawnGroup();
     // Siempre hay al menos una criatura salvaje si la zona es su hábitat.
-    const wild = wildSpeciesIn(this.zone.def.dungeon?.id ?? this.zone.id);
+    const wild = this.wildHere(this.zone.def.dungeon?.id ?? this.zone.id);
     if (wild.length && !this.enemies.some((e) => e.def.pet)) this.spawnWildPet(this.rng.pick(wild));
   }
 
@@ -884,7 +884,7 @@ export class Game {
     if (!enc || enc.groups.length === 0) return [];
     // A veces, en lugar de un grupo, aparece una criatura salvaje vinculable.
     const habitat = this.zone.def.dungeon?.id ?? this.zone.id;
-    const wild = wildSpeciesIn(habitat);
+    const wild = this.wildHere(habitat);
     if (wild.length && this.enemies.filter((e) => e.def.pet).length < WILD_PET_MAX && this.rng.chance(WILD_PET_CHANCE)) {
       const w = this.spawnWildPet(this.rng.pick(wild));
       if (w) return [w];
@@ -1743,11 +1743,50 @@ export class Game {
     if (forget) this.msg(`${Pets.petName(pi)} olvida ${Pets.getMove(forget)?.name ?? forget} y aprende ${Pets.getMove(move)?.name ?? move}.`, 'good');
   }
 
-  evolvePet(): Pets.PetInstance | null {
+  /** Especies salvajes de la zona actual (id, bioma y lugar procedurales, nivel de la zona). */
+  private wildHere(habitat: string): string[] {
+    const gen = this.zone.def.generated;
+    return wildSpeciesIn(habitat, gen?.biome, gen?.place, this.zone.def.level);
+  }
+
+  /** Acaricia a la mascota activa (+3 de vínculo cada 30 min). */
+  caressPet(): string {
+    const pi = this.petInstance;
+    if (!pi) return 'No llevas mascota.';
+    if (!Pets.caress(pi, Date.now())) return `${Pets.petName(pi)} ya ha recibido cariño hace poco.`;
+    return `${Pets.petName(pi)} se acurruca contigo. Vínculo ${Math.round(pi.bond)}.`;
+  }
+
+  /** Evoluciona con un objeto (piedra): comprueba condiciones y lo consume. */
+  evolvePetWithItem(to: string): string | null {
+    const pi = this.petInstance;
+    if (!pi) return 'No llevas mascota.';
+    const pl = this.state.player;
+    const opt = Pets.evolutionOptions(pi, (id) => countItem(pl, id) > 0).find((e) => e.species === to && e.item);
+    if (!opt) return 'Aún no cumple las condiciones.';
+    const stack = pl.inventory.find((x) => x.id === opt.item);
+    if (!stack || !removeQty(pl, stack.uid, 1)) return 'Te falta el objeto.';
+    this.evolvePet(to);
+    return null;
+  }
+
+  /** Compra una piedra de evolución en el establo. */
+  buyStone(id: string): string | null {
+    const def = getItem(id);
+    const pl = this.state.player;
+    if (!def) return 'Objeto desconocido.';
+    if (pl.gold < def.value) return 'No tienes oro suficiente.';
+    const left = addItem(pl, createItem(id, 'comun', this.rng, { qty: 1 }));
+    if (left > 0) return 'Mochila llena.';
+    pl.gold -= def.value;
+    return null;
+  }
+
+  evolvePet(to?: string): Pets.PetInstance | null {
     const pi = this.petInstance;
     if (!pi) return null;
     const before = Pets.getSpecies(pi.species).name;
-    const sp = Pets.evolve(pi);
+    const sp = Pets.evolve(pi, to);
     if (sp) {
       Pets.markSeen(this.state.pets, sp.id);
       if (!this.state.pets.caught.includes(sp.id)) this.state.pets.caught.push(sp.id);
