@@ -39,6 +39,9 @@ v0.2 se centra en el estilo Baldur's Gate / D&D en tres fases:
 | — | **v0.4.0**: combate turno a turno (paso a paso, barra de turnos, cartel de acción, menú de acciones, Defender), seguimiento de misiones estilo WoW, mascotas fáciles de encontrar y como recompensa | ✅ |
 | C | **Expediciones roguelike**: elegir camino entre salas (combate, tesoro, evento, tienda), recompensas a elegir y mejoras que se conservan aunque mueras | ⏳ |
 
+### Botín y comercio v0.9.4
+Objetos en `src/data/items/*.ts` (campos `classes`, `reqLevel`, `set`, `unique`, `quest`, `use.damage`), conjuntos en `src/data/sets`, tablas en `src/data/loot_tables` (`drop_<bioma>` = materiales extra; `jefe_<id>` = único del jefe; pools `equipo|armas|armaduras|accesorios|consumibles|magia|sets`), curva en `src/game/economy/curve.ts`, nombres de afijos en `src/data/config/affixnames.ts`. Tiendas: `kind`, `upgrades`, `gamble`, `minRarity`. Iconos nuevos: añade la forma en `src/gfx/items.ts`.
+
 ### Mascotas v0.9.1: especies, ramas y poderes
 
 - **42 especies, 8 tipos** (fuego, agua, planta, tierra, sombra, luz, hielo, rayo) con hábitats por zona, bioma (`bioma:<id>`) o lugar (`lugar:cueva|mazmorra|ruinas`); etapas 2 y 3 sólo en zonas de nivel 8+ / 16+.

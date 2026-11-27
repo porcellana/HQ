@@ -7,7 +7,8 @@
 import { EQUIP_SLOTS, type EquipSlot } from '@/data/schema';
 import type { Game } from '@/game/game';
 import { INVENTORY_SLOTS } from '@/game/items/inventory';
-import { describeBonuses, itemBonuses, itemDef, itemValue, rarityOf, slotsFor, type ItemInstance } from '@/game/items/items';
+import { SETS } from '@/data/registry';
+import { describeBonuses, displayName, equipBlock, itemBonuses, itemDef, itemValue, rarityOf, slotsFor, type ItemInstance } from '@/game/items/items';
 import { formatMod } from '@/game/rules/character';
 import { averageDice } from '@/game/rules/dice';
 import { derive, type Derived } from '@/game/rules/derived';
@@ -105,6 +106,19 @@ export function itemInfo(p: PlayerState, it: ItemInstance, compare: boolean, cur
   const bonuses = describeBonuses(itemBonuses(it));
   if (bonuses) lines.push(h('div', { class: 'bonus', text: bonuses }));
   if (def.description) lines.push(h('div', { class: 'muted', text: def.description }));
+  const block = equipBlock(def, p.classId, p.level);
+  if (def.classes || def.reqLevel) {
+    const clsNames = def.classes ? def.classes.map((c) => c[0]!.toUpperCase() + c.slice(1)).join('/') : '';
+    lines.push(h('div', { class: block ? 'down' : 'muted', text: `Requiere: ${[clsNames, def.reqLevel ? `nivel ${def.reqLevel}` : ''].filter(Boolean).join(' · ')}` }));
+  }
+  const set = def.set ? SETS.get(def.set) : undefined;
+  if (set) {
+    const worn = new Set(Object.values(p.equipment).filter((x): x is ItemInstance => !!x).map((x) => x.id));
+    const n = set.pieces.filter((id) => worn.has(id)).length;
+    lines.push(h('div', { class: 'set-info', text: `Conjunto ${set.name} (${n}/${set.pieces.length})` }));
+    for (const b of set.bonuses) lines.push(h('div', { class: n >= b.count ? 'bonus' : 'muted', text: `(${b.count}) ${b.text}` }));
+  }
+  if (def.unique) lines.push(h('div', { class: 'unique-tag', text: '★ Único de jefe' }));
   if (def.pickaxeTier) lines.push(h('div', { text: `Pico de nivel ${def.pickaxeTier} (minería en las mazmorras)` }));
   lines.push(h('div', { class: 'muted', text: `Nivel ${def.level} · Valor ${itemValue(it)} oro${it.qty > 1 ? ` · ×${it.qty}` : ''}` }));
 
@@ -138,7 +152,7 @@ export function itemInfo(p: PlayerState, it: ItemInstance, compare: boolean, cur
   const head = h('div', { class: 'item-head' }, [
     itemIconElement(def.icon, 'item-icon big'),
     h('div', {}, [
-      h('b', { text: def.name, attrs: { style: `color:${r.color}` } }),
+      h('b', { text: displayName(it), attrs: { style: `color:${r.color}` } }),
       h('small', { class: 'muted', text: ` ${KIND_LABEL[def.kind] ?? def.kind} · ${r.name}` }),
     ]),
   ]);
@@ -162,6 +176,23 @@ function detail(game: Game, it: ItemInstance, equippedSlot: EquipSlot | null, cu
     ...itemInfo(game.state.player, it, !equippedSlot, current),
     h('div', { class: 'item-buttons' }, buttons),
   ]);
+}
+
+/** 1 = mejora lo que llevas, -1 = peor, 0 = igual/no aplica (para las flechas ▲▼ de las tiendas). */
+export function gearDelta(p: PlayerState, it: ItemInstance): -1 | 0 | 1 {
+  const def = itemDef(it);
+  const slots = slotsFor(def);
+  if (!slots.length || equipBlock(def, p.classId, p.level)) return 0;
+  const target = slots.find((s) => !p.equipment[s]) ?? slots[0]!;
+  const score = (q: PlayerState) => {
+    const d = derive(q);
+    return d.ac * 3 + d.toHit * 2 + (averageDice(d.weapon.dice) + d.damageMod) * 3 + d.maxHp / 4 + d.maxMp / 6 + Object.values(d.stats).reduce((a, b) => a + b, 0);
+  };
+  const sim = { ...p, equipment: { ...p.equipment, [target]: it } as typeof p.equipment };
+  if (target === 'arma' && def.weapon?.twoHanded) delete sim.equipment.secundaria;
+  if (target === 'secundaria' && p.equipment.arma && itemDef(p.equipment.arma).weapon?.twoHanded) delete sim.equipment.arma;
+  const diff = score(sim) - score(p);
+  return diff > 0.5 ? 1 : diff < -0.5 ? -1 : 0;
 }
 
 function fmt(n: number): string {

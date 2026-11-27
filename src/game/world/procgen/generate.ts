@@ -105,7 +105,7 @@ function underground(seed: number, cx: number, cy: number, level: number, place:
 }
 
 // ======================================================================= tiendas
-function shops(zoneId: string, kind: PlaceKind, name: string, level: number): { general: ShopDef; smith: ShopDef } {
+function shops(zoneId: string, kind: PlaceKind, name: string, level: number): { general: ShopDef; smith: ShopDef; alchemist: ShopDef; armorer: ShopDef; mage: ShopDef; black: ShopDef } {
   const priceMult = kind === 'ciudad' ? 1.1 : kind === 'aldea' ? 1.1 : 1;
   return {
     general: {
@@ -117,12 +117,43 @@ function shops(zoneId: string, kind: PlaceKind, name: string, level: number): { 
       ],
     },
     smith: {
-      id: `${zoneId}:shop_herrero`, name: `Herrería de ${name}`, priceMult, restockTurns: 300, level,
+      id: `${zoneId}:shop_herrero`, name: `Herrería de ${name}`, kind: 'herrero', upgrades: true, priceMult, restockTurns: 300, level,
       buys: ['arma', 'armadura', 'secundaria', 'herramienta', 'material'],
       stock: [
         { pool: 'armas', count: [2, 3] }, { pool: 'armaduras', count: [2, 3] },
         { item: 'pico_acero', chance: level >= 5 ? 0.8 : 0.2 }, { item: 'escudo_madera', chance: 0.7 },
+        { item: 'lingote_hierro', qty: [1, 3], chance: 0.6 },
       ],
+    },
+    alchemist: {
+      id: `${zoneId}:shop_alquimia`, name: `Alquimista de ${name}`, kind: 'alquimista', priceMult: priceMult * 0.9, restockTurns: 200, level,
+      buys: ['consumible', 'material'],
+      stock: [
+        { item: 'pocion_curacion', qty: [4, 8] }, { item: 'pocion_mana', qty: [3, 6] }, { item: 'antidoto', qty: [2, 4] }, { item: 'tonico_vital', qty: [1, 3] },
+        { item: 'pocion_curacion_mayor', qty: [1, 3], chance: level >= 4 ? 1 : 0.2 }, { item: 'pocion_mana_mayor', qty: [1, 2], chance: level >= 5 ? 0.9 : 0.1 },
+        { item: 'elixir_defensa', chance: 0.6 }, { item: 'elixir_punteria', chance: 0.6 }, { item: 'elixir_fuerza_mayor', chance: level >= 8 ? 0.6 : 0 },
+        { item: 'bomba_fuego', qty: [1, 3], chance: 0.7 }, { item: 'bomba_hielo', qty: [1, 2], chance: level >= 4 ? 0.6 : 0 }, { item: 'bomba_trueno', qty: [1, 2], chance: level >= 7 ? 0.6 : 0 },
+        { item: 'panacea', chance: level >= 8 ? 0.6 : 0 }, { item: 'pocion_curacion_suprema', chance: level >= 10 ? 0.7 : 0 },
+        { pool: 'consumibles', count: [1, 2] },
+      ],
+    },
+    armorer: {
+      id: `${zoneId}:shop_armero`, name: `Armero de ${name}`, kind: 'armero', priceMult: priceMult * 1.05, restockTurns: 320, level: level + 1,
+      buys: ['armadura', 'secundaria', 'arma', 'material'],
+      stock: [{ pool: 'armaduras', count: [4, 6] }, { pool: 'sets', count: [0, 2] }, { item: 'escudo_hierro', chance: 0.7 }, { item: 'rodela', chance: 0.6 }, { item: 'lingote_hierro', qty: [1, 3], chance: 0.5 }],
+    },
+    mage: {
+      id: `${zoneId}:shop_magia`, name: `Arcanos de ${name}`, kind: 'magos', priceMult: priceMult * 1.15, restockTurns: 300, level,
+      buys: ['accesorio', 'consumible', 'secundaria', 'arma', 'material'],
+      stock: [
+        { pool: 'magia', count: [4, 6] }, { pool: 'accesorios', count: [1, 3] }, { item: 'pocion_mana', qty: [2, 5] },
+        { item: 'pergamino_escudo', qty: [1, 2], chance: 0.8 }, { item: 'pergamino_bendicion', chance: level >= 4 ? 0.7 : 0.1 }, { item: 'pergamino_furia', chance: level >= 4 ? 0.7 : 0.1 },
+        { item: 'esencia_arcana', chance: level >= 8 ? 0.5 : 0 },
+      ],
+    },
+    black: {
+      id: `${zoneId}:shop_negro`, name: `Mercado negro de ${name}`, kind: 'negro', gamble: true, minRarity: 'raro', priceMult: priceMult * 1.6, restockTurns: 400, level: level + 2,
+      stock: [{ pool: 'equipo', count: [3, 5] }, { pool: 'sets', count: [1, 2] }, { item: 'gema_bruta', chance: 0.6 }, { item: 'pocion_curacion_suprema', chance: level >= 8 ? 0.6 : 0 }, { item: 'bomba_trueno', qty: [1, 2], chance: 0.5 }],
     },
   };
 }
@@ -235,7 +266,7 @@ export function generateCell(seed: number, cx: number, cy: number, level: number
     }
     // Funciones por cercanía al centro
     blds.sort((a, b) => Math.hypot(a.door.x - hub.x, a.door.y - hub.y) - Math.hypot(b.door.x - hub.x, b.door.y - hub.y));
-    const roles = place === 'aldea' ? ['tienda', 'posada'] : place === 'pueblo' ? ['tienda', 'posada', 'herrero'] : ['tienda', 'posada', 'herrero', 'templo', 'gremio'];
+    const roles = place === 'aldea' ? ['tienda', 'posada'] : place === 'pueblo' ? ['tienda', 'posada', 'herrero', 'alquimista'] : ['tienda', 'posada', 'herrero', 'templo', 'alquimista', 'armero', 'gremio', 'magos', 'negro'];
     const sh = shops(id, place, name, level);
     const kindWord = WG.settlement[place as 'aldea'];
     const leaderSpot = settle(hub.x + 2, hub.y + 1);
@@ -257,6 +288,11 @@ export function generateCell(seed: number, cx: number, cy: number, level: number
       } else if (role === 'herrero') {
         shopList.push(sh.smith);
         addNpc(role, 'Herrero', nm, spot, npcDialog({ greeting: [...WG.smithGreetings], shop: sh.smith.id, rumors }), 'guerrero');
+      } else if (role === 'alquimista' || role === 'armero' || role === 'magos' || role === 'negro') {
+        const sd = role === 'alquimista' ? sh.alchemist : role === 'armero' ? sh.armorer : role === 'magos' ? sh.mage : sh.black;
+        shopList.push(sd);
+        const title = { alquimista: 'Alquimista', armero: 'Armero', magos: 'Maga de los Arcanos', negro: 'Traficante' }[role];
+        addNpc(role, title, nm, spot, npcDialog({ greeting: [...WG.shopGreetings], shop: sd.id, quests: false, rumors }), role === 'armero' ? 'guerrero' : role === 'magos' ? 'mago' : role === 'negro' ? 'picaro' : undefined);
       } else if (role === 'posada') {
         addNpc(role, 'Posadero', nm, spot, npcDialog({ greeting: [...WG.innGreetings], inn: 6 + level * 3, rumors }));
       } else {

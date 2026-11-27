@@ -10,7 +10,7 @@ export default [
       { hpBelow: 0.3, message: 'Gruñaz entra en cólera.', toHitBonus: 1, damageBonus: 2 },
     ],
     xp: 400, description: 'Jefe de la Cueva de los Colmillos.',
-    look: { shape: 'goblin', main: '#4a7a2a', dark: '#2a4a1a', accent: '#8a6a2a', eye: '#ff4020', crown: true }, lootTable: 'jefe',
+    look: { shape: 'goblin', main: '#4a7a2a', dark: '#2a4a1a', accent: '#8a6a2a', eye: '#ff4020', crown: true }, lootTable: 'jefe_rey_goblin',
   },
   {
     id: 'reina_arana', name: 'Mórgala, Reina Araña', family: 'araña', level: 7, hp: '10d10', ac: 15, speed: 1, movement: 5, sight: 8, ai: 'boss', boss: true,
@@ -23,7 +23,7 @@ export default [
       { hpBelow: 0.3, message: 'Mórgala chilla enloquecida.', toHitBonus: 2, damageBonus: 2 },
     ],
     immune: ['veneno'], xp: 900, description: 'Señora de las Galerías de Seda.',
-    look: { shape: 'arana', main: '#4a1a2a', dark: '#1a0a14', accent: '#d8b050', eye: '#ff2020', crown: true }, lootTable: 'jefe',
+    look: { shape: 'arana', main: '#4a1a2a', dark: '#1a0a14', accent: '#d8b050', eye: '#ff2020', crown: true }, lootTable: 'jefe_reina_arana',
   },
   {
     id: 'nigromante', name: 'Velkar el Nigromante', family: 'humano', level: 10, hp: '14d8+14', ac: 14, speed: 1, movement: 4, sight: 9, ai: 'boss', boss: true,
@@ -38,6 +38,6 @@ export default [
     ],
     resist: ['necrotico'], vulnerable: ['sagrado'], immune: ['veneno'],
     xp: 2500, description: 'El villano que despertó el Abismo.',
-    look: { shape: 'humanoide', overlay: 'mago', main: '#b8b0a0', dark: '#1a1420', accent: '#3a1a4a', eye: '#a040ff', crown: true }, lootTable: 'jefe',
+    look: { shape: 'humanoide', overlay: 'mago', main: '#b8b0a0', dark: '#1a1420', accent: '#3a1a4a', eye: '#a040ff', crown: true }, lootTable: 'jefe_nigromante',
   },
 ] satisfies EnemyDef[];

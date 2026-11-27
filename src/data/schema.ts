@@ -527,11 +527,31 @@ export interface ItemDef {
     outOfCombatOnly?: boolean;
     /** Runa de vínculo: intenta vincular a la criatura salvaje más debilitada cerca. */
     bind?: boolean;
+    /** Bomba: daño a un enemigo (sólo en batalla) con un estado opcional. */
+    damage?: { dice: string; type: DamageType; status?: StatusApply };
   };
   /** Nivel de pico (minería, Hito 6). */
   pickaxeTier?: number;
   /** Nunca recibe bonos aleatorios (pociones, materiales...). */
   plain?: boolean;
+  /** Sólo estas clases pueden equiparlo (ids de clase). */
+  classes?: string[];
+  /** Nivel de personaje mínimo para equiparlo. */
+  reqLevel?: number;
+  /** Conjunto al que pertenece (data/sets). */
+  set?: string;
+  /** Único de jefe: siempre legendario, con nombre propio. */
+  unique?: boolean;
+  /** Objeto de misión: no se vende en masa ni se tira por error. */
+  quest?: boolean;
+}
+
+/** Conjunto de piezas: bonos acumulativos según cuántas lleves puestas. */
+export interface ItemSetDef {
+  id: string;
+  name: string;
+  pieces: string[];
+  bonuses: Array<{ count: number; stats: Partial<Record<BonusStat, number>>; text: string }>;
 }
 
 export type Rarity = 'comun' | 'poco_comun' | 'raro' | 'epico' | 'legendario';
@@ -556,8 +576,10 @@ export interface RarityDef {
 export type LootEntry =
   | { item: string; weight: number; min?: number; max?: number }
   /** Objeto de equipo aleatorio de nivel adecuado (con rareza). */
-  | { pool: 'equipo' | 'armas' | 'armaduras' | 'accesorios'; weight: number }
+  | { pool: LootPool; weight: number }
   | { nothing: true; weight: number };
+
+export type LootPool = 'equipo' | 'armas' | 'armaduras' | 'accesorios' | 'consumibles' | 'magia' | 'sets';
 
 export interface LootTableDef {
   id: string;
@@ -695,7 +717,7 @@ export type ShopStockEntry =
   /** Objeto concreto (consumibles, picos...). `chance` 0..1 de que esté a la venta. */
   | { item: string; qty?: [number, number]; chance?: number }
   /** Equipo aleatorio (con rareza) de un grupo, de nivel = nivel de la tienda (+/- 1). */
-  | { pool: 'equipo' | 'armas' | 'armaduras' | 'accesorios'; count: [number, number] };
+  | { pool: LootPool; count: [number, number] };
 
 export interface ShopDef {
   id: string;
@@ -709,6 +731,14 @@ export interface ShopDef {
   stock: ShopStockEntry[];
   /** Tipos de objeto que compra (por defecto, todos). */
   buys?: ItemKind[];
+  /** Tipo de comerciante (etiqueta y reglas especiales). */
+  kind?: 'general' | 'herrero' | 'alquimista' | 'armero' | 'magos' | 'negro';
+  /** Rareza mínima del equipo que vende (mercado negro). */
+  minRarity?: Rarity;
+  /** Ofrece mejorar equipo (+1..+3) a cambio de oro. */
+  upgrades?: boolean;
+  /** Ofrece bolsas misteriosas (apuesta). */
+  gamble?: boolean;
 }
 
 export type QuestObjective =

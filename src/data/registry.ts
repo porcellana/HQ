@@ -6,7 +6,7 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { BiomeDef, DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef, PetMoveDef, PetSpeciesDef, PetType, PetTypeDef } from './schema';
+import type { ItemSetDef, BiomeDef, DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef, PetMoveDef, PetSpeciesDef, PetType, PetTypeDef } from './schema';
 import { PET_NATURES } from './config/pet_natures';
 import { FAMILY_TYPE, PET_TYPES } from './config/pet_types';
 import rarityList from './config/rarities';
@@ -103,6 +103,11 @@ export const ITEMS: ReadonlyMap<string, ItemDef> = collect<ItemDef>(
 export function getItem(id: string): ItemDef | undefined {
   return ITEMS.get(id);
 }
+
+export const SETS: ReadonlyMap<string, ItemSetDef> = collect<ItemSetDef>(
+  import.meta.glob('./sets/*.{ts,json}', { eager: true }),
+  'conjunto',
+);
 
 export const RARITIES: readonly RarityDef[] = rarityList;
 export const RARITY: ReadonlyMap<Rarity, RarityDef> = new Map(rarityList.map((r) => [r.id, r]));

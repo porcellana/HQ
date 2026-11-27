@@ -126,6 +126,36 @@ const SHAPES: Readonly<Record<string, readonly string[]>> = {
     '................', '................', '................', '.....kkkkkk.....', '....kxlcccck....', '...kxllccccdk...',
     '...kkkkkkkkkk...', '....kccccddk....', '.....kccddk.....', '......kcdk......', '.......kk.......',
   ],
+  pergamino: [
+    '................', '..kkkkkkkkkk....', '.kxxxxxxxxxxk...', '.kwkkkkkkkkwk...', '..kxcccccccxk...', '..kxxxxxxxxxk...',
+    '..kxcccxxxcxk...', '..kxxxxxxxxxk...', '..kxccxcccxxk...', '.kwkkkkkkkkwk...', '.kxxxxxxxxxxk...', '..kkkkkkkkkk....',
+  ],
+  varita: [
+    '..........kk....', '.........kxxk...', '..........kk....', '.........kck....', '........kck.....', '.......kck......',
+    '......kck.......', '.....kwk........', '....kwk.........', '...kwk..........', '..kgk...........', '..kk............',
+  ],
+  lanza: [
+    '..............kk', '.............kck', '............kclk', '...........kcck.', '..........kwk...', '.........kwk....',
+    '........kwk.....', '.......kwk......', '......kwk.......', '.....kwk........', '....kwk.........', '...kwk..........',
+    '..kwk...........', '..kk............',
+  ],
+  ballesta: [
+    '................', '....kk......kk..', '...kwwk....kwwk.', '...kwwwkkkkwwwk.', '....kwwwxxwwwk..', '.....kwwwwwwk...',
+    '....kkcccccckk..', '...kwwwkkkkwwwk.', '..kwk.kwwk.kwk..', '..kk..kwwk..kk..', '......kwwk......', '......kkkk......',
+  ],
+  bomba: [
+    '................', '........kg......', '.......kgk......', '......kkk.......', '.....kkccck.....', '....kcclcccdk...',
+    '...kclcccccdk...', '...kcccccccdk...', '...kcccccdddk...', '....kcdddddk....', '.....kkkkkk.....',
+  ],
+  lingote: [
+    '................', '................', '................', '.....kkkkkkk....', '....kxlllllck...', '...kxlcccccdck..',
+    '..kkkkkkkkkkkk..', '..klcccccccdddk.', '..kccccccccddk..', '..kkkkkkkkkkk...',
+  ],
+  llave: [
+    '................', '..kkkk..........', '.kggggk.........', '.kg..gk.........', '.kg..gk.........', '.kggggk.........',
+    '..kggk..........', '...kgk..........', '...kgkkk........', '...kgggk........', '...kgk..........', '...kgkkk........',
+    '...kggk.........', '....kk..........',
+  ],
   saco: [
     '................', '................', '.......kk.......', '......kggk......', '.....kkkkkk.....', '....kwwwwwwk....',
     '...kwwlwwwwwk...', '...kwlwwgwwwk...', '...kwwwwwwwdk...', '....kwwwwwdk....', '.....kkkkkk.....',

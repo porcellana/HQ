@@ -1,6 +1,6 @@
 /** Inventario por huecos (no por peso: más claro en móvil) y equipo. */
 import { EQUIP_SLOTS, type EquipSlot } from '@/data/schema';
-import { itemDef, slotsFor, type ItemInstance } from './items';
+import { equipBlock, itemDef, slotsFor, type ItemInstance } from './items';
 
 /** Huecos de la mochila. Una pila de consumibles ocupa un hueco. */
 export const INVENTORY_SLOTS = 24;
@@ -10,6 +10,8 @@ export type Equipment = Partial<Record<EquipSlot, ItemInstance>>;
 export interface Carrier {
   inventory: ItemInstance[];
   equipment: Equipment;
+  classId?: string;
+  level?: number;
 }
 
 /** Huecos libres. */
@@ -72,6 +74,10 @@ export function equip(c: Carrier, uid: string, preferred?: EquipSlot): string | 
   const def = itemDef(it);
   const slots = slotsFor(def);
   if (slots.length === 0) return 'Eso no se puede equipar.';
+  if (c.classId) {
+    const block = equipBlock(def, c.classId, c.level ?? 1);
+    if (block) return block;
+  }
   const slot = preferred && slots.includes(preferred) ? preferred : (slots.find((s) => !c.equipment[s]) ?? slots[0]!);
 
   // Qué hay que quitar para ponerse esto

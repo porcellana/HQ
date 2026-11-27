@@ -11,6 +11,8 @@ const table = (id: string, specials: LootEntry[]): LootTableDef => ({
     { pool: 'armas', weight: 14 },
     { pool: 'armaduras', weight: 14 },
     { pool: 'accesorios', weight: 8 },
+    { pool: 'consumibles', weight: 6 },
+    { pool: 'sets', weight: 2 },
   ],
 });
 

@@ -8,7 +8,7 @@ import type { ShopDef } from '../schema';
 
 export default [
   {
-    id: 'herreria_brumaroja', name: 'Herrería de Brumaroja', priceMult: 1, restockTurns: 300, level: 2,
+    id: 'herreria_brumaroja', name: 'Herrería de Brumaroja', kind: 'herrero', upgrades: true, priceMult: 1, restockTurns: 300, level: 2,
     buys: ['arma', 'armadura', 'secundaria', 'herramienta', 'material'],
     stock: [
       { pool: 'armas', count: [2, 3] },
@@ -31,7 +31,7 @@ export default [
     ],
   },
   {
-    id: 'forja_ancla', name: 'Forja del Ancla', priceMult: 1.15, restockTurns: 300, level: 5,
+    id: 'forja_ancla', name: 'Forja del Ancla', kind: 'herrero', upgrades: true, priceMult: 1.15, restockTurns: 300, level: 5,
     buys: ['arma', 'armadura', 'secundaria', 'herramienta', 'material'],
     stock: [
       { pool: 'armas', count: [3, 4] },
@@ -41,7 +41,7 @@ export default [
     ],
   },
   {
-    id: 'alquimista_ceniza', name: 'Alquimista Vela Verde', priceMult: 0.9, restockTurns: 200, level: 3,
+    id: 'alquimista_ceniza', name: 'Alquimista Vela Verde', kind: 'alquimista', priceMult: 0.9, restockTurns: 200, level: 3,
     buys: ['consumible', 'material'],
     stock: [
       { item: 'pocion_curacion', qty: [4, 8] },
@@ -50,10 +50,15 @@ export default [
       { item: 'antidoto', qty: [2, 4] },
       { item: 'elixir_fuerza', qty: [1, 2] },
       { item: 'runa_vinculo', qty: [3, 6] },
+      { item: 'tonico_vital', qty: [1, 3] },
+      { item: 'elixir_defensa', chance: 0.6 },
+      { item: 'bomba_fuego', qty: [1, 3], chance: 0.7 },
+      { item: 'bomba_acida', qty: [1, 2], chance: 0.5 },
+      { item: 'pergamino_escudo', chance: 0.5 },
     ],
   },
   {
-    id: 'mercado_ceniza', name: 'Puesto de Fabio', priceMult: 1.1, restockTurns: 250, level: 4,
+    id: 'mercado_ceniza', name: 'Puesto de Fabio', kind: 'general', priceMult: 1.1, restockTurns: 250, level: 4,
     stock: [
       { item: 'pan', qty: [5, 10] },
       { item: 'carne_seca', qty: [4, 8] },

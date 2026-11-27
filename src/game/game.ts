@@ -7,7 +7,7 @@
  * src/game/battle (lógica pura) y se reproduce en una escena aparte; al acabar,
  * `finishBattle` aplica el resultado (XP, mapa, muerte).
  */
-import { COMPANIONS, NPCS, ORES, TRAPS, getClass, getEnemy, getItem, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
+import { COMPANIONS, NPCS, SHOPS, ORES, TRAPS, getClass, getEnemy, getItem, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
 import type { CompanionDef, CompanionEvent, DamageType, DialogNode, NpcDef, QuestDef, SkillDef, SkillKey, ZoneFeature } from '@/data/schema';
 import { Emitter } from '@/engine/events';
 import { Battle, allyStatsFor, type BattleResult } from './battle/battle';
@@ -26,11 +26,13 @@ import { wildEnemyDef, wildSpeciesIn } from './pets/wild';
 import { SKILLS, skillBonus } from './rules/skills';
 import { enemiesDropping, enemyMatches, nextHop, questGoalZone, questStep, zoneName, type GoalKind } from './quests/guide';
 import { addItem, countItem, equip, removeQty, unequip } from './items/inventory';
-import { itemDef, rarityOf, type ItemInstance } from './items/items';
+import { displayName, itemDef, rarityOf, type ItemInstance } from './items/items';
+const rarityColor = (i: number): string => ['#d8d4cc', '#5ad05a', '#4a90f0', '#b060f0', '#ff9a20'][i] ?? '#fff';
 import { rollLoot } from './items/loot';
 import { createItem } from './items/items';
 import * as Quests from './quests/quests';
 import * as Shop from './economy/shop';
+import { encounterXpBonus } from './economy/curve';
 import type { EquipSlot } from '@/data/schema';
 import { buildZone, type Zone, type ZoneExit } from './world/zone';
 import { activateGenWorld, assignQuests, emptyGen, ensureZone, genZoneDef } from './world/procgen';
@@ -672,7 +674,7 @@ export class Game {
     this.pendingBattle = null;
     const party = this.state.party;
     if (this.ally && party.down) this.msg(`${this.companionDef?.name ?? 'Tu compañero'} está caído y no lucha.`, 'warn');
-    const b = new Battle({ state: this.state, rng: this.rng, enemies, ...(this.zone.def.dungeon ? { dungeonId: this.zone.def.dungeon.id } : {}) });
+    const b = new Battle({ state: this.state, rng: this.rng, enemies, ...(this.zone.def.dungeon ? { dungeonId: this.zone.def.dungeon.id } : {}), ...(this.zone.def.generated?.biome ? { biome: this.zone.def.generated.biome } : {}) });
     b.petOrder = this.petOrder;
     this.petOrder = null;
     this.battle = b;
@@ -686,7 +688,8 @@ export class Game {
   battleXp(res: BattleResult): number {
     const petOn = !!this.state.pets?.active && !this.state.pets.active.down;
     const share = (this.state.party?.active ? 0.85 : 1) * (petOn ? 0.9 : 1);
-    return res.xp > 0 ? Math.max(1, Math.round(res.xp * share)) : 0;
+    const bonus = encounterXpBonus(res.kills.length, res.kills.some((k) => k.def.boss));
+    return res.xp > 0 ? Math.max(1, Math.round(res.xp * share * bonus)) : 0;
   }
 
   /** Habilidad de clase fuera de batalla: sólo las curativas tienen sentido en el mapa. */
@@ -974,7 +977,11 @@ export class Game {
       const def = itemDef(it);
       if (rest < qty) {
         const r = rarityOf(it);
-        this.msg(`Recoges: ${def.name}${qty - rest > 1 ? ` ×${qty - rest}` : ''}${r.id !== 'comun' ? ` (${r.name})` : ''}.`, r.id === 'comun' ? 'info' : 'good');
+        this.msg(`Recoges: ${displayName(it)}${qty - rest > 1 ? ` ×${qty - rest}` : ''}${r.id !== 'comun' ? ` (${r.name})` : ''}.`, r.id === 'comun' ? 'info' : 'good');
+        if (def.unique || ['raro', 'epico', 'legendario'].includes(r.id)) {
+          this.floatText(p.x, p.y - 0.6, `✦ ${r.name}`, r.color, 5, 1.4);
+          this.pushFx({ kind: 'burst', x: p.x, y: p.y, radius: 1, color: r.color, t: 0, life: 0.6 });
+        }
       }
       if (rest > 0) left.push({ ...it, qty: rest });
       if (rest < qty) void Quests.collectNotes(this.state, it.id);
@@ -996,6 +1003,7 @@ export class Game {
     const use = def.use;
     if (!use) return 'Eso no se puede usar.';
     if (use.bind) return 'La Runa de vínculo se usa en batalla, sobre una criatura salvaje.';
+    if (use.damage) return 'Las bombas se lanzan en batalla.';
     const pos = this.playerPos;
     if (use.heal) {
       const before = p.hp;
@@ -1257,8 +1265,9 @@ export class Game {
       this.msg(useDes ? '¡Clic! Abres la cerradura.' : '¡Crac! Revientas la cerradura.', 'good');
     }
     this.markUsed(f);
-    const loot = rollLoot(this.rng, f.loot ?? 'cofre', level);
-    this.pushFx({ kind: 'burst', x: f.x, y: f.y, radius: 0.8, color: '#f2d888', t: 0, life: 0.5 });
+    const loot = rollLoot(this.rng, f.loot ?? 'cofre', level, { playerLevel: this.state.player.level, classId: this.state.player.classId, luck: f.locked ? 2 : 0 });
+    const best = loot.items.reduce((m, it) => Math.max(m, ['comun', 'poco_comun', 'raro', 'epico', 'legendario'].indexOf(it.rarity)), 0);
+    this.pushFx({ kind: 'burst', x: f.x, y: f.y, radius: 0.8 + best * 0.25, color: best >= 2 ? rarityColor(best) : '#f2d888', t: 0, life: 0.5 + best * 0.1 });
     if (!loot.items.length && !loot.gold) {
       this.msg('El cofre está vacío. Alguien llegó antes.', 'info');
       return;
@@ -1450,9 +1459,50 @@ export class Game {
   }
 
   buyFromShop(shopId: string, uid: string, qty = 1): string | null {
+    const before = this.state.player.gold;
     const err = Shop.buy(this.state, shopId, this.state.player, this.derived.stats.CAR, uid, qty, this.shopDiscount(shopId));
+    if (!err) {
+      recalcPlayer(this.state.player);
+      const k = `rep:${shopId}`;
+      this.state.flags[k] = Number(this.state.flags[k] ?? 0) + Math.max(0, before - this.state.player.gold);
+    }
+    return err;
+  }
+
+  /** Reputación en una tienda: el oro gastado da hasta un 10 % de descuento. */
+  shopRep(shopId: string): { spent: number; discount: number; next: number | null } {
+    const spent = Number(this.state.flags[`rep:${shopId}`] ?? 0);
+    const step = 150 + 30 * Shop.getShop(shopId).level;
+    const discount = Math.min(10, Math.floor(spent / step));
+    return { spent, discount, next: discount >= 10 ? null : (discount + 1) * step - spent };
+  }
+
+  buyBackFromShop(shopId: string, uid: string, qty = 1): string | null {
+    const err = Shop.buyBack(this.state, shopId, this.state.player, uid, qty);
     if (!err) recalcPlayer(this.state.player);
     return err;
+  }
+
+  /** Vende toda la basura (equipo común y materiales que ninguna misión pide). */
+  sellJunkToShop(shopId: string): { gold: number; count: number } {
+    const needed = new Set<string>();
+    for (const q of Quests.activeQuests(this.state)) for (const o of q.objectives) if (o.type === 'collect') needed.add(o.item);
+    return Shop.sellJunk(this.state, shopId, this.state.player, this.derived.stats.CAR, needed);
+  }
+
+  /** Mejora un objeto de la mochila o del equipo (herrero). */
+  upgradeAtShop(shopId: string, uid: string): string | null {
+    const p = this.state.player;
+    const it = p.inventory.find((x) => x.uid === uid) ?? Object.values(p.equipment).find((x) => x?.uid === uid);
+    if (!it) return 'No tienes ese objeto.';
+    const err = Shop.upgradeItem(shopId, p, it);
+    if (!err) recalcPlayer(p);
+    return err;
+  }
+
+  /** Bolsa misteriosa del mercado negro. */
+  gambleAtShop(shopId: string): ItemInstance | string {
+    return Shop.gamble(shopId, this.state.player, this.rng, this.state.player.classId);
   }
 
   /** Vende y devuelve el oro ganado (número) o un error (texto). */
@@ -1823,7 +1873,8 @@ export class Game {
 
   /** Descuento (%) que tienes en una tienda gracias a tus diálogos. */
   shopDiscount(shopId: string): number {
-    return Math.max(0, Math.min(50, Number(this.state.flags[`descuento:${shopId}`] ?? 0)));
+    const rep = SHOPS.has(shopId) ? this.shopRep(shopId).discount : 0;
+    return Math.max(0, Math.min(50, Number(this.state.flags[`descuento:${shopId}`] ?? 0) + rep));
   }
 
   /** Actitud de un PNJ hacia ti (por defecto 0). */

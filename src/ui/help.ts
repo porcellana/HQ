@@ -38,7 +38,10 @@ const SECTIONS: Array<[string, string[]]> = [
   ['🎒 Botín y equipo', [
     'Lo que sueltan los enemigos brilla en el suelo con el color de su rareza: písalo para recogerlo.',
     'En la Mochila toca un objeto para ver qué mejora (▲) o empeora (▼) antes de equiparlo.',
-    'Vende lo que no uses en las tiendas; el Carisma mejora los precios.',
+    'Vende lo que no uses en las tiendas; el Carisma mejora los precios. «Vender basura» vende de golpe el equipo común y los materiales que ninguna misión pide. Lo vendido se puede Recomprar (+10 %).',
+    'Rarezas: común, poco común, raro, épico y legendario. Raro o mejor lleva afijos en el nombre («Hacha del Oso»). Los jefes sueltan equipo raro o mejor y objetos únicos; hay conjuntos de 4 piezas (Alba, Ónix, Cometa, Vigilia) con bonos a 2 y 4 piezas.',
+    'Algunos objetos exigen clase o nivel (🔒 en la tienda). Los herreros mejoran equipo hasta +3 y el mercado negro vende equipo raro y bolsas misteriosas 🎲. Comprar mucho en una tienda te da hasta un 10 % de descuento.',
+    'Las bombas (🧨) se lanzan a un enemigo en batalla; los pergaminos y elixires dan bonos temporales.',
   ]],
   ['📜 Misiones', [
     'Los aldeanos con ❗ tienen una misión; con ❓, puedes entregarla.',

@@ -3,7 +3,8 @@
  * Un ItemInstance es lo que se guarda: id del objeto base + rareza + bonos
  * aleatorios + cantidad. Los datos fijos (nombre, dados...) se leen de data/items.
  */
-import { RARITY, getItem } from '@/data/registry';
+import { RARITY, SETS, getItem } from '@/data/registry';
+import { AFFIX_PREFIX, AFFIX_SUFFIX } from '@/data/config/affixnames';
 import type { BonusStat, EquipSlot, ItemDef, Rarity } from '@/data/schema';
 import type { Rng } from '@/engine/rng';
 
@@ -18,6 +19,8 @@ export interface ItemInstance {
   rarity: Rarity;
   qty: number;
   affixes: Affix[];
+  /** Mejoras del herrero (+1..+3). Sin definir = 0. */
+  plus?: number;
 }
 
 export const STAT_LABEL: Record<BonusStat, string> = {
@@ -59,7 +62,7 @@ function affixValue(stat: BonusStat, level: number, rng: Rng): number {
 export function createItem(id: string, rarity: Rarity, rng: Rng, opts: { qty?: number; level?: number } = {}): ItemInstance {
   const def = getItem(id);
   if (!def) throw new Error(`Objeto desconocido: ${id}`);
-  const r = def.plain || def.stackable ? 'comun' : rarity;
+  const r: Rarity = def.plain || def.stackable ? 'comun' : def.unique ? 'legendario' : rarity;
   const affixes: Affix[] = [];
   const pool = AFFIX_POOLS[def.kind];
   let n = RARITY.get(r)?.affixes ?? 0;
@@ -81,6 +84,36 @@ export function itemDef(it: ItemInstance): ItemDef {
   return d;
 }
 
+/** Nombre a mostrar: los raros o mejores llevan afijo ("Espada larga del Oso", "Feroz Hacha de guerra del Oso +2"). */
+export function displayName(it: ItemInstance): string {
+  const def = itemDef(it);
+  let name = def.name;
+  if (!def.unique && !def.set && !def.plain && !def.stackable && it.affixes.length) {
+    const sorted = [...it.affixes].sort((a, b) => b.value - a.value);
+    const idx = ['comun', 'poco_comun', 'raro', 'epico', 'legendario'].indexOf(it.rarity);
+    if (idx >= 2) name = `${name} ${AFFIX_SUFFIX[sorted[0]!.stat]}`;
+    if (idx >= 3 && sorted[1]) name = `${AFFIX_PREFIX[sorted[1].stat]} ${name}`;
+  }
+  return it.plus ? `${name} +${it.plus}` : name;
+}
+
+/** Por qué este personaje no puede equipar el objeto (null = puede). */
+export function equipBlock(def: ItemDef, classId: string, level: number): string | null {
+  if (def.classes && !def.classes.includes(classId)) return 'Tu clase no puede usar este objeto.';
+  if (def.reqLevel && level < def.reqLevel) return `Necesitas nivel ${def.reqLevel}.`;
+  return null;
+}
+
+/** Bonos de conjunto activos con las piezas equipadas. */
+export function setBonuses(worn: ItemInstance[]): Array<{ set: string; count: number; stats: Partial<Record<BonusStat, number>>; text: string }> {
+  const out: Array<{ set: string; count: number; stats: Partial<Record<BonusStat, number>>; text: string }> = [];
+  for (const set of SETS.values()) {
+    const n = new Set(worn.filter((w) => set.pieces.includes(w.id)).map((w) => w.id)).size;
+    for (const b of set.bonuses) if (n >= b.count) out.push({ set: set.name, count: b.count, stats: b.stats, text: b.text });
+  }
+  return out;
+}
+
 export function rarityOf(it: ItemInstance) {
   return RARITY.get(it.rarity) ?? RARITY.get('comun')!;
 }
@@ -89,7 +122,8 @@ export function rarityOf(it: ItemInstance) {
 export function itemValue(it: ItemInstance): number {
   const def = itemDef(it);
   const bonus = it.affixes.reduce((s, a) => s + a.value, 0) * 3;
-  return Math.round(def.value * rarityOf(it).priceMult + bonus);
+  const plus = (it.plus ?? 0) * Math.max(10, def.value * 0.25);
+  return Math.round(def.value * rarityOf(it).priceMult + bonus + plus);
 }
 
 /** Ranuras donde puede ir un objeto. */
@@ -108,6 +142,11 @@ export function itemBonuses(it: ItemInstance): Partial<Record<BonusStat, number>
   const def = itemDef(it);
   const out: Partial<Record<BonusStat, number>> = { ...(def.stats ?? {}) };
   for (const a of it.affixes) out[a.stat] = (out[a.stat] ?? 0) + a.value;
+  if (it.plus) {
+    if (def.weapon) out.daño = (out.daño ?? 0) + it.plus;
+    else if (def.armor) out.ca = (out.ca ?? 0) + Math.ceil(it.plus / 2);
+    else out.ataque = (out.ataque ?? 0) + it.plus;
+  }
   return out;
 }
 

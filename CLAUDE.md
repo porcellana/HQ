@@ -21,6 +21,8 @@ Hitos 1-7 + identidad (trasfondos, talentos, compañeros, diálogos con tiradas)
 
 v0.9.3: efectos de batalla en `gfx/battleFx.ts` (puro, testeado) + `ui/battleFxDraw.ts` (dibujo); `battleScene` usa `fxPush` (efectos con vida), `immediate` (proyectiles) y `hitStopT`.
 
+v0.9.4: botín/economía/comercio (`game/economy/curve.ts`, `shop.ts`: recompra, mejoras, basura, bolsa; `items/loot.ts` con `LootCtx`; conjuntos en `data/sets`; ~135 objetos nuevos; `ui/shop.ts` con filtros). `ui/lootSummary.ts` (fichas de botín) está listo pero sin conectar en `battleScene.showPanel`.
+
 ## Pendiente (en este orden)
 1. Interiores de casas en el mundo procedural, música/ambiente real por bioma, misiones de escolta y eventos al viajar.
 2. Pulido de batalla: más animaciones por clase/enemigo, fondos por hora del día, selección de objetivo con información (nombre/nivel) al mantener pulsado.

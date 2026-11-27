@@ -10,7 +10,7 @@ import { ABILITY_KEYS, type AbilityKey, type BonusStat, type DamageType, type St
 import { abilityModifier } from './dice';
 import { maxHpFor, maxResourceFor, proficiencyBonus } from './character';
 import { equippedItems, type Carrier } from '../items/inventory';
-import { itemBonuses, itemDef, rarityOf } from '../items/items';
+import { itemBonuses, itemDef, rarityOf, setBonuses } from '../items/items';
 import { talentEffects } from '../talents';
 
 export interface WeaponInfo {
@@ -58,6 +58,7 @@ export function derive(p: DerivableCharacter): Derived {
       if (def.slot === 'pecho' && def.armor.maxDex !== undefined) maxDex = Math.min(maxDex, def.armor.maxDex);
     }
   }
+  for (const sb of setBonuses(equippedItems(p))) for (const [k, v] of Object.entries(sb.stats)) bonus[k as BonusStat] += v ?? 0;
   // Bonos pasivos de talentos
   for (const t of talentEffects(p, 'stat')) bonus[t.stat] += t.amount;
   const critBonus = talentEffects(p, 'critRange').reduce((a, t) => a + t.amount, 0);

@@ -2,6 +2,15 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.9.4 · 2026-11-27 — Botín, economía, comercio y +130 objetos
+
+- **Objetos**: ~135 nuevos (armas por clase y nivel hasta 19, armaduras y escudos por clase, anillos y amuletos, pociones, elixires, pergaminos, **bombas** con estados, comida, materiales, minerales, hierbas y objetos de misión). Requisitos de **clase y nivel** (`classes`, `reqLevel`), 7 iconos nuevos (varita, lanza, ballesta, bomba, lingote, pergamino, llave).
+- **Rarezas con afijos con nombre** («Feroz Hacha de guerra del Oso»), **conjuntos** de 4 piezas (Bastión del Alba, Sombra de Ónix, Vestiduras del Cometa, Vigilia Solar) y de 3 (Furia del Dragón) con bonos a 2/4 piezas, y **únicos de jefe** siempre legendarios (Gruñaz, Mórgala, Velkar y jefes generados).
+- **Botín**: tablas por bioma (`drop_<bioma>`), jefes con equipo raro o mejor y un único casi garantizado, favorece el equipo de tu clase, cofres cerrados con más suerte; destello y texto de rareza al recoger, ✦ en el resumen de batalla.
+- **Oro y XP**: oro × (1 + 6 % por nivel) × dificultad (enemigo por encima de tu nivel paga hasta +50 %, por debajo casi nada); bonus de XP por grupos numerosos (hasta +40 %) y jefes (+25 %). Sumideros: mejora de equipo +1..+3 en herreros, bolsa misteriosa y posada.
+- **Comercio**: herrería, alquimia, armería, arcanos y **mercado negro** en pueblos y ciudades generados; stock rotativo por semilla y tiempo; reputación (hasta −10 % por lo gastado); **recompra**, filtros por tipo, orden, flechas ▲▼ y 🔒, **venta de basura**.
+- Sin cambios de guardado (campos opcionales `plus` y `buyback`).
+
 ## v0.9.3 · 2026-11-27 — Batalla más espectacular
 
 - **Ataques con carácter**: tajos con estela, estocadas, golpes contundentes con onda de choque y salto, garras, flechas con trayectoria en arco, proyectiles y **explosiones por elemento** (fuego, hielo con esquirlas, rayo quebrado, veneno, luz sagrada, sombra, arcano); carga de energía al lanzar y salvas a varios objetivos.

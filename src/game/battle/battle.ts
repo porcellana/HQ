@@ -21,7 +21,7 @@ import { createEnemy, enemySave, type Enemy } from '../combat/entities';
 import { applyDefenses, attackRoll, damageRoll, savingThrow, xpForKill, type RollMode } from '../combat/rules';
 import { STATUS_INFO, consumeStun, hasStatus, tickStatuses, tryApplyStatus, type StatusInstance } from '../combat/status';
 import { addItem, removeQty } from '../items/inventory';
-import { itemDef, type ItemInstance } from '../items/items';
+import { displayName, itemDef, type ItemInstance } from '../items/items';
 import { rollLoot } from '../items/loot';
 import * as Pets from '../pets/pets';
 import * as Quests from '../quests/quests';
@@ -92,7 +92,7 @@ export interface BattleResult {
   /** XP para la mascota. */
   petXp: number;
   gold: number;
-  items: Array<{ name: string; qty: number; rarity: string }>;
+  items: Array<{ name: string; qty: number; rarity: string; id: string }>;
   kills: Enemy[];
   /** Enemigos del mapa que han caído o han sido vinculados (se quitan del mapa). */
   removed: Enemy[];
@@ -108,6 +108,8 @@ export interface BattleOptions {
   enemies: Enemy[];
   /** Mazmorra en la que se lucha (para marcarla completada al vencer a su jefe). */
   dungeonId?: string;
+  /** Bioma de la zona (botín extra de materiales). */
+  biome?: string;
 }
 
 export interface Hooks {
@@ -146,6 +148,7 @@ export class Battle {
   readonly rng: Rng;
   readonly combatants: Combatant[] = [];
   readonly dungeonId: string | undefined;
+  readonly biome: string | undefined;
   /** Ronda en curso (empieza en 1). */
   round = 0;
   ended = false;
@@ -169,6 +172,7 @@ export class Battle {
     this.state = opt.state;
     this.rng = opt.rng;
     this.dungeonId = opt.dungeonId;
+    this.biome = opt.biome;
     const p = this.state.player;
     this.result = { outcome: 'victory', xp: 0, petXp: 0, gold: 0, items: [], kills: [], removed: [], boundActivePet: false, rounds: 0 };
     this.add({ id: 'player', kind: 'player', side: 'party', name: p.name });
@@ -542,7 +546,7 @@ export class Battle {
       }
     }
     void Quests.onKill(st, e.def);
-    const loot = rollLoot(this.rng, e.def.lootTable, e.def.level);
+    const loot = rollLoot(this.rng, e.def.lootTable, e.def.level, { playerLevel: lvl, ...(e.def.boss ? { boss: true } : {}), ...(this.biome ? { biome: this.biome } : {}), classId: st.player.classId });
     this.giveLoot(loot.items, loot.gold);
     // Talentos «al matar» (sólo si lo has matado tú).
     if (src?.kind === 'player' && (ctx === 'weapon' || ctx === 'spell')) this.onKillTalents(e, ctx);
@@ -557,8 +561,7 @@ export class Battle {
       const qty = it.qty;
       const rest = addItem(p, it);
       if (rest < qty) {
-        const def = itemDef(it);
-        this.result.items.push({ name: def.name, qty: qty - rest, rarity: it.rarity });
+        this.result.items.push({ name: `${({ raro: '✦ ', epico: '✦✦ ', legendario: '★ ' } as Record<string, string>)[it.rarity] ?? ''}${displayName(it)}`, qty: qty - rest, rarity: it.rarity, id: it.id });
         void Quests.collectNotes(this.state, it.id);
       }
     }
@@ -870,7 +873,7 @@ export class Battle {
 
   itemTarget(it: ItemInstance): TargetKind {
     const u = itemDef(it).use;
-    if (u?.bind) return 'enemy';
+    if (u?.bind || u?.damage) return 'enemy';
     if (u?.heal || u?.cleanse || u?.buff) return 'ally';
     return 'self';
   }
@@ -887,6 +890,17 @@ export class Battle {
     if (use.outOfCombatOnly) return { ok: false, error: 'No puedes comer en pleno combate.' };
     const me = this.player;
     if (use.bind) return this.bind(it, targetId);
+    if (use.damage) {
+      const foe = targetId ? this.get(targetId) : this.foes().find((f) => !f.dead);
+      if (!foe || foe.dead || foe.side !== 'foe') return { ok: false, error: 'Elige un enemigo.' };
+      removeQty(p, uid, 1);
+      this.emit({ t: 'say', text: def.name });
+      this.emit({ t: 'attack', from: me.id, to: [foe.id], style: 'cast', color: '#ffb050', dmgType: use.damage.type });
+      this.damage(foe, roll(this.rng, use.damage.dice).total, use.damage.type, { src: me, ctx: 'other' });
+      if (!foe.dead && use.damage.status) this.applyStatus(foe, use.damage.status);
+      this.endPlayerAction();
+      return { ok: true };
+    }
     const target = targetId ? this.get(targetId) : me;
     if (!target || target.side !== 'party' || target.dead) return { ok: false, error: 'Elige un aliado.' };
     this.emit({ t: 'say', text: def.name });
