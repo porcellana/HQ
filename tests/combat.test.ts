@@ -6,7 +6,7 @@ import { consumeStun, tickStatuses, tryApplyStatus, type StatusInstance } from '
 import { Game } from '@/game/game';
 import { totalXpForLevel } from '@/game/rules/progression';
 import { Zone } from '@/game/world/zone';
-import { testState } from './helpers';
+import { defeat, testState } from './helpers';
 
 /** Rng con resultados de int() prefijados (para forzar tiradas). */
 class FixedRng extends Rng {
@@ -104,38 +104,15 @@ function gameIn(classId: string, zone = 'aldea_brumaroja'): Game {
   return g;
 }
 
-/** Avanza el tiempo hasta que vuelva a ser turno del jugador. */
-function settle(g: Game): void {
-  if (g.phase === 'player' && g.combatTurn && g.actionUsed) g.waitTurn(); // economía de turno: acción hecha → fin de turno
-  for (let i = 0; i < 200 && g.phase === 'enemies'; i++) g.update(0.25);
-}
-
-function adjacentFree(g: Game): { x: number; y: number } {
+function spotNear(g: Game, d = 3): { x: number; y: number } {
   const p = g.playerPos;
-  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]] as const) {
-    if (g.freeForEnemy(p.x + dx, p.y + dy)) return { x: p.x + dx, y: p.y + dy };
-  }
+  for (let r = d; r < d + 6; r++)
+    for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, -r]] as const)
+      if (g.freeForEnemy(p.x + dx, p.y + dy) && g.los(p, { x: p.x + dx, y: p.y + dy })) return { x: p.x + dx, y: p.y + dy };
   throw new Error('sin hueco');
 }
 
-/** Pelea a muerte contra un enemigo; devuelve true si gana el jugador. */
-function duel(classId: string, enemyId: string, useSkills = true): boolean {
-  const g = gameIn(classId);
-  const spot = adjacentFree(g);
-  const e = g.spawnEnemy(enemyId, spot.x, spot.y)!;
-  e.alerted = true;
-  for (let turn = 0; turn < 80; turn++) {
-    if (g.isDead) return false;
-    if (!g.enemies.includes(e)) return true;
-    const sk = g.cls.skills.find((s) => s.unlockLevel <= g.state.player.level && s.target === 'enemy' && !g.skillBlockedReason(s));
-    if (useSkills && sk && g.inSkillRange(sk, e)) g.useSkill(sk, e);
-    else g.tapTile(e.x, e.y);
-    settle(g);
-  }
-  return !g.enemies.includes(e);
-}
-
-describe('combate en partida', () => {
+describe('mapa y encuentros', () => {
   it('el bosque se puebla con enemigos lejos del jugador', () => {
     const g = new Game(testState());
     g.enterZone('bosque_sombrio', '1');
@@ -148,32 +125,67 @@ describe('combate en partida', () => {
     }
   });
 
-  it('matar un enemigo da su XP y lo quita del mapa', () => {
+  it('un enemigo que te ve lanza la batalla tras una breve transición', () => {
     const g = gameIn('guerrero');
-    const spot = adjacentFree(g);
-    const e = g.spawnEnemy('rata_gigante', spot.x, spot.y)!;
-    e.hp = 1;
-    g.state.player.stats.FUE = 30; // asegura impactar casi siempre
-    for (let i = 0; i < 20 && g.enemies.includes(e); i++) {
-      g.tapTile(e.x, e.y);
-      settle(g);
-    }
-    expect(g.enemies.includes(e)).toBe(false);
-    expect(g.state.player.xp).toBe(xpForKill(e.def.xp, e.def.level, 1) + 0);
+    const spot = spotNear(g, 3);
+    const e = g.spawnEnemy('goblin', spot.x, spot.y)!;
+    const started: number[] = [];
+    g.events.on('battleStart', ({ battle }) => started.push(battle.foes().length));
+    g.waitTurn();
+    expect(g.pendingBattle).not.toBeNull();
+    expect(g.battle).toBeNull();
+    for (let i = 0; i < 40 && !g.battle; i++) g.update(0.05);
+    expect(g.battle).not.toBeNull();
+    expect(started).toEqual([1]);
+    expect(g.battle!.foes()[0]!.enemy).toBe(e);
+    // Durante la batalla el mapa no se mueve.
+    const pos = g.playerPos;
+    g.tapTile(pos.x, pos.y + 1);
+    g.update(1);
+    expect(g.playerPos).toEqual(pos);
   });
 
-  it('los enemigos alerta se acercan y atacan', () => {
-    const g = gameIn('mago');
-    const p = g.playerPos;
-    const e = g.spawnEnemy('goblin', p.x, p.y - 3)!;
-    e.alerted = true;
-    const hp0 = g.state.player.hp;
-    for (let i = 0; i < 15 && g.state.player.hp === hp0 && !g.isDead; i++) {
-      g.waitTurn();
-      settle(g);
+  it('los enemigos cercanos del mismo grupo entran juntos (máximo 4)', () => {
+    const g = gameIn('guerrero');
+    const s = spotNear(g, 4);
+    const es = [g.spawnEnemy('goblin', s.x, s.y)!];
+    for (let i = 0; i < 6; i++) {
+      const near = g.spawnEnemy('goblin', s.x + (i % 3) - 1, s.y + 1 + Math.floor(i / 3));
+      if (near) es.push(near);
     }
-    expect(Math.max(Math.abs(e.x - p.x), Math.abs(e.y - p.y))).toBe(1);
-    expect(g.state.player.hp).toBeLessThan(hp0);
+    g.startEncounter(es[0]!);
+    expect(g.pendingBattle!.enemies.length).toBeLessThanOrEqual(4);
+    expect(g.pendingBattle!.enemies[0]).toBe(es[0]);
+  });
+
+  it('matar un enemigo da su XP, suelta botín en la mochila y lo quita del mapa', () => {
+    const g = gameIn('guerrero');
+    const spot = spotNear(g, 3);
+    const e = g.spawnEnemy('rata_gigante', spot.x, spot.y)!;
+    const res = defeat(g, e);
+    expect(g.enemies.includes(e)).toBe(false);
+    expect(res.outcome).toBe('victory');
+    expect(g.state.player.xp).toBe(xpForKill(e.def.xp, e.def.level, 1));
+    expect(g.battle).toBeNull();
+  });
+
+  it('huir de una batalla: vuelves al mapa, los enemigos siguen y hay inmunidad', () => {
+    const g = gameIn('picaro');
+    const spot = spotNear(g, 3);
+    const e = g.spawnEnemy('goblin', spot.x, spot.y)!;
+    const b = g.beginBattle([e]);
+    g.state.player.hp = g.state.player.maxHp = 999;
+    for (let i = 0; i < 80 && !b.ended; i++) {
+      b.step();
+      if (b.awaiting) b.flee();
+    }
+    expect(b.outcome).toBe('fled');
+    g.finishBattle();
+    expect(g.enemies.includes(e)).toBe(true);
+    expect(g.immunity).toBeGreaterThan(0);
+    expect(e.alerted).toBe(false);
+    g.waitTurn();
+    expect(g.pendingBattle).toBeNull();
   });
 
   it('subir de nivel: PV, puntos, habilidades y evento', () => {
@@ -187,19 +199,6 @@ describe('combate en partida', () => {
     expect(g.state.player.maxHp).toBeGreaterThan(hp1);
     expect(g.state.player.hp).toBe(g.state.player.maxHp);
     expect(g.state.player.attributePoints).toBe(1 + 1 + 2 + 1 + 1);
-  });
-
-  it('habilidad: proyectil mágico gasta maná, nunca falla y pasa el turno', () => {
-    const g = gameIn('mago');
-    const p = g.playerPos;
-    const e = g.spawnEnemy('orco_bruto', p.x, p.y - 2)!;
-    const sk = g.cls.skills.find((s) => s.id === 'proyectil_magico')!;
-    const mp = g.state.player.mp;
-    const turn = g.state.turn;
-    g.useSkill(sk, e);
-    expect(g.state.player.mp).toBe(mp - sk.cost);
-    expect(e.hp).toBeLessThan(e.maxHp);
-    expect(g.state.turn).toBe(turn + 1);
   });
 
   it('morir y despertar en la capilla de la aldea perdiendo el 10 % del oro', () => {
@@ -217,29 +216,44 @@ describe('combate en partida', () => {
     expect(g.isDead).toBe(false);
   });
 
-  it('huir acaba funcionando y elimina a los perseguidores', () => {
-    const g = gameIn('picaro');
-    const p = g.playerPos;
-    const e = g.spawnEnemy('goblin', p.x, p.y - 2)!;
-    e.alerted = true;
-    g.state.player.hp = 999;
-    for (let i = 0; i < 40 && g.enemies.includes(e); i++) {
-      g.flee();
-      settle(g);
+  it('caer en batalla: derrota, muerte y reaparición', () => {
+    const g = gameIn('mago');
+    const spot = spotNear(g, 3);
+    const e = g.spawnEnemy('orco_bruto', spot.x, spot.y)!;
+    g.state.player.hp = 1;
+    let died = false;
+    g.events.on('playerDied', () => (died = true));
+    const b = g.beginBattle([e]);
+    for (let i = 0; i < 100 && !b.ended; i++) {
+      b.step();
+      if (b.awaiting) b.defend();
     }
-    expect(g.enemies.includes(e)).toBe(false);
+    expect(b.outcome).toBe('defeat');
+    g.finishBattle();
+    expect(died).toBe(true);
+    expect(g.isDead).toBe(true);
+    expect(g.state.record.deaths).toBe(1);
   });
+});
 
-  it('el jefe cambia de fase e invoca refuerzos', () => {
-    const g = gameIn('guerrero');
-    const spot = adjacentFree(g);
-    const boss = g.spawnEnemy('rey_goblin', spot.x, spot.y)!;
-    g.damageEnemy(boss, Math.ceil(boss.maxHp * 0.5), 'cortante');
-    expect(boss.phase).toBeGreaterThanOrEqual(1);
-    expect(g.enemies.filter((e) => e.def.id === 'goblin').length).toBeGreaterThan(0);
-  });
+/** Pelea a muerte (ataques básicos y habilidades) contra un enemigo; true si gana el jugador. */
+function duel(classId: string, enemyId: string): boolean {
+  const g = gameIn(classId);
+  const spot = spotNear(g, 3);
+  const e = g.spawnEnemy(enemyId, spot.x, spot.y)!;
+  const b = g.beginBattle([e]);
+  for (let i = 0; i < 200 && !b.ended; i++) {
+    b.step();
+    if (!b.awaiting) continue;
+    const foe = b.foes()[0]!;
+    const sk = b.skills().find((s) => s.usable && s.target === 'enemy');
+    if (!(sk && b.useSkill(sk.skill.id, foe.id).ok)) b.attack(foe.id);
+  }
+  return b.outcome === 'victory';
+}
 
-  it('equilibrio: un personaje de nivel 1 suele ganar a un goblin', () => {
+describe('equilibrio', () => {
+  it('un personaje de nivel 1 suele ganar a un goblin', () => {
     for (const cls of ['guerrero', 'picaro', 'mago', 'clerigo']) {
       let wins = 0;
       for (let i = 0; i < 60; i++) if (duel(cls, 'goblin')) wins++;
@@ -247,7 +261,7 @@ describe('combate en partida', () => {
     }
   });
 
-  it('equilibrio: el orco bruto es mortal a nivel 1', () => {
+  it('el orco bruto es mortal a nivel 1', () => {
     let wins = 0;
     for (let i = 0; i < 40; i++) if (duel('mago', 'orco_bruto')) wins++;
     expect(wins / 40).toBeLessThan(0.2);

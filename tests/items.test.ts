@@ -11,7 +11,7 @@ import { CURRENT_SAVE_VERSION, migrate } from '@/game/save/migrations';
 import { exportCode, importCode } from '@/game/save/saveManager';
 import { recalcPlayer, type GameState } from '@/game/state';
 import { ICON_SHAPES } from '@/gfx/items';
-import { testState } from './helpers';
+import { defeat, testState } from './helpers';
 
 describe('datos de objetos', () => {
   it('hay armas de los 6 tipos, todas las ranuras y rarezas en orden', () => {
@@ -141,9 +141,8 @@ describe('inventario y equipo', () => {
 });
 
 describe('objetos en partida', () => {
-  function settle(g: Game) {
-  if (g.phase === 'player' && g.combatTurn && g.actionUsed) g.waitTurn(); // economía de turno: acción hecha → fin de turno
-    for (let i = 0; i < 200 && g.phase === 'enemies'; i++) g.update(0.25);
+  function settle(_g: Game) {
+    /* (el mapa ya no tiene turnos de enemigos que esperar) */
   }
 
   it('recoger botín al pisarlo', () => {
@@ -160,22 +159,15 @@ describe('objetos en partida', () => {
     expect(g.ground).toHaveLength(0);
   });
 
-  it('beber una poción en combate cura y gasta el turno; el pan no se puede comer en combate', () => {
+  it('beber una poción en el mapa cura; el pan y el resto de consumibles también se usan fuera de batalla', () => {
     const g = new Game(testState('guerrero'));
     g.enemies = [];
-    const p = g.playerPos;
-    const e = g.spawnEnemy('goblin', p.x, p.y - 2)!;
-    e.alerted = true;
     g.state.player.hp = 1;
-    const turn = g.state.turn;
     expect(g.quickPotion()).toBeNull();
     expect(g.state.player.hp).toBeGreaterThan(1);
-    expect(g.state.turn).toBe(turn + 1);
-    // Que el goblin no pueda matarte durante el resto de la prueba (antes era inestable).
-    g.state.player.maxHp = g.state.player.hp = 200;
-    settle(g);
     const bread = g.state.player.inventory.find((x) => x.id === 'pan')!;
-    expect(g.useItem(bread.uid)).toMatch(/combate/);
+    expect(g.useItem(bread.uid)).toBeNull();
+    settle(g);
   });
 
   it('los enemigos sueltan botín a veces', () => {
@@ -185,8 +177,10 @@ describe('objetos en partida', () => {
       g.enemies = [];
       const p = g.playerPos;
       const e = g.spawnEnemy('goblin', p.x + 1, p.y) ?? g.spawnEnemy('goblin', p.x - 1, p.y)!;
-      g.damageEnemy(e, 999, 'cortante');
-      if (g.ground.length) drops++;
+      const gold0 = g.state.player.gold;
+      const inv0 = g.state.player.inventory.length;
+      defeat(g, e);
+      if (g.state.player.gold > gold0 || g.state.player.inventory.length > inv0) drops++;
     }
     expect(drops).toBeGreaterThan(10);
   });

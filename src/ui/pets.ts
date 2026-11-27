@@ -151,13 +151,12 @@ export function petOrders(root: HTMLElement, game: Game, openSheet: () => void):
   const name = Pets.petName(pi);
   const buttons = pi.moves.map((id) => {
     const m = Pets.getMove(id);
-    const cd = game.petCooldowns[id] ?? 0;
     return {
-      label: `${m?.icon ?? ''} ${m?.name ?? id}${cd > 0 ? ` (⏳${cd})` : ''}${game.petOrder === id ? ' ✔' : ''}`,
+      label: `${m?.icon ?? ''} ${m?.name ?? id}${game.petOrder === id ? ' ✔' : ''}`,
       action: () => game.setPetOrder(id),
     };
   });
-  showDialog(root, `Órdenes para ${name}`, pi.down ? `${name} está debilitada: se recuperará fuera de combate.` : 'Elige qué hará en su próximo turno:', [
+  showDialog(root, `Órdenes para ${name}`, pi.down ? `${name} está debilitada: se recuperará fuera de combate.` : 'Elige qué hará en su turno de la próxima batalla:', [
     ...buttons,
     { label: `🤖 Que decida ${name}${game.petOrder === null ? ' ✔' : ''}`, kind: 'primary', action: () => game.setPetOrder(null) },
     { label: '📋 Ver ficha de la mascota', action: openSheet },

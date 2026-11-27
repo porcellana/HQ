@@ -234,14 +234,7 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
   align-items: center; gap: 6px; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none;
 }
 .dice-roller.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-.d20 {
-  width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; font-size: 1.6em; font-weight: bold;
-  color: #fff; background: linear-gradient(135deg, #5a2a6a, #2a1a3a); border: 3px solid var(--border-l);
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); text-shadow: 0 2px 0 #000;
-}
-.dice-roller.crit .d20 { background: linear-gradient(135deg, #c9a227, #7a5a10); }
-.dice-roller.fumble .d20 { background: linear-gradient(135deg, #8a1a1a, #3a0a0a); }
-.dice-roller.miss .d20 { filter: grayscale(0.7); }
+
 .dice-info { background: rgba(11,10,16,0.88); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; text-align: center; font-size: 0.8em; }
 .dice-info b { display: block; color: var(--gold-l); font-weight: normal; font-size: 1.15em; }
 .dice-roller.miss .dice-info b, .dice-roller.fumble .dice-info b { color: #f0a0a0; }
@@ -461,157 +454,42 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .quest-tracker .qt-more { font-size: 0.7em; color: var(--muted); padding-left: 10px; }
 
 /* Barra de turnos */
-.turn-bar { display: flex; gap: 4px; pointer-events: none; flex-wrap: wrap; }
-.turn-cell {
-  width: 34px; padding: 2px; border-radius: 7px; background: rgba(11,10,16,0.72); border: 2px solid #2e5a2a;
-  display: flex; flex-direction: column; align-items: center; gap: 2px; opacity: 0.85;
-}
-.turn-cell.foe { border-color: #6a2a2a; }
-.turn-cell.current { opacity: 1; border-color: var(--gold-l); box-shadow: 0 0 8px rgba(242,216,136,0.8); transform: translateY(-1px); }
-.turn-icon { width: 26px; height: 26px; image-rendering: pixelated; }
-.turn-hp { width: 26px; height: 3px; background: #000; border-radius: 2px; overflow: hidden; }
-.turn-hp i { display: block; height: 100%; background: #5ad05a; }
-.turn-cell.foe .turn-hp i { background: #d03030; }
 
 /* Cartel de acción */
-.action-caption {
-  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.96); min-width: 60%; max-width: 92%;
-  background: rgba(11,10,16,0.9); border: 2px solid var(--border-l); border-radius: 12px; padding: 8px 14px;
-  text-align: center; font-size: 0.86em; line-height: 1.35; opacity: 0; transition: opacity 0.2s, transform 0.2s; pointer-events: none;
-}
-.action-caption.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-.action-caption b { display: block; font-weight: normal; font-size: 1.05em; margin-bottom: 2px; }
-.action-caption b.foe { color: #ff9a8a; }
-.action-caption b.friend { color: #a8f08a; }
-
 
 /* Menú de acciones en tu turno */
-.combat-menu {
-  position: absolute; left: 6px; right: 6px; bottom: calc(8px + env(safe-area-inset-bottom));
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; pointer-events: none;
-}
-.combat-menu .cbtn {
-  pointer-events: auto; min-height: 58px; padding: 4px 2px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  line-height: 1.05; font-size: 0.82em;
-}
-.combat-menu .cbtn .ico { font-size: 1.35em; }
-.combat-menu .cbtn.active { border-color: var(--gold); box-shadow: 0 0 10px rgba(242,216,136,0.6); color: var(--gold-l); }
-.combat-menu .cbtn.bind { border-color: #a070e0; }
-.next-btn {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom));
-  min-width: 60%; min-height: 64px; font-size: 1.2em; pointer-events: auto;
-}
-.next-btn:disabled { opacity: 0.75; }
+
 /* En combate, las habilidades desplegadas van encima del menú de acciones */
 .skill-bar { z-index: 2; }
 
 /* Dado pequeño para las tiradas de los enemigos */
 .dice-roller.small { top: 24%; }
-.dice-roller.small .d20 { width: 44px; height: 44px; font-size: 1.15em; }
+
 .dice-roller.small .dice-info { font-size: 0.72em; }
 
 .pet-origin { margin: 0; text-align: center; }
 .best-card .best-origin { font-size: 0.62em; line-height: 1.2; }
-.hud.in-combat .skill-bar { bottom: calc(132px + env(safe-area-inset-bottom)); }
-.hud.in-combat .joystick { bottom: calc(196px + env(safe-area-inset-bottom)); }
-.hud.in-combat .log { bottom: calc(136px + env(safe-area-inset-bottom)); }
+
 /* El dado arriba y el cartel de acción más abajo para que no se solapen. */
-.hud.in-combat .dice-roller { top: 30%; }
-.hud.in-combat .dice-roller.small { top: 24%; }
-.action-caption { top: 55%; }
 
 /* Economía del turno (v0.4.1): movimiento 👣 + 1 acción */
-.combat-menu .turn-status {
-  grid-column: 1 / -1; display: flex; justify-content: center; gap: 14px; pointer-events: none;
-  font-size: 0.85em; text-shadow: 0 1px 2px #000, 0 0 4px #000;
-}
-.combat-menu .turn-status .moves { color: #9ad0ff; }
-.combat-menu .turn-status .moves.empty { color: var(--muted); }
-.combat-menu .turn-status .act { color: var(--gold-l); }
-.combat-menu .turn-status .act.used { color: var(--muted); text-decoration: line-through; }
-.combat-menu .cbtn:disabled { opacity: 0.35; }
-.combat-menu .cbtn.end { grid-column: span 2; }
-.combat-menu .cbtn.end.highlight { border-color: var(--gold); color: var(--gold-l); box-shadow: 0 0 12px rgba(242,216,136,0.55); animation: pulse 1.2s infinite alternate; }
-.combat-menu .turn-status { justify-self: center; background: rgba(11,10,16,0.88); border: 1px solid var(--border); border-radius: 12px; padding: 3px 14px; }
+
 /* Durante tu turno de combate el menú es más alto: los mensajes suben. */
-body.combat-turn .log { bottom: calc(200px + env(safe-area-inset-bottom)); }
-.combat-menu .cbtn:disabled { opacity: 1; filter: grayscale(1) brightness(0.5); }
-body.combat-turn .log { bottom: calc(236px + env(safe-area-inset-bottom)); }
 
 /* ======================= Combate cinematográfico (v0.5) ======================= */
 /* Tarjeta de duelo */
-.duel-card {
-  position: absolute; left: 50%; top: 21%; transform: translate(-50%, -8px) scale(0.94); width: min(86%, 340px);
-  background: rgba(11,10,16,0.95); border: 2px solid var(--border-l); border-radius: 14px; padding: 8px 12px 10px;
-  text-align: center; opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.6); z-index: 4;
-}
-.duel-card.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
-.duel-card.crit { border-color: var(--gold-l); box-shadow: 0 0 26px rgba(242,216,136,0.55); animation: cardshake 0.35s; }
-.duel-card.fumble { border-color: #c04040; box-shadow: 0 0 22px rgba(200,60,60,0.45); animation: cardshake 0.35s; }
-@keyframes cardshake { 0%,100% { margin-left: 0; } 20% { margin-left: -5px; } 40% { margin-left: 5px; } 60% { margin-left: -3px; } 80% { margin-left: 3px; } }
-.duel-head { display: flex; align-items: center; justify-content: center; gap: 12px; }
-.duel-portrait {
-  width: 46px; height: 46px; image-rendering: pixelated; background: radial-gradient(circle, #3a2a3a, #0b0a10);
-  border: 2px solid #4a8a3a; border-radius: 10px;
-}
-.duel-portrait.foe { border-color: #8a3a3a; }
-.duel-vs { font-size: 1.4em; color: var(--gold-l); text-shadow: 0 2px 0 #000; }
-.duel-title { margin: 4px 0 2px; line-height: 1.15; }
-.duel-title b { color: var(--gold-l); font-weight: normal; font-size: 1.05em; }
-.duel-title small { color: var(--muted); font-size: 0.78em; }
-.duel-roll { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 4px 0; }
-.duel-card .d20 {
-  width: 54px; height: 54px; font-size: 1.5em; flex: none;
-  display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; text-shadow: 0 2px 0 #000;
-  background: linear-gradient(135deg, #5a2a6a, #2a1a3a); border: 3px solid var(--border-l);
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-}
-.duel-card .d20.rolling { animation: dspin 0.45s linear infinite; }
-@keyframes dspin { from { transform: rotate(-12deg) scale(1.05); } 50% { transform: rotate(12deg) scale(0.95); } to { transform: rotate(-12deg) scale(1.05); } }
-.duel-card .d20.crit { background: linear-gradient(135deg, #e0b83a, #7a5a10); animation: dpop 0.4s; }
-.duel-card .d20.fumble { background: linear-gradient(135deg, #8a1a1a, #3a0a0a); animation: dpop 0.4s; }
-.duel-card .d20.miss { filter: grayscale(0.7); }
-@keyframes dpop { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
-.duel-calc { font-size: 0.95em; text-align: left; line-height: 1.2; }
-.duel-calc small { display: block; color: var(--muted); }
-.duel-cast { font-size: 1.6em; letter-spacing: 0.3em; color: var(--muted); padding: 6px 0; animation: pulse 0.7s infinite alternate; }
-.duel-outcome { font-size: 1.25em; letter-spacing: 0.06em; margin-top: 2px; }
-.duel-outcome.hit { color: #f0e8d0; }
-.duel-outcome.crit { color: var(--gold-l); font-size: 1.5em; text-shadow: 0 0 12px rgba(242,216,136,0.8); animation: dpop 0.45s; }
-.duel-outcome.miss { color: #a49c8a; }
-.duel-outcome.fumble { color: #f08080; font-size: 1.4em; animation: dpop 0.45s; }
-.duel-damage { margin-top: 2px; font-size: 1em; animation: dpop 0.4s; }
-.duel-damage b { font-size: 2em; color: #ff8a7a; font-weight: bold; text-shadow: 0 2px 0 #000; }
-.duel-damage.crit b { color: var(--gold-l); font-size: 2.3em; text-shadow: 0 0 14px rgba(242,216,136,0.8), 0 2px 0 #000; }
-.duel-damage small { margin-left: 4px; }
-.duel-damage .vuln { color: #ffa060; }
-.duel-damage .resist { color: #a0a0b0; }
-.duel-damage .kill { color: #f0f0f0; }
-.duel-damage.sm { margin: 0; animation: none; }
-.duel-damage.sm b { font-size: 1.1em; }
+
 /* Varios objetivos: filas compactas */
-.duel-card.multi .duel-head { gap: 8px; }
-.duel-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 0.82em; text-align: left; }
-.duel-row:first-of-type { border-top: 0; }
-.duel-mini { width: 22px; height: 22px; image-rendering: pixelated; flex: none; }
-.duel-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.duel-card .d20.mini { width: 24px; height: 24px; font-size: 0.78em; border-width: 2px; }
-.duel-outcome-sm.hit { color: #f0e8d0; } .duel-outcome-sm.crit { color: var(--gold-l); } .duel-outcome-sm.miss { color: #a49c8a; } .duel-outcome-sm.fumble { color: #f08080; }
+
+   
 
 /* Registro de combate persistente */
-.combat-log {
-  position: absolute; left: 6px; bottom: calc(142px + env(safe-area-inset-bottom)); width: min(47%, 205px);
-  display: flex; flex-direction: column; gap: 1px; padding: 4px 6px 3px; border-radius: 8px;
-  background: rgba(11,10,16,0.62); border-left: 3px solid var(--border-l); pointer-events: auto; cursor: pointer;
-  font-size: 0.66em; line-height: 1.22; z-index: 3; text-shadow: 0 1px 2px #000;
-}
-body.combat-turn .combat-log { bottom: calc(204px + env(safe-area-inset-bottom)); }
+
 .log-line { color: #d8d4cc; }
 .log-line.out { color: #f2e8c8; } .log-line.in { color: #ff9a8a; } .log-line.heal { color: #8ae08a; }
 .log-line.status { color: #c8a0ff; } .log-line.miss { color: #a49c8a; } .log-line.neutral { color: #d8d4cc; }
 .log-line.latest { font-weight: bold; animation: logpop 0.35s; }
-@keyframes logpop { from { transform: translateX(-6px); opacity: 0.3; } to { transform: none; opacity: 1; } }
+
 .log-hint { color: var(--muted); font-size: 0.85em; text-align: right; opacity: 0.8; }
 .log-overlay { position: absolute; inset: 0; z-index: 20; background: rgba(0,0,0,0.72); display: flex; align-items: center; justify-content: center; padding: 16px; pointer-events: auto; }
 .log-full { width: min(430px, 100%); max-height: 84%; display: flex; flex-direction: column; gap: 10px; background: var(--panel-solid); border: 2px solid var(--border-l); border-radius: 14px; padding: 14px; }
@@ -619,12 +497,7 @@ body.combat-turn .combat-log { bottom: calc(204px + env(safe-area-inset-bottom))
 .log-scroll { overflow-y: auto; max-height: 56vh; display: flex; flex-direction: column; gap: 3px; font-size: 0.85em; user-select: text; -webkit-user-select: text; }
 .log-scroll .log-line { padding: 2px 4px; border-bottom: 1px solid rgba(255,255,255,0.06); }
 
-
 /* Saltar ronda */
-.skip-btn {
-  position: absolute; right: 8px; bottom: calc(86px + env(safe-area-inset-bottom)); min-height: 44px; padding: 0 14px; font-size: 0.85em;
-  pointer-events: auto; border-color: var(--border-l);
-}
 
 /* Controles de zoom del mapa (discretos, a la derecha bajo el minimapa) */
 .zoom-ctl {
@@ -637,12 +510,8 @@ body.combat-turn .combat-log { bottom: calc(204px + env(safe-area-inset-bottom))
 }
 .zoom-btn.small { width: 32px; height: 32px; font-size: 1em; align-self: center; }
 .zoom-btn:disabled { opacity: 0.28; }
-.hud.in-combat .zoom-ctl { opacity: 0.6; }
 
 /* Registro de combate: las líneas se desvanecen solas y el panel queda mínimo en reposo */
-@keyframes clogfade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
-.combat-log.idle { background: none; border-left-color: transparent; padding: 0 4px; }
-.combat-log.idle .log-hint { text-align: left; opacity: 0.55; }
 
 /* =====================================================================
    v0.5.1 — PANELES INFERIORES COMPACTOS Y MÁS BONITOS
@@ -650,8 +519,6 @@ body.combat-turn .combat-log { bottom: calc(204px + env(safe-area-inset-bottom))
    (Va al final para anular los estilos anteriores.)
    ===================================================================== */
 .hud { --dock: 62px; }
-.hud.in-combat { --dock: 66px; }
-body.combat-turn .hud { --dock: 112px; }
 
 /* Botón compacto común del dock */
 .action-bar button, .combat-menu .cbtn {
@@ -688,143 +555,55 @@ body.combat-turn .hud { --dock: 112px; }
 .skill-bar button.skill.selected { box-shadow: 0 0 0 2px var(--gold-l), 0 0 10px rgba(242,216,136,0.6); }
 
 /* --- Menú de combate: dos filas finas --- */
-.combat-menu {
-  left: 6px; right: 6px; bottom: calc(6px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 4px;
-  padding: 5px; border-radius: 18px; pointer-events: auto;
-  background: linear-gradient(rgba(30,26,38,0.86), rgba(10,9,14,0.92)); border: 1px solid var(--border); border-top-color: var(--border-l);
-  box-shadow: 0 -4px 16px rgba(0,0,0,0.45);
-}
-.cm-row { display: flex; gap: 4px; }
-.cm-row.main .cbtn {
-  flex: 1 1 0; min-width: 0; min-height: 46px; padding: 2px 1px; flex-direction: column; font-size: 0.68em; gap: 0; line-height: 1.1;
-}
-.cm-row.main .cbtn .ico { font-size: 1.9em; line-height: 1.05; }
-.cm-row.sub .cbtn { min-height: 38px; flex-direction: row; gap: 5px; font-size: 0.74em; padding: 0 10px; flex: 1 1 0; min-width: 0; }
-.cm-row.sub .cbtn .ico { font-size: 1.35em; }
-.cm-row.sub .cbtn.end { flex: 1.7 1 0; }
-.combat-menu .cbtn.end { grid-column: auto; }
-.combat-menu .cbtn.end.highlight { background: linear-gradient(#5a3a1e, #3b2513); border-color: var(--gold); }
-.combat-menu .turn-status {
-  grid-column: auto; flex: 0 0 auto; align-self: center; padding: 0 6px; background: none; border: 0; border-radius: 0; gap: 8px;
-  font-size: 0.74em; display: flex; align-items: center; text-shadow: none; white-space: nowrap;
-}
-.combat-menu .cbtn:disabled { filter: grayscale(1) brightness(0.55); opacity: 1; }
 
 /* «Siguiente» / «Saltar»: más bajos y ya no tapan media pantalla */
-.next-btn { min-height: 48px; min-width: 66%; font-size: 1.02em; bottom: calc(8px + env(safe-area-inset-bottom)); border-radius: 16px; }
-.skip-btn { bottom: calc(66px + env(safe-area-inset-bottom)); min-height: 38px; }
 
 /* --- Todo lo que flota se coloca a partir de la altura del dock --- */
 .joystick { width: 112px; height: 112px; bottom: calc(var(--dock) + 62px + env(safe-area-inset-bottom)); }
-.hud.in-combat .joystick { bottom: calc(var(--dock) + 62px + env(safe-area-inset-bottom)); }
+
 .joystick .knob { width: 48px; height: 48px; margin: -24px 0 0 -24px; }
 .log, .hud.in-combat .log, body.combat-turn .log { bottom: calc(var(--dock) + 56px + env(safe-area-inset-bottom)); gap: 3px; }
 .log div { font-size: 0.72em; padding: 3px 9px; max-width: 88%; }
-.combat-log, body.combat-turn .combat-log { bottom: calc(var(--dock) + 8px + env(safe-area-inset-bottom)); }
+
 .zoom-btn { width: 34px; height: 34px; font-size: 1.15em; opacity: 0.7; }
 .zoom-btn.small { width: 28px; height: 28px; }
 
 /* Tarjeta de duelo más compacta (v0.5.1): menos pantalla tapada */
-.duel-card { top: 19%; width: min(76%, 280px); padding: 5px 10px 7px; border-radius: 12px; background: rgba(11,10,16,0.9); font-size: 0.9em; }
-.duel-head { gap: 8px; }
-.duel-portrait { width: 34px; height: 34px; border-radius: 8px; border-width: 2px; }
-.duel-vs { font-size: 1.1em; }
-.duel-title { margin: 2px 0 0; }
-.duel-roll { margin: 2px 0; gap: 8px; }
-.duel-card .d20 { width: 42px; height: 42px; font-size: 1.25em; }
-.duel-calc { font-size: 0.85em; }
-.duel-outcome { font-size: 1.05em; margin-top: 0; }
-.duel-outcome.crit { font-size: 1.25em; }
-.duel-outcome.fumble { font-size: 1.2em; }
-.duel-damage b { font-size: 1.5em; }
-.duel-damage.crit b { font-size: 1.75em; }
 
 /* =====================================================================
    v0.5.2 — MENSAJES DE COMBATE ABAJO, JUNTO A LOS BOTONES
    El registro, el cartel de acción y la tarjeta de duelo van apilados en
    .combat-stack, justo encima del menú de combate: no tapan el mapa.
    ===================================================================== */
-.combat-stack {
-  position: absolute; left: 6px; right: 6px; bottom: calc(var(--dock) + 8px + env(safe-area-inset-bottom));
-  display: flex; flex-direction: column; align-items: stretch; gap: 4px; pointer-events: none; z-index: 3;
-}
+
 /* Registro: estrecho, a la izquierda, encima de la tarjeta */
-.combat-stack .combat-log, body.combat-turn .combat-stack .combat-log {
-  position: static; width: min(100%, 290px); align-self: flex-start; bottom: auto; left: auto;
-}
+
 /* Tarjeta de duelo: una tira baja de dos líneas */
-.combat-stack .duel-card {
-  position: static; transform: none; width: auto; top: auto; left: auto; opacity: 1; display: none;
-  padding: 4px 8px; border-radius: 12px; font-size: 0.82em; text-align: left; background: rgba(11,10,16,0.92);
-  border-width: 1px; animation: cardin 0.18s ease-out;
-}
-.combat-stack .duel-card.show { display: block; transform: none; }
-@keyframes cardin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.duel-main { display: flex; align-items: center; gap: 8px; }
-.duel-main .duel-head { flex: none; gap: 3px; }
-.duel-main .duel-portrait { width: 30px; height: 30px; border-radius: 7px; }
-.duel-main .duel-vs { font-size: 0.9em; }
-.duel-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.duel-col .duel-title { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.duel-col .duel-title b { font-size: 1em; }
-.duel-col .duel-title small { font-size: 0.8em; }
-.duel-line { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 8px; line-height: 1.2; }
-.duel-line .d20.mini { width: 26px; height: 26px; font-size: 0.85em; border-width: 2px; }
-.duel-line .duel-calc { font-size: 0.95em; text-align: left; }
-.duel-line .duel-outcome { font-size: 1em; margin: 0; letter-spacing: 0.03em; }
-.duel-line .duel-outcome.crit { font-size: 1.1em; }
-.duel-line .duel-damage { margin: 0; animation: none; }
-.duel-line .duel-damage b { font-size: 1.25em; }
-.duel-line .duel-damage.crit b { font-size: 1.45em; }
-.duel-head.multi-head { gap: 8px; justify-content: flex-start; }
-.duel-head.multi-head .duel-portrait { width: 28px; height: 28px; }
+
 /* Cartel de acción (moverse, esperar…): también abajo, de una línea */
-.combat-stack .action-caption {
-  position: static; transform: none; width: auto; min-width: 0; max-width: none; top: auto; left: auto; opacity: 1; display: none;
-  padding: 3px 10px; font-size: 0.78em; text-align: left; border-width: 1px; animation: cardin 0.18s ease-out;
-}
-.combat-stack .action-caption.show { display: block; transform: none; }
-.combat-stack .action-caption b { display: inline; margin: 0 6px 0 0; }
-.combat-stack .action-caption div { display: inline; }
+
 /* Los avisos sueltos suben para no pisar la pila */
-.hud.in-combat .log, body.combat-turn .log { bottom: calc(var(--dock) + 170px + env(safe-area-inset-bottom)); }
+
 /* «Siguiente» y «Saltar ronda» en la misma fila inferior */
-.next-btn { left: 8px; right: 8px; transform: none; min-width: 0; width: auto; }
-.next-btn.with-skip { right: calc(36% + 4px); }
-.skip-btn { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(36% - 12px); min-height: 48px; padding: 0 6px; font-size: 0.8em; }
+
 /* Tarjeta de duelo en dos líneas: retratos pequeños, sin el nombre del tipo de daño */
-.combat-stack .duel-damage .tword { display: none; }
-.duel-main { gap: 6px; }
-.duel-main .duel-portrait { width: 26px; height: 26px; }
-.combat-stack .duel-card { font-size: 0.78em; padding: 3px 8px; }
-.duel-line { gap: 2px 6px; flex-wrap: nowrap; }
-.duel-line .duel-calc { white-space: nowrap; }
+
 /* Mientras hay tarjeta o cartel, el registro se esconde (no se apilan tres cosas) */
-.combat-stack:has(.duel-card.show) .combat-log, .combat-stack:has(.action-caption.show) .combat-log { display: none !important; }
 
 /* Al acabar el combate, la tira de mensajes que aún queda sube sobre los botones de habilidad */
-.hud:not(.in-combat) .combat-stack { bottom: calc(var(--dock) + 58px + env(safe-area-inset-bottom)); }
-
 
 /* =====================================================================
    v0.5.6 — MENÚ DE COMBATE EN UNA SOLA LÍNEA
    ===================================================================== */
-body.combat-turn .hud { --dock: 94px; }
-.cm-row.main .cbtn { min-height: 48px; font-size: 0.66em; }
-.cm-row.main .cbtn .ico { font-size: 1.75em; }
-.combat-menu { padding: 4px; gap: 0; }
+
 /* Pastilla flotante con el movimiento y la acción, sobre el borde del menú */
-.combat-menu .turn-status {
-  position: absolute; left: 10px; bottom: calc(100% + 4px); padding: 1px 10px; border-radius: 12px; gap: 8px;
-  background: rgba(11,10,16,0.9); border: 1px solid var(--border); font-size: 0.74em; pointer-events: none;
-}
+
 .skill-bar button.skill.dash small, .skill-bar button.skill.pet small { font-size: 0.55em; }
 .skill-bar button.skill:disabled { opacity: 0.35; }
 
 /* =====================================================================
    v0.5.7 — BARRA CON ACCESOS DIRECTOS Y DESPLEGABLE DE HABILIDADES
    ===================================================================== */
-body.combat-turn .hud { --dock: 68px; }
 
 /* Barra de exploración: 6 botones en una línea */
 .action-bar button { font-size: 0.64em; letter-spacing: -0.01em; position: relative; }
@@ -852,13 +631,6 @@ body.combat-turn .hud { --dock: 68px; }
 .dr-item.bind { border-color: #a070e0; }
 
 /* Menú de combate: los pasos que quedan, como insignia sobre «Terminar» */
-.combat-menu .cbtn { position: relative; }
-.cbtn .badge {
-  position: absolute; top: -8px; right: -2px; padding: 0 6px; border-radius: 10px; font-size: 0.95em; line-height: 1.5; pointer-events: none;
-  background: #0b0a10; border: 1px solid #7ab0e0; color: #9ad0ff;
-}
-.cbtn .badge.empty { border-color: var(--border); color: var(--muted); }
-.cm-row.main .cbtn { font-size: 0.62em; letter-spacing: -0.01em; }
 
 /* Las pantallas completas y los diálogos van siempre por encima del HUD (zoom, mensajes…) */
 .screen { z-index: 10; }
@@ -871,7 +643,7 @@ body.combat-turn .hud { --dock: 68px; }
 .skill-bar, .hud.in-combat .skill-bar {
   left: 8px; right: 8px; width: auto; box-sizing: border-box; grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.combat-menu { left: 8px; right: 8px; }
+
 .dr-item { min-width: 0; font-size: 0.7em; gap: 6px; padding: 0 8px; }
 .dr-item .bd { font-size: 0.85em; padding: 0 6px; }
 
@@ -921,3 +693,72 @@ body.combat-turn .hud { --dock: 68px; }
 
 .qj-tasks li.now { background: rgba(242,216,136,0.1); border-left: 3px solid var(--gold); border-radius: 6px; padding: 5px 6px; font-size: 0.95em; }
 .qj-tasks li.now .tx > span { color: var(--gold-l); }
+
+/* =====================================================================
+   v0.7.0 — ESCENA DE BATALLA (estilo Final Fantasy, vista lateral)
+   Escenario arriba (~58 %); abajo, estado del grupo y menú en una línea.
+   ===================================================================== */
+.battle {
+  position: absolute; inset: 0; z-index: 9; display: flex; flex-direction: column; background: #05040a; color: var(--text);
+  pointer-events: auto; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+.b-stage { position: relative; flex: 0 0 58%; min-height: 0; overflow: hidden; border-bottom: 2px solid var(--border-l); }
+.b-canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: manipulation; }
+.b-order {
+  position: absolute; top: calc(6px + env(safe-area-inset-top)); left: 6px; right: 6px; display: flex; gap: 3px; justify-content: center; pointer-events: none;
+}
+.o-chip {
+  width: 26px; height: 26px; border-radius: 6px; padding: 1px; background: rgba(11,10,16,0.72); border: 2px solid #2e5a8a; display: flex; align-items: center; justify-content: center;
+}
+.o-chip.foe { border-color: #8a3a3a; }
+.o-chip.first { width: 32px; height: 32px; margin-top: -3px; border-color: var(--gold-l); box-shadow: 0 0 8px rgba(242,216,136,0.8); }
+.o-chip canvas { width: 100%; height: 100%; image-rendering: pixelated; }
+.b-msg {
+  position: absolute; top: calc(46px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); max-width: 90%; padding: 3px 14px; border-radius: 12px;
+  background: rgba(11,10,16,0.82); border: 1px solid var(--border-l); color: var(--gold-l); font-size: 0.9em; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; transition: opacity 0.18s; pointer-events: none;
+}
+.b-msg.show { opacity: 1; }
+.b-ui { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 6px 8px calc(8px + env(safe-area-inset-bottom)); background: linear-gradient(#1a1622, #0d0b12); }
+.b-party { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-height: 0; justify-content: flex-end; }
+.b-row {
+  display: grid; grid-template-columns: 74px auto 1fr; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 10px;
+  background: rgba(255,255,255,0.05); border: 1px solid #3a3248; min-height: 36px;
+}
+.b-row .nm { font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: normal; }
+.b-row .b-st { font-size: 0.85em; min-width: 1px; letter-spacing: 1px; }
+.b-row .bars { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.b-row .bar { height: 14px; }
+.b-row .bar > em { font-size: 11px; line-height: 13px; }
+.b-row.active { border-color: var(--gold-l); background: rgba(242,216,136,0.1); box-shadow: 0 0 8px rgba(242,216,136,0.35); }
+.b-row.down { opacity: 0.5; }
+.b-party.picking .b-row.pick, .b-row.pick { border-color: #70f090; box-shadow: 0 0 10px rgba(112,240,144,0.5); cursor: pointer; }
+.b-menu { display: flex; gap: 5px; flex: 0 0 auto; }
+.b-menu.waiting { opacity: 0.55; }
+.b-btn {
+  flex: 1 1 0; min-width: 0; min-height: 56px; padding: 2px 1px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  font-size: 0.74em; line-height: 1.1; color: var(--text); border-radius: 13px; background: linear-gradient(#2e2838, #1c1824); border: 1px solid #4d4230;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 0 #000;
+}
+.b-btn .ico { font-size: 1.9em; line-height: 1.05; }
+.b-btn:active:not(:disabled) { background: rgba(242,216,136,0.18); border-color: var(--gold); }
+.b-btn.active { border-color: var(--gold); box-shadow: 0 0 10px rgba(242,216,136,0.55); color: var(--gold-l); }
+.b-btn:disabled { filter: grayscale(1) brightness(0.55); }
+.b-drawer {
+  position: absolute; left: 8px; right: 8px; bottom: calc(76px + env(safe-area-inset-bottom)); max-height: calc(100% - 90px); overflow-y: auto; display: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; padding: 7px; border-radius: 16px 16px 6px 6px; z-index: 5;
+  background: linear-gradient(rgba(30,26,38,0.98), rgba(12,10,16,0.99)); border: 1px solid var(--border-l); box-shadow: 0 -6px 18px rgba(0,0,0,0.6); animation: drawerin 0.16s ease-out;
+}
+.b-drawer.open { display: grid; }
+.b-drawer .dr-item { min-height: 46px; font-size: 0.78em; }
+.b-drawer .dr-ico { width: 24px; height: 24px; image-rendering: pixelated; flex: none; }
+.b-drawer .dr-empty { grid-column: 1 / -1; margin: 6px; color: var(--muted); text-align: center; font-size: 0.8em; }
+.b-panel {
+  display: none; flex: 0 0 auto; padding: 10px 14px; border-radius: 16px; text-align: center;
+  background: linear-gradient(rgba(30,26,38,0.96), rgba(12,10,16,0.98)); border: 1px solid var(--border-l); box-shadow: 0 0 16px rgba(0,0,0,0.6);
+}
+.b-panel.open { display: block; }
+.b-panel h3 { margin: 0 0 4px; color: var(--gold-l); font-size: 1.05em; }
+.b-panel p { margin: 2px 0; font-size: 0.9em; }
+.b-panel .b-loot { color: #b8f0b0; font-size: 0.8em; }
+.b-panel .b-continue { margin-top: 8px; min-height: 48px; width: 70%; }

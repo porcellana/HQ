@@ -9,7 +9,7 @@ import * as Pets from '@/game/pets/pets';
 import { wildEnemyDef } from '@/game/pets/wild';
 import { CURRENT_SAVE_VERSION, migrate } from '@/game/save/migrations';
 import { PET_SHAPES } from '@/gfx/pets';
-import { testState } from './helpers';
+import { defeat, testState } from './helpers';
 
 describe('datos de mascotas', () => {
   it('al menos 6 líneas evolutivas y 12 especies; 3 iniciales de fuego, agua y planta', () => {
@@ -117,16 +117,20 @@ describe('vínculo (captura)', () => {
   it('vincular una criatura debilitada la añade como mascota', () => {
     const g = new Game(testState());
     g.enemies = [];
-    addItem(g.state.player, createItem('runa_vinculo', 'comun', new Rng(1), { qty: 20 }));
+    addItem(g.state.player, createItem('runa_vinculo', 'comun', new Rng(1), { qty: 40 }));
     const p = g.playerPos;
     let caught = false;
     for (let i = 0; i < 20 && !caught; i++) {
       const e = g.spawnWildPet('guijarrin', { x: p.x, y: p.y - 2 });
       expect(e?.def.pet?.species).toBe('guijarrin');
       e!.hp = 1;
-      g.bindPet();
-      for (let k = 0; k < 50 && g.phase === 'enemies'; k++) g.update(0.25);
+      const b = g.beginBattle([e!]);
+      while (!b.awaiting && !b.ended) b.step();
+      const rune = g.state.player.inventory.find((x) => x.id === 'runa_vinculo')!;
+      expect(b.useItem(rune.uid, `e${e!.uid}`).ok).toBe(true);
+      if (b.ended) g.finishBattle();
       caught = g.state.pets.active?.species === 'guijarrin';
+      g.battle = null;
       g.enemies = [];
     }
     expect(caught).toBe(true);
@@ -183,12 +187,7 @@ describe('establo', () => {
   });
 });
 
-describe('mascota en combate', () => {
-  function settle(g: Game) {
-  if (g.phase === 'player' && g.combatTurn && g.actionUsed) g.waitTurn(); // economía de turno: acción hecha → fin de turno
-    for (let i = 0; i < 200 && g.phase === 'enemies'; i++) g.update(0.25);
-  }
-
+describe('mascota en batalla', () => {
   it('elegir inicial, atacar y recibir daño', () => {
     let hit = false;
     let hurt = false;
@@ -197,23 +196,20 @@ describe('mascota en combate', () => {
       g.enemies = [];
       expect(g.chooseStarter('chispon')).toBeNull();
       expect(g.chooseStarter('gotin')).not.toBeNull();
-      const u = g.pet!;
-      expect(u).not.toBeNull();
       const pi = g.petInstance!;
       pi.hp = 999;
-      const e = g.spawnEnemy('goblin', u.x + 1, u.y) ?? g.spawnEnemy('goblin', u.x - 1, u.y) ?? g.spawnEnemy('goblin', u.x, u.y + 1);
-      if (!e) continue;
-      e.alerted = true;
+      const e = g.spawnEnemy('goblin', g.playerPos.x + 2, g.playerPos.y + 2)!;
       e.hp = 200;
       e.maxHp = 200;
-      // El jugador se aleja para que el goblin vaya a por la mascota.
-      g.state.player.hp = 999;
-      for (let i = 0; i < 12; i++) {
-        g.waitTurn();
-        settle(g);
+      g.state.player.hp = g.state.player.maxHp = 999;
+      const b = g.beginBattle([e]);
+      expect(b.get('pet')).toBeDefined();
+      for (let i = 0; i < 60 && !b.ended; i++) {
+        b.step();
+        if (b.awaiting) b.defend();
+        if (e.hp < 200) hit = true;
+        if (pi.hp < 999) hurt = true;
       }
-      if (e.hp < 200) hit = true;
-      if (pi.hp < 999) hurt = true;
     }
     expect(hit).toBe(true);
     expect(hurt).toBe(true);
@@ -225,10 +221,21 @@ describe('mascota en combate', () => {
     g.chooseStarter('gotin');
     const pi = g.petInstance!;
     const xp0 = pi.xp + pi.level * 1000;
-    const p = g.playerPos;
-    const e = g.spawnEnemy('goblin', p.x, p.y - 2)!;
-    g.damageEnemy(e, 999, 'cortante');
+    const e = g.spawnEnemy('goblin', g.playerPos.x + 2, g.playerPos.y + 2)!;
+    defeat(g, e);
     expect(pi.xp + pi.level * 1000).toBeGreaterThan(xp0);
+  });
+
+  it('las órdenes a la mascota se pasan a la batalla', () => {
+    const g = new Game(testState());
+    g.enemies = [];
+    g.chooseStarter('gotin');
+    const move = g.petInstance!.moves[0]!;
+    g.setPetOrder(move);
+    const e = g.spawnEnemy('goblin', g.playerPos.x + 2, g.playerPos.y + 2)!;
+    const b = g.beginBattle([e]);
+    expect(b.petOrder).toBe(move);
+    expect(g.petOrder).toBeNull();
   });
 });
 

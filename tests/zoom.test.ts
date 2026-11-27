@@ -93,7 +93,8 @@ describe('ajuste de zoom', () => {
     const s = loadSettings();
     expect(s.joystick).toBe(true);
     expect(s.hand).toBe('izquierda');
-    expect(s.combatSpeed).toBe('lenta');
+    expect(s.battleSpeed).toBe('normal'); // «combatSpeed» antiguo: se descarta
+    expect('combatSpeed' in s).toBe(false);
     expect(s.zoomStep).toBe(0);
     expect(s.combatFx).toBe('completos');
   });

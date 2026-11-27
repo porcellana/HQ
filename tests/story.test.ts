@@ -8,7 +8,7 @@ import { createItem } from '@/game/items/items';
 import * as Quests from '@/game/quests/quests';
 import { CURRENT_SAVE_VERSION, migrate } from '@/game/save/migrations';
 import type { GameState } from '@/game/state';
-import { testState } from './helpers';
+import { defeat, testState } from './helpers';
 
 const MAIN = ['mq1_sombras', 'mq2_rastro', 'mq3_colmillos', 'mq4_seda', 'mq5_runas', 'mq6_velkar', 'mq7_amanecer'];
 
@@ -18,7 +18,7 @@ function killBoss(g: Game, dungeon: string): void {
   g.enterZone(`${dungeon}__jefe`, '1');
   const boss = g.enemies.find((e) => e.def.boss);
   expect(boss, `jefe en ${dungeon}`).toBeDefined();
-  g.damageEnemy(boss!, 99999, 'sagrado');
+  defeat(g, boss!);
 }
 
 describe('trama principal', () => {

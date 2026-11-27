@@ -12,13 +12,13 @@ RPG de mazmorreo por turnos (reglas D&D 5e), vista cenital 2D pixel art, móvil 
 
 ## Arquitectura
 - `src/data/**`: TODO el contenido (clases, enemigos, objetos, zonas ASCII, misiones, NPC, mazmorras, mascotas…); `registry.ts` lo carga solo; tipos en `schema.ts`. El motor (`src/game`, `src/engine`) no conoce contenido.
-- `src/game/game.ts`: estado y turnos (movimiento + 1 acción, enemigos, botín, misiones). `src/game/rules`: dados, XP (base 200, exp 1,6), derivados. `src/game/combat`: reglas, estados, enemigos. `src/game/save`: guardado versionado con migraciones (subir `CURRENT_SAVE_VERSION` si cambia el estado).
-- `src/gfx`: pixel art generado por código (tiles, sprites, partículas, cinemática) y `renderer.ts`. `src/ui`: HUD/pantallas en DOM (`styles.css` con bloques por versión, los últimos ganan).
+- `src/game/game.ts`: estado, mapa, encuentros (enemigo que te ve → `startEncounter` → `beginBattle`/`finishBattle`), botín, misiones. `src/game/battle/`: batalla por turnos (lógica pura sin DOM: `battle.ts`, `biome.ts`). `src/game/rules`: dados, XP (base 200, exp 1,6), derivados. `src/game/combat`: reglas, estados, enemigos (la batalla las reutiliza). `src/game/save`: guardado versionado con migraciones (subir `CURRENT_SAVE_VERSION` si cambia el estado).
+- `src/gfx`: pixel art generado por código (tiles, sprites, partículas, fondos de batalla) y `renderer.ts`. `src/ui`: HUD/pantallas en DOM; `battleScene.ts` es la escena de batalla (canvas + menú) (`styles.css` con bloques por versión, los últimos ganan).
 - `tests/`: vitest (≈400). `scripts/`: iconos y proyecto Android. CI `.github/workflows/android-apk.yml` publica web (GitHub Pages) y APK (Release con enlace fijo).
 
-## Estado (v0.6.0)
-Hitos 1-7 + identidad (trasfondos, talentos, compañeros, diálogos con tiradas), mascotas, combate táctico en el mapa con tarjeta de duelo, mapa grande, zoom, misiones claras, sonido. Encuentros aleatorios a nivel del jugador ±1.
+## Estado (v0.7.0)
+Hitos 1-7 + identidad (trasfondos, talentos, compañeros, diálogos con tiradas), mascotas, **batalla por turnos estilo Final Fantasy en escena aparte** (grupo a la derecha, enemigos a la izquierda, iniciativa, menú Atacar/Habilidad/Objeto/Defender/Huir, fondos por bioma; el combate táctico del mapa se eliminó), mapa grande, zoom, misiones claras, sonido. Encuentros aleatorios a nivel del jugador ±1. Ajuste «Velocidad de batalla».
 
 ## Pendiente (en este orden)
-1. Combate estilo Final Fantasy por turnos (escena aparte: grupo a un lado, enemigos al otro, menú Atacar/Magia/Objeto/Defender/Huir).
-2. Mundo procedural por semilla que se genera al explorar (biomas, aldeas/pueblos/ciudades, cuevas, mazmorras, misiones y objetos), coherente y con niveles ±1.
+1. Mundo procedural por semilla que se genera al explorar (biomas, aldeas/pueblos/ciudades, cuevas, mazmorras, misiones y objetos), coherente y con niveles ±1.
+2. Pulido de batalla: más animaciones por clase/enemigo, fondos por hora del día, selección de objetivo con información (nombre/nivel) al mantener pulsado.

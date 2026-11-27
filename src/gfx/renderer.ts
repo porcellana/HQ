@@ -7,7 +7,6 @@
  */
 import { Camera } from '@/engine/camera';
 import { clampStep, defaultZoom, stepLimits, tilesAcross, zoomForStep, zoomLevels } from '@/engine/zoom';
-import type { CombatCinema } from './cinema';
 import type { Point } from '@/engine/pathfinding';
 import { dangerLevel, dist } from '@/game/combat/rules';
 import { STATUS_INFO } from '@/game/combat/status';
@@ -22,6 +21,7 @@ import { itemDef, rarityOf } from '@/game/items/items';
 import type { Zone } from '@/game/world/zone';
 import { TILE, ctx2d, makeCanvas } from './canvas';
 import { PAL } from './palette';
+import { silhouette } from './silhouette';
 import { DEFAULT_HERO_COLORS, humanoidSprite, type HumanoidColors } from './sprites';
 import type { NpcDef } from '@/data/schema';
 import { getTileSprite, variantFor } from './tiles';
@@ -85,7 +85,6 @@ export class Renderer {
   /** Márgenes del HUD en px de pantalla (se convierten a mundo cada fotograma). */
   private insetPx = { top: 0, bottom: 0 };
   /** Cinemática de combate (temblor, zoom de acción, partículas…). */
-  cinema: CombatCinema | null = null;
   private vignetteCanvas: HTMLCanvasElement | null = null;
   /** devicePixelRatio efectivo (limitado a 3 por rendimiento). */
   pixelRatio = 1;
@@ -126,7 +125,7 @@ export class Renderer {
     this.step = clampStep(this.levels, this.defaultLevel, this.step);
     this.zoomTarget = zoomForStep(this.levels, this.defaultLevel, this.step);
     this.zoomCur = this.zoomTarget;
-    this.zoom = this.zoomCur * (this.cinema?.zoomMul ?? 1);
+    this.zoom = this.zoomCur;
     this.camera.viewW = w / this.zoom;
     this.camera.viewH = h / this.zoom;
     this.vignetteCanvas = null;
@@ -221,8 +220,7 @@ export class Renderer {
       this.zoomCur += (this.zoomTarget - this.zoomCur) * Math.min(1, dt * 9);
       if (Math.abs(this.zoomCur - this.zoomTarget) < 0.02) this.zoomCur = this.zoomTarget;
     }
-    const cin = this.cinema;
-    this.zoom = this.zoomCur * (cin?.zoomMul ?? 1);
+    this.zoom = this.zoomCur;
     const zoom = this.zoom;
     camera.viewW = canvas.width / zoom;
     camera.viewH = canvas.height / zoom;
@@ -232,20 +230,9 @@ export class Renderer {
     const zc = vol ? vol.base : this.getZoneCanvas(zone);
     const v = game.view;
 
-    // Cámara centrada en el jugador; en combate se desplaza suavemente hacia
-    // el actor en curso si está lejos, y vuelve al jugador después.
-    let tx = v.rx;
-    let ty = v.ry;
-    const ap = game.phase === 'enemies' ? game.actorPos() : null;
-    if (ap && Math.max(Math.abs(ap.x - v.rx), Math.abs(ap.y - v.ry)) > 3) {
-      tx = (v.rx + ap.x) / 2;
-      ty = (v.ry + ap.y) / 2;
-    }
-    // Durante un golpe la cámara encuadra a atacante y objetivo.
-    if (cin?.focus) {
-      tx = cin.focus.x;
-      ty = cin.focus.y;
-    }
+    // Cámara centrada en el jugador.
+    const tx = v.rx;
+    const ty = v.ry;
     if (this.camZone !== zone.id || Math.abs(this.camFX - tx) > 12 || Math.abs(this.camFY - ty) > 12) {
       this.camFX = tx;
       this.camFY = ty;
@@ -254,16 +241,14 @@ export class Renderer {
       const k = Math.min(1, dt * 5);
       this.camFX += (tx - this.camFX) * k;
       this.camFY += (ty - this.camFY) * k;
-      // Fuera de combate la cámara sigue al jugador sin retraso.
-      if (!game.inCombat) {
-        this.camFX = tx;
-        this.camFY = ty;
-      }
+      // La cámara sigue al jugador sin retraso.
+      this.camFX = tx;
+      this.camFY = ty;
     }
     camera.centerOn((this.camFX + 0.5) * TILE, (this.camFY + 0.5) * TILE, zone.width * TILE, zone.height * TILE);
     // Ajuste a píxel de pantalla para evitar costuras.
-    const camX = Math.round(camera.x * zoom) / zoom + (cin?.shakeX ?? 0);
-    const camY = Math.round(camera.y * zoom) / zoom + (cin?.shakeY ?? 0);
+    const camX = Math.round(camera.x * zoom) / zoom;
+    const camY = Math.round(camera.y * zoom) / zoom;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = PAL.black;
@@ -274,21 +259,16 @@ export class Renderer {
     if (vol) this.drawWater(vol, camX, camY);
 
     if (opts.grid) this.drawGrid(zone);
-    this.drawTargeting(game);
     this.drawExits(zone);
     this.drawPath(game);
     this.drawDarkness(game, camX, camY, opts.dayNight ?? false);
     this.drawFeatures(game);
-    this.drawHazards(game);
     this.drawLoot(game);
-    this.drawCombatMarks(game);
-    cin?.drawGhosts(ctx, silhouette);
     this.drawEntities(game, vol, camX, camY, opts.dayNight ?? false);
-    cin?.drawWorld(ctx);
     this.drawFx(game);
     this.drawFog(game, camX, camY);
     if (vol) this.drawLightGrade();
-    this.drawVignette(Math.max(cin?.vignette ?? 0, vol ? 0.4 : 0));
+    this.drawVignette(vol ? 0.4 : 0);
     this.drawExitPointers(game, camX, camY, opts.questGuide ?? true);
     if (opts.questGuide ?? true) this.drawQuestGuide(game, camX, camY);
   }
@@ -491,45 +471,7 @@ export class Renderer {
    * Casillas a las que puedes moverte en tu turno de combate (azul) con el
    * movimiento que te queda. Se cachean por posición y movimiento.
    */
-  private reachCache: { key: string; tiles: Map<number, number> } | null = null;
-  private drawReachable(game: Game): void {
-    if (!game.combatTurn || game.turnMove <= 0 || game.isMoving || game.targeting || game.attackMode) return;
-    const p = game.playerPos;
-    const key = `${game.zone.id}:${p.x},${p.y}:${game.turnMove}:${game.enemies.map((e) => `${e.x},${e.y}`).join(';')}`;
-    if (this.reachCache?.key !== key) this.reachCache = { key, tiles: game.reachableTiles() };
-    const { ctx } = this;
-    const w = game.zone.width;
-    const a = 0.2 + 0.06 * Math.sin(this.time * 3);
-    ctx.fillStyle = `rgba(90,160,255,${a.toFixed(3)})`;
-    ctx.strokeStyle = 'rgba(150,200,255,0.55)';
-    ctx.lineWidth = 0.6;
-    for (const k of this.reachCache.tiles.keys()) {
-      const x = k % w;
-      const y = (k - x) / w;
-      ctx.fillRect(x * TILE + 1, y * TILE + 1, TILE - 2, TILE - 2);
-      ctx.strokeRect(x * TILE + 1.3, y * TILE + 1.3, TILE - 2.6, TILE - 2.6);
-    }
-  }
 
-  /** Casillas al alcance de la habilidad elegida. */
-  private drawTargeting(game: Game): void {
-    this.drawReachable(game);
-    const sk = game.targeting;
-    if (!sk) return;
-    const { ctx } = this;
-    const p = game.playerPos;
-    const r = Math.max(1, sk.range);
-    const a = 0.18 + 0.08 * Math.sin(this.time * 5);
-    for (let y = p.y - r; y <= p.y + r; y++) {
-      for (let x = p.x - r; x <= p.x + r; x++) {
-        if (!game.zone.inBounds(x, y) || (x === p.x && y === p.y)) continue;
-        if (!game.zone.tileAt(x, y)?.walkable || !game.los(p, { x, y })) continue;
-        const enemy = game.enemyAt(x, y);
-        ctx.fillStyle = enemy ? `rgba(255,80,60,${(a + 0.25).toFixed(3)})` : `rgba(242,216,136,${a.toFixed(3)})`;
-        ctx.fillRect(x * TILE + 1, y * TILE + 1, TILE - 2, TILE - 2);
-      }
-    }
-  }
 
   /** Cofres, vetas de mineral y trampas descubiertas. */
   private drawFeatures(game: Game): void {
@@ -689,45 +631,6 @@ export class Renderer {
     ctx.fill();
   }
 
-  /**
-   * Marcas del combate: anillo pulsante bajo el actor en curso y enemigos a
-   * tu alcance resaltados cuando eliges «Atacar».
-   */
-  private drawCombatMarks(game: Game): void {
-    const { ctx } = this;
-    const pulse = 0.5 + 0.5 * Math.sin(this.time * 6);
-    if (game.attackMode) {
-      for (const e of game.attackTargets()) {
-        ctx.strokeStyle = `rgba(255,80,60,${(0.55 + 0.45 * pulse).toFixed(2)})`;
-        ctx.lineWidth = 1.2;
-        ctx.strokeRect(e.rx * TILE + 0.5, e.ry * TILE + 0.5, TILE - 1, TILE - 1);
-      }
-    }
-    if (!game.inCombat) return;
-    const a = game.currentActor;
-    const pos = a ? game.actorPos(a) : null;
-    if (!a || !pos) return;
-    // Usa la posición interpolada si existe, para que el anillo no salte.
-    let rx = pos.x;
-    let ry = pos.y;
-    if (a.kind === 'player') {
-      rx = game.view.rx;
-      ry = game.view.ry;
-    } else if (a.kind === 'enemy') {
-      const e = game.enemies.find((x) => x.uid === a.uid);
-      if (e) {
-        rx = e.rx;
-        ry = e.ry;
-      }
-    }
-    const color = a.kind === 'enemy' ? '255,90,70' : '160,240,140';
-    ctx.strokeStyle = `rgba(${color},${(0.5 + 0.5 * pulse).toFixed(2)})`;
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    ctx.ellipse(rx * TILE + 8, ry * TILE + 14.5, 6.5 + pulse, 2.6 + pulse * 0.4, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
   /** Compañero: sprite humanoide con barra de vida verde (gris si está caído). */
   private drawAlly(game: Game): void {
     const a = game.ally;
@@ -783,24 +686,6 @@ export class Renderer {
       ctx.fillStyle = `rgba(255,80,60,${(u.flashT * 0.4).toFixed(2)})`;
       ctx.fillRect(Math.round(x) + 3, Math.round(y) + 4, 10, 11);
     }
-    const max = Math.max(1, game.petStatsNow().hp);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(Math.round(x) + 1.5, Math.round(y) - 1.5, 13, 2.5);
-    ctx.fillStyle = '#5aa8f0';
-    ctx.fillRect(Math.round(x) + 2, Math.round(y) - 1, (12 * (pi.down ? 0 : pi.hp)) / max, 1.5);
-  }
-
-  /** Suelo ardiendo (talentos). */
-  private drawHazards(game: Game): void {
-    const { ctx } = this;
-    for (const hz of game.hazards) {
-      const flick = 0.35 + 0.2 * Math.sin(this.time * 9 + hz.x * 3 + hz.y);
-      ctx.fillStyle = `rgba(255,110,30,${flick.toFixed(3)})`;
-      ctx.fillRect(hz.x * TILE + 1, hz.y * TILE + 1, TILE - 2, TILE - 2);
-      ctx.fillStyle = `rgba(255,220,120,${(flick * 0.8).toFixed(3)})`;
-      const f = Math.floor(this.time * 6 + hz.x) % 3;
-      ctx.fillRect(hz.x * TILE + 4 + f * 3, hz.y * TILE + 8 - f, 2, 4);
-    }
   }
 
   private drawNpc(game: Game, n: NpcDef): void {
@@ -835,7 +720,7 @@ export class Renderer {
     // Fuera de la vista del jugador y lejos: no se dibuja. El radio de visión NO depende del
     // zoom: alejar el mapa no delata enemigos (los que te persiguen se ven a su alcance + 2).
     const dd = dist(e.x, e.y, p.x, p.y);
-    if (dd > PLAYER_SIGHT && !(e.alerted && dd <= e.def.sight + 2)) return;
+    if (dd > PLAYER_SIGHT) return;
     const bump = lungeOffset(e.bumpT);
     const x = e.rx * TILE + e.bumpDx * bump;
     const y = e.ry * TILE + e.bumpDy * bump;
@@ -869,29 +754,20 @@ export class Renderer {
       ctx.fillStyle = '#c8a0ff';
       ctx.fillText('salvaje', Math.round(x) + 8, Math.round(y) + 19);
     }
-    // Barra de vida, nivel y estados
-    if (e.alerted || e.hp < e.maxHp || e.def.boss) {
-      const w = 12;
+    // Nivel de peligro sobre la cabeza.
+    {
       const bx = Math.round(x) + 2;
       const by = Math.round(y) - 3;
-      ctx.fillStyle = '#000';
-      ctx.fillRect(bx - 0.5, by - 0.5, w + 1, 2.5);
-      ctx.fillStyle = e.def.boss ? '#a040ff' : '#d03030';
-      ctx.fillRect(bx, by, (w * Math.max(0, e.shownHp ?? e.hp)) / e.maxHp, 1.5);
       const danger = dangerLevel(e.def.level, game.state.player.level);
       const col = { trivial: '#8a8a8a', facil: '#80c080', normal: '#ece6d6', dificil: '#f0a040', mortal: '#ff4040' }[danger];
       ctx.font = 'bold 4px sans-serif';
-      ctx.textAlign = 'right';
+      ctx.textAlign = 'center';
       ctx.lineWidth = 1;
       ctx.strokeStyle = '#000';
       const label = `${danger === 'mortal' ? '☠' : ''}${e.def.level}`;
-      ctx.strokeText(label, bx - 1, by + 2.5);
+      ctx.strokeText(label, bx + 6, by + 1);
       ctx.fillStyle = col;
-      ctx.fillText(label, bx - 1, by + 2.5);
-      e.statuses.forEach((st, i) => {
-        ctx.fillStyle = STATUS_INFO[st.id].color;
-        ctx.fillRect(bx + i * 3, by + 2.5, 2, 2);
-      });
+      ctx.fillText(label, bx + 6, by + 1);
     }
     // Estados: tinte suave del sprite e iconos pulsantes sobre la cabeza.
     if (e.statuses.length) this.drawStatusMarks(e.statuses.map((s) => s.id), Math.round(x), Math.round(y), img);
@@ -899,7 +775,7 @@ export class Renderer {
 
   /** Tinte suave y pequeños iconos pulsantes de los estados alterados. */
   private drawStatusMarks(ids: Array<keyof typeof STATUS_INFO>, x: number, y: number, img: HTMLCanvasElement): void {
-    if (!ids.length || (this.cinema && this.cinema.level === 'minimos')) return;
+    if (!ids.length) return;
     const { ctx } = this;
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 5);
     ctx.globalAlpha = 0.14 + 0.1 * pulse;
@@ -1008,20 +884,12 @@ export class Renderer {
     const sy = Math.round(y + v.bumpDy * bump) + bob - 1;
     const sprite = humanoidSprite(this.heroColors);
     const img = v.facing === 'right' ? sprite.right : sprite.left;
-    if (game.combat.stealth > 0) ctx.globalAlpha = 0.45;
     ctx.drawImage(img, sx, sy);
     ctx.globalAlpha = 1;
     if (v.flashT > 0) {
       ctx.globalAlpha = v.flashT * 0.8;
       ctx.drawImage(silhouette(img, '#ff3030'), sx, sy);
       ctx.globalAlpha = 1;
-    }
-    if (game.combat.statuses.length) this.drawStatusMarks(game.combat.statuses.map((s) => s.id), sx, sy, img);
-    // Defendiendo: escudo sobre la cabeza.
-    if (game.defending) {
-      ctx.font = '7px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('🛡', sx + 8, sy - 2 + Math.sin(this.time * 3) * 0.8);
     }
   }
 
@@ -1089,22 +957,4 @@ export class Renderer {
     ctx.fillStyle = g;
     ctx.fillRect(camX, camY, camera.viewW, camera.viewH);
   }
-}
-
-/** Silueta de un sprite en un color (para el destello al recibir daño). */
-const silCache = new WeakMap<HTMLCanvasElement, Map<string, HTMLCanvasElement>>();
-function silhouette(img: HTMLCanvasElement, color = '#ffffff'): HTMLCanvasElement {
-  let m = silCache.get(img);
-  if (!m) silCache.set(img, (m = new Map()));
-  let c = m.get(color);
-  if (!c) {
-    c = makeCanvas(img.width, img.height);
-    const x = ctx2d(c);
-    x.drawImage(img, 0, 0);
-    x.globalCompositeOperation = 'source-in';
-    x.fillStyle = color;
-    x.fillRect(0, 0, c.width, c.height);
-    m.set(color, c);
-  }
-  return c;
 }

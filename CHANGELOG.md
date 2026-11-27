@@ -2,6 +2,15 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.7.0 · 2026-11-27 — Batalla por turnos estilo Final Fantasy
+
+- **Escena de batalla aparte** (vista lateral): tu grupo (jugador, compañero y mascota) a la derecha, los enemigos a la izquierda, sprites ampliados con respiración y fondo pixel art según la zona (pradera, bosque, montaña, cueva, cripta, galerías, puerto, aldea, interior). Se entra con una transición breve cuando un enemigo te ve o lo embistes.
+- **Turnos por iniciativa** (DES + bonos; el lobo actúa antes que tú) con barra de orden compacta. Menú táctil en una línea: Atacar, Habilidad (con coste y órdenes a la mascota), Objeto (incluye la Runa de vínculo), Defender y Huir. Sin casillas ni alcance; hechizos de área = todos los enemigos; curas y mejoras eligen aliado.
+- **Animaciones**: el atacante avanza y vuelve, destello, números flotantes, partículas por tipo de daño, desintegración al morir, sacudida suave y mensajes cortos con el nombre de la acción. Sin carteles grandes, zoom de cámara ni tarjeta de duelo.
+- Compañero y mascota actúan solos; jefes con fases e invocaciones, estados, resistencias, talentos, XP escalada, botín, misiones, huir con tirada y muerte/respawn siguen las reglas de siempre. Al ganar el enemigo sale del mapa; al huir vuelves con 8 turnos de inmunidad.
+- Ajustes: «Velocidad de batalla» (Normal/Rápida) sustituye a «Velocidad del combate»; «Efectos de batalla».
+- Lógica de batalla separada y testeable (`src/game/battle`, sin DOM) con tests nuevos. Eliminado el combate táctico del mapa (movimiento por casillas, tarjeta de duelo, barra de turnos, cinemática de cámara, registro de combate). El guardado no cambia (sin migración).
+
 ## v0.6.0 · 2026-11-27 — Volumen pseudo-3D
 
 - Muros, paredes, tejados, árboles, pinos, arbustos y rocas se dibujan con altura (cara frontal oscura + cara superior clara, luz arriba-izquierda) y se ordenan por fila: lo alto tapa lo de detrás y personajes/enemigos/mascotas pasan por delante o detrás.

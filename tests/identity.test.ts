@@ -12,7 +12,8 @@ import { SKILLS, isProficient, skillBonus, successChance } from '@/game/rules/sk
 import { CURRENT_SAVE_VERSION, migrate } from '@/game/save/migrations';
 import { createNewGame, recalcPlayer, type GameState } from '@/game/state';
 import { chooseTalent, eligibleTalents, talentOffer } from '@/game/talents';
-import { testState } from './helpers';
+import { defeat, testState } from './helpers';
+import { Battle } from '@/game/battle/battle';
 
 /** Rng que siempre saca el mínimo y siempre "acierta" las probabilidades. */
 class LowRng extends Rng {
@@ -27,9 +28,21 @@ class LowRng extends Rng {
   }
 }
 
-function settle(g: Game): void {
-  if (g.phase === 'player' && g.combatTurn && g.actionUsed) g.waitTurn(); // economía de turno: acción hecha → fin de turno
-  for (let i = 0; i < 300 && g.phase === 'enemies'; i++) g.update(0.25);
+/** Batalla contra enemigos recién creados; avanza hasta el turno del jugador. */
+function fight(g: Game, ...ids: string[]): Battle {
+  const es = ids.map((id, i) => g.spawnEnemy(id, g.playerPos.x + 2 + i, g.playerPos.y + 2)!);
+  const b = g.beginBattle(es);
+  while (!b.awaiting && !b.ended) b.step();
+  return b;
+}
+
+class HighRng extends Rng {
+  constructor() {
+    super(1);
+  }
+  override int(_min: number, max: number): number {
+    return max;
+  }
 }
 
 function gameWith(classId: string, opts: { level?: number; talents?: string[]; background?: string } = {}): Game {
@@ -45,16 +58,6 @@ function gameWith(classId: string, opts: { level?: number; talents?: string[]; b
   const g = new Game(s);
   g.enemies = [];
   return g;
-}
-
-function freeAround(g: Game, n: number, r = 2): Array<{ x: number; y: number }> {
-  const p = g.playerPos;
-  const out: Array<{ x: number; y: number }> = [];
-  for (let d = 1; d <= r && out.length < n; d++)
-    for (let dy = -d; dy <= d && out.length < n; dy++)
-      for (let dx = -d; dx <= d && out.length < n; dx++)
-        if (Math.max(Math.abs(dx), Math.abs(dy)) === d && g.freeForEnemy(p.x + dx, p.y + dy)) out.push({ x: p.x + dx, y: p.y + dy });
-  return out;
 }
 
 describe('habilidades sociales', () => {
@@ -156,53 +159,52 @@ describe('talentos', () => {
     expect(eligibleTalents(p).some((t) => t.id === offer[0]!.id)).toBe(false);
   });
 
-  it('suelo en llamas: la bola de fuego deja fuego que quema a los enemigos', () => {
+  it('suelo en llamas: la bola de fuego deja a los enemigos quemándose', () => {
     const g = gameWith('mago', { level: 6, talents: ['mago_suelo_llamas'] });
-    const [a] = freeAround(g, 40, 3).filter((p) => Math.max(Math.abs(p.x - g.playerPos.x), Math.abs(p.y - g.playerPos.y)) >= 2);
-    const e = g.spawnEnemy('orco_bruto', a!.x, a!.y)!;
-    e.alerted = true;
-    const fb = CLASSES.get('mago')!.skills.find((s) => s.id === 'bola_de_fuego')!;
-    g.useSkill(fb, e);
-    expect(g.hazards.length).toBeGreaterThan(0);
-    expect(g.hazardAt(e.x, e.y) || g.hazards.some((h) => Math.abs(h.x - e.x) <= 1 && Math.abs(h.y - e.y) <= 1)).toBeTruthy();
+    g.rng = new LowRng() as never; // las salvaciones de los orcos fallan
+    const b = fight(g, 'orco_bruto', 'orco_bruto');
+    expect(b.useSkill('bola_de_fuego').ok).toBe(true);
+    const burning = b.foes().filter((f) => f.statuses.some((s) => s.id === 'quemado'));
+    expect(burning.length).toBeGreaterThan(0);
   });
 
   it('sed de sangre: matar cura', () => {
     const g = gameWith('guerrero', { level: 2, talents: ['gue_sed_sangre'] });
     g.state.player.stats.FUE = 30;
     g.state.player.hp = 3;
-    const [s] = freeAround(g, 1, 1);
-    const e = g.spawnEnemy('rata_gigante', s!.x, s!.y)!;
-    e.hp = 1;
-    for (let i = 0; i < 10 && g.enemies.includes(e); i++) {
-      g.playerAttack(e, {});
+    g.rng = new HighRng() as never; // 20 naturales: siempre impactas
+    const b = fight(g, 'rata_gigante');
+    const e = b.foes()[0]!;
+    e.enemy!.hp = 1;
+    for (let i = 0; i < 12 && !e.dead; i++) {
+      if (b.awaiting) b.attack(e.id);
+      else b.step();
     }
-    expect(g.enemies.includes(e)).toBe(false);
+    expect(e.dead).toBe(true);
     expect(g.state.player.hp).toBeGreaterThanOrEqual(6);
   });
 
   it('contraataque: si te fallan cuerpo a cuerpo, devuelves el golpe', () => {
     const g = gameWith('guerrero', { level: 2, talents: ['gue_contraataque'] });
-    const [s] = freeAround(g, 1, 1);
-    const e = g.spawnEnemy('goblin', s!.x, s!.y)!;
-    e.alerted = true;
+    const es = [g.spawnEnemy('goblin', g.playerPos.x + 2, g.playerPos.y + 2)!];
     g.rng = new LowRng(); // el goblin saca un 1 (pifia) y el 50 % "acierta"
-    const msgs: string[] = [];
-    g.events.on('message', (m) => msgs.push(m.text));
-    g.waitTurn();
-    settle(g);
-    expect(msgs.some((m) => m.includes('Contraataque'))).toBe(true);
+    const b = g.beginBattle(es);
+    const events: string[] = [];
+    for (let i = 0; i < 20 && !events.some((t) => t.includes('Contraataque')); i++) {
+      b.step();
+      for (const ev of b.drain()) if (ev.t === 'info') events.push(ev.text);
+      if (b.awaiting) b.defend();
+    }
+    expect(events.some((m) => m.includes('Contraataque'))).toBe(true);
   });
 
   it('proyectiles rebotantes: el hechizo alcanza a un segundo enemigo', () => {
     const g = gameWith('mago', { level: 2, talents: ['mago_rebote'] });
-    const spots = freeAround(g, 2, 1);
-    const e1 = g.spawnEnemy('orco_bruto', spots[0]!.x, spots[0]!.y)!;
-    const e2 = g.spawnEnemy('orco_bruto', spots[1]!.x, spots[1]!.y)!;
-    const pm = CLASSES.get('mago')!.skills.find((s) => s.id === 'proyectil_magico')!;
-    g.useSkill(pm, e1);
-    expect(e1.hp).toBeLessThan(e1.maxHp);
-    expect(e2.hp).toBeLessThan(e2.maxHp);
+    const b = fight(g, 'orco_bruto', 'orco_bruto');
+    const [e1, e2] = b.foes();
+    expect(b.useSkill('proyectil_magico', e1!.id).ok).toBe(true);
+    expect(e1!.enemy!.hp).toBeLessThan(e1!.enemy!.maxHp);
+    expect(e2!.enemy!.hp).toBeLessThan(e2!.enemy!.maxHp);
   });
 
   it('los talentos de estadística suben la CA y la vida', () => {
@@ -227,24 +229,21 @@ describe('compañeros', () => {
     expect(g.state.party.hp).toBe(g.allyStats().maxHp);
   });
 
-  it('ataca a los enemigos y los enemigos le atacan a él', () => {
+  it('en batalla ataca a los enemigos y los enemigos le atacan a él', () => {
     let hitByAlly = 0;
     let allyHurt = 0;
     for (let n = 0; n < 15; n++) {
       const g = gameWith('guerrero');
       g.recruitCompanion('brann');
-      const a = g.ally!;
-      // Un goblin pegado al compañero y lejos del jugador
-      g.state.player.hp = 999;
-      const spot = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: a.x + dx!, y: a.y + dy! })).find((s) => g.freeForEnemy(s.x, s.y) && Math.max(Math.abs(s.x - g.playerPos.x), Math.abs(s.y - g.playerPos.y)) >= 2);
-      if (!spot) continue;
-      const e = g.spawnEnemy('orco_bruto', spot.x, spot.y)!;
-      e.alerted = true;
-      for (let t = 0; t < 6; t++) {
-        g.waitTurn();
-        settle(g);
+      g.state.player.hp = g.state.player.maxHp = 999;
+      const e = g.spawnEnemy('orco_bruto', g.playerPos.x + 2, g.playerPos.y + 2)!;
+      const b = g.beginBattle([e]);
+      expect(b.get('ally')).toBeDefined();
+      for (let t = 0; t < 40 && !b.ended; t++) {
+        b.step();
+        if (b.awaiting) b.defend();
       }
-      if (e.hp < e.maxHp || !g.enemies.includes(e)) hitByAlly++;
+      if (e.hp < e.maxHp) hitByAlly++;
       if (g.state.party.hp < g.allyStats().maxHp || g.state.party.down) allyHurt++;
     }
     expect(hitByAlly).toBeGreaterThan(5);
@@ -264,13 +263,15 @@ describe('compañeros', () => {
     expect(Math.max(Math.abs(g.ally!.x - p.x), Math.abs(g.ally!.y - p.y))).toBeLessThanOrEqual(3);
   });
 
-  it('caído no muere: se levanta al acabar el combate y se cura al descansar', () => {
+  it('caído no muere: se levanta al acabar la batalla y se cura al descansar', () => {
     const g = gameWith('guerrero');
     g.recruitCompanion('sira');
     g.state.party.hp = 0;
     g.state.party.down = true;
-    g.waitTurn();
-    settle(g);
+    const e = g.spawnEnemy('goblin', g.playerPos.x + 2, g.playerPos.y + 2)!;
+    const b = g.beginBattle([e]);
+    expect(b.get('ally')).toBeUndefined(); // caído: no lucha
+    defeat(g, e);
     expect(g.state.party.down).toBe(false);
     expect(g.state.party.hp).toBeGreaterThan(0);
     g.state.player.gold = 100;

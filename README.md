@@ -34,6 +34,7 @@ v0.2 se centra en el estilo Baldur's Gate / D&D en tres fases:
 | B | **Mundo con sorpresas**: eventos al viajar (emboscadas, viajeros, mercaderes raros) resueltos con tiradas, misiones con varios finales, mapa del mundo con viaje rápido | ⏳ |
 | — | **v0.2.1**: joystick arreglado, diario con ficha y misión seguida, guía GPS opcional y mapa grande | ✅ |
 | — | **v0.3.0 Mascotas**: criaturas que luchan contigo, aprenden, evolucionan y entrenan en el establo | ✅ |
+| — | **v0.7.0**: batalla por turnos estilo Final Fantasy en escena aparte (lógica pura en `src/game/battle`) | ✅ |
 | — | **v0.4.0**: combate turno a turno (paso a paso, barra de turnos, cartel de acción, menú de acciones, Defender), seguimiento de misiones estilo WoW, mascotas fáciles de encontrar y como recompensa | ✅ |
 | C | **Expediciones roguelike**: elegir camino entre salas (combate, tesoro, evento, tienda), recompensas a elegir y mejoras que se conservan aunque mueras | ⏳ |
 
@@ -135,40 +136,45 @@ Otros comandos:
   (**⟲** vuelve al normal). En PC: rueda del ratón o teclas `+` `−` `0`.
 - **Esperar**: pasa un turno sin moverte.
 - **Menú**: pausa, guardar, ajustes y salir. En Android, el botón *Atrás* abre/cierra la pausa.
-- **Combate por turnos (v0.4.1, economía de acciones estilo D&D 5e / Baldur's Gate 3)**:
-  cuando un enemigo te ve, la barra inferior cambia al **menú de acciones** y arriba aparece
-  la **barra de turnos** (retratos en orden con el actor en curso resaltado y su vida).
-  En tu turno («TU TURNO») tienes **👣 movimiento + 1 ⚔ acción**:
-  - **Movimiento** en casillas (las diagonales cuentan 1): **Guerrero 5, Mago 5, Clérigo 5,
-    Pícaro 6**. El trasfondo *Cazador* y el talento *Pies ligeros* dan +1. *Ralentizado* lo
-    divide entre 2. Las casillas **azules** son las que alcanzas: tócalas para moverte. Si
-    tocas más lejos, avanzas lo máximo posible. Puedes moverte, actuar y seguir moviéndote.
-  - **⚔ Atacar**: si sólo hay un enemigo a tu alcance, le atacas; si hay varios, se resaltan
-    en rojo y tocas uno. Tocar a un enemigo lejano te acerca (no ataca solo al llegar).
-  - **✨ Habilidad**, **🧪 Objeto**, **🛡 Defender** (+2 CA hasta tu próximo turno),
-    **👟 Correr** (gastas la acción y sumas otra vez tu movimiento), **🏃 Huir** y
-    **🔮 Vincular**: todas gastan **la acción** (sólo una por turno; luego se apagan).
-  - **🐾 Órdenes** a la mascota no gastan la acción.
-  - **⏭ Terminar turno** cuando quieras. El turno termina solo si ya usaste la acción y no
-    te queda movimiento. Contador en el menú: «👣 3/5 · ⚔ Acción lista / usada».
-  - Fuera de combate se sigue caminando libre y fluido.
-  - **Enemigos y aliados** también tienen movimiento por turno: se acercan (o se colocan a
-    distancia con línea de visión, los arqueros y hechiceros) y **atacan en el mismo turno**.
-    Por defecto `speed` 1 → 4 casillas y 2 → 7; con `movement` en el enemigo se fija a mano
-    (lobo 7, arañas 5-6, zombi 2, jefes 4-5). Compañero 5 casillas, mascota 6.
-- **Velocidad del combate** (Ajustes): **Paso a paso** (por defecto: cada compañero, mascota
-  y enemigo hace su acción, se muestra en un **cartel** con la tirada —«Goblin arquero falla
-  su arco corto (7 vs tu CA 16)»— y el juego espera a que pulses **▶ Siguiente** o toques la
-  pantalla), **Lenta** (pausa de ~1 s entre acciones) o **Normal** (rápida). Un anillo bajo los
-  pies marca quién actúa y la cámara se acerca a él si está lejos.
-- **Atacar** fuera del menú: toca a un enemigo pegado a ti (o empuja el joystick contra él).
-- **Habilidades** fuera de combate: botones encima de la barra inferior.
+- **Batalla por turnos estilo Final Fantasy (v0.7.0)**: cuando un enemigo te ve (aparece un
+  «!» sobre él) o lo embistes con el joystick, se entra en una **escena aparte** (transición
+  breve). Tu grupo —jugador, compañero y mascota— a la **derecha** y los enemigos a la
+  **izquierda**, con sprites ampliados que respiran; el fondo (cielo/pared y suelo con
+  perspectiva, pixel art por código) depende de la zona (pradera, bosque, montaña, cueva,
+  cripta, galerías, puerto, aldea, interior).
+  - **Turnos por iniciativa**: 10 + 2×mod(DES) + bonos (talento *Pies ligeros*, trasfondo
+    *Cazador*); aliados y mascota según su perfil; enemigos 6 + 5×`speed` + nivel/4 (−4 si
+    `slow`). Ralentizado resta 5 y actúa uno de cada dos turnos. Una **barra de orden**
+    compacta arriba muestra los próximos actores.
+  - **Menú en una línea**: ⚔ Atacar (tocas al enemigo) · ✨ Habilidad (desplegable con coste;
+    incluye 🐾 Órdenes a la mascota) · 🎒 Objeto (pociones, Runa de vínculo…) · 🛡 Defender
+    (+2 CA hasta tu próximo turno) · 🏃 Huir (DES + competencia vs 10 + nivel máximo; los
+    jefes no te dejan). Hechizos de **área** = todos los enemigos; curas y mejoras = eliges
+    aliado; un único objetivo posible se elige solo. No hay casillas ni alcance.
+  - **Animaciones**: el atacante avanza y vuelve, destello, números flotantes, partículas por
+    tipo de daño (`src/gfx/particles.ts`), desintegración al morir, sacudida suave; mensajes
+    cortos con el nombre de la acción («Bola de fuego»). Sin carteles grandes, sin zoom de
+    cámara, sin tarjeta de duelo.
+  - **Al ganar**: XP escalada por nivel (repartida con compañero/mascota), oro y botín directo
+    a la mochila, progreso de misiones, subida de nivel y jefe/mazmorra completados; el
+    enemigo se quita del mapa. **Al huir** vuelves al mapa con 8 turnos de inmunidad. **Al
+    caer** despiertas en el templo como siempre.
+  - **Velocidad de batalla** (Ajustes): *Normal* o *Rápida*; **Efectos de batalla**:
+    Completos / Reducidos / Mínimos.
+  - Fuera de batalla todo sigue igual: caminas libre y los enemigos deambulan por el mapa.
+    Compañero y mascota te siguen. ✨ Habilidad en el mapa sólo sirve para las curativas.
+  - *Decisiones de diseño (v0.7.0)*: el grupo que entra son los enemigos a ≤3 casillas del que
+    te vio (máx. 4); iniciativa fija por ronda (sin tirada); los enemigos eligen objetivo al
+    azar ponderado (jugador 3, compañero 2, mascota 1; el sigilo te saca de la lista); el
+    suelo ardiendo (talento) pasa a ser **quemadura**; *Carnicería* da un golpe gratis a otro
+    enemigo; el compañero caído se levanta al acabar y la mascota se recupera en el mapa.
+- **Habilidades** en el mapa: desplegable encima de la barra inferior (sólo curativas).
 - Toca a un enemigo lejano para ver su nivel, vida y peligro. El número sobre su
   barra de vida es su nivel (rojo con ☠ = mortal para ti).
-- En PC: flechas/WASD para moverse, espacio para esperar, 1-5 habilidades, F huir,
+- En PC: flechas/WASD para moverse, espacio para esperar,
   C ficha, I mochila, J diario, Q poción, Esc pausa.
 - **Barra de abajo (una línea):** ⏳ Esperar · ✨ Habilidad (desplegable con tus habilidades,
-  la poción rápida y, en combate, Correr/Vincular/Órdenes) · 🎒 Mochila · 📜 Ficha ·
+  la poción rápida) · 🎒 Mochila · 📜 Ficha ·
   📖 Misiones (menú claro: qué falta, qué llevas, dónde ir y la recompensa) · ⚙ Ajustes (aquí también están Guardar partida, Cómo se juega y Guardar y salir).
 - Las casillas que brillan en dorado son **salidas** a otras zonas (rotuladas cuando estás
   cerca). Ya no hay flechas doradas en el borde: la única flecha es la **brújula verde** de
@@ -280,7 +286,8 @@ src/
     camera.ts  input.ts  loop.ts  events.ts
   game/                             Reglas y estado de la partida (sin DOM, testeable)
     state.ts                        GameState: todo lo que se guarda
-    game.ts                         Movimiento por turnos, zonas y salidas
+    game.ts                         Mapa, zonas, salidas, encuentros y entrada/salida de batalla
+    battle/                         Batalla por turnos (battle.ts, biome.ts): lógica pura
     settings.ts                     Ajustes del jugador
     rules/dice.ts                   Dados D&D (1d20, 2d6+3…), modificadores
     rules/progression.ts            Curva de XP y niveles
@@ -509,40 +516,26 @@ encounters: {
 },
 ```
 
-### Combate cinematográfico (v0.5)
+### Batalla (v0.7)
 
-La lógica del combate es instantánea y determinista (la que usan los tests); la
-**presentación** la reproduce en el tiempo. Todo el ritmo se ajusta en
-`src/data/config/combat_pacing.ts` (`lead` = segundos hasta el impacto mientras rueda el d20,
-`perActor`, `afterPlayer`, `moveDelay`, `nextHold`, `cardHoldMs`).
+La **lógica** vive en `src/game/battle/battle.ts` (sin DOM, determinista con la semilla; la que
+usan los tests): `new Battle({ state, rng, enemies })`; `step()` avanza los turnos de IA hasta
+el del jugador; los comandos `attack`, `useSkill`, `useItem`, `defend`, `flee` resuelven su
+acción; todo lo que pasa se anota en una cola de eventos (`drain()`: `turn`, `say`, `attack`,
+`hit`, `miss`, `heal`, `status`, `death`, `summon`, `phase`, `end`…). `Game.startEncounter`
+prepara la entrada, `Game.beginBattle` crea la batalla y `Game.finishBattle` aplica el
+resultado (XP, mascota, mapa, muerte). La **presentación** es `src/ui/battleScene.ts` (canvas +
+menú DOM), con fondos en `src/gfx/battleBg.ts` y bioma en `src/game/battle/biome.ts`.
 
-- **Velocidad del combate** (Ajustes): *Paso a paso* (nadie actúa hasta pulsar ▶ Siguiente, que
-  espera ~1 s para que se vea el golpe), *Lenta* (cada acción dura ~2 s completa) y *Normal*
-  (más ágil, con los efectos básicos).
-- **Efectos de combate** (Ajustes): *Completos* (por defecto), *Reducidos* (sin zoom de acción,
-  temblor ni hit-stop, la mitad de partículas) y *Mínimos* (solo lo esencial: sin viñeta ni
-  capas de sonido).
-- **Tarjeta de duelo** (`src/ui/duelCard.ts` + `src/game/combat/duelBook.ts`): una por acción,
-  con una fila por objetivo (torbellino, bola de fuego…). Los golpes automáticos repetidos
-  (proyectil mágico ×3) se acumulan en una fila.
-- **Registro de combate** (`src/ui/combatLogPanel.ts`): las últimas 6 líneas, coloreadas (daño
-  recibido en rojo, causado en dorado, curación en verde, estados en morado, fallos en gris);
-  no se desvanece mientras dura el combate. Tócalo para ver el historial completo.
-- **Cinemática** (`src/gfx/cinema.ts`): zoom de acción (×1,28 como máximo, RELATIVO al zoom del
-  jugador), temblor según el daño, *hit-stop* de ~80 ms y cámara lenta en críticos y golpes de
-  gracia, viñeta oscura, anticipación y embestida, destello al recibir daño, enemigos que se
-  desintegran, botín que salta con el color de su rareza y (sin banners grandes de inicio ni de victoria: la XP sale pequeña sobre el personaje).
-- **Partículas** (`src/gfx/particles.ts`): pool de 150 sin crear objetos por fotograma.
+- **Efectos de batalla** (Ajustes): *Completos* (por defecto), *Reducidos* (menos partículas) y
+  *Mínimos* (sin sacudida y casi sin partículas). **Velocidad de batalla**: *Normal* o *Rápida*
+  (animaciones al 55 %).
+- **Partículas** (`src/gfx/particles.ts`): pool sin crear objetos por fotograma.
   **Para añadir el efecto de un tipo de daño nuevo**: añade el tipo en `DamageType`
-  (`src/data/schema.ts`), escribe un emisor en `EMITTERS` (partículas) y, si quieres un
-  dibujo propio (como el arco de tajo o el relámpago), un caso en `CombatCinema.addShape`;
-  el sonido va en `IMPACT_SFX` (`src/app.ts`) y en `RECIPES` (`src/audio/sfx.ts`).
+  (`src/data/schema.ts`), escribe un emisor en `EMITTERS` (partículas); el sonido va en
+  `IMPACT_SFX` (`src/ui/battleScene.ts`) y en `RECIPES` (`src/audio/sfx.ts`).
 - **Sonido** en capas, generado por código: silbido al atacar, un impacto distinto por tipo de
-  daño, crítico grave, campana al empezar tu turno, «ding» más agudo cuanto más rara es la pieza y
-  acorde ascendente en la victoria.
-- **Saltar ronda**: con 3+ actores pendientes (`SKIP_MIN_ACTORS`).
-- Los efectos visibles de cada golpe (número, destello, barra de vida, vida del HUD y mensajes
-  del registro) esperan al `lead` para no estropear el suspense del d20.
+  daño, crítico grave, «ding» al curar y acorde ascendente en la victoria.
 
 ### Zoom del mapa (v0.5)
 
@@ -560,7 +553,6 @@ La lógica del combate es instantánea y determinista (la que usan los tests); l
   los que te persiguen a su alcance de detección + 2) **no depende del zoom**: alejar el mapa
   enseña más terreno pero no delata criaturas lejanas. Con el mapa alejado, un velo suave más
   allá de ese radio lo explica. El minimapa y el mapa grande no cambian.
-- El zoom de acción del combate multiplica al del jugador (nunca lo sustituye).
 
 ### Reglas de combate (resumen)
 

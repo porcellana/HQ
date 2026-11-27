@@ -24,12 +24,9 @@ export interface Settings {
   dayNight: boolean;
   /** Guía de misión (flecha tipo GPS hacia el objetivo de la misión seguida). */
   questGuide: boolean;
-  /** Velocidad del combate: paso a paso (pulsar «Siguiente»), lenta o normal. */
-  combatSpeed: 'paso' | 'lenta' | 'normal';
-  /**
-   * Efectos de combate (v0.5): completos (zoom, temblor, partículas y sonido en capas),
-   * reducidos (sin zoom ni temblor, menos partículas) o mínimos (solo lo esencial).
-   */
+  /** Velocidad de batalla (v0.7): normal o rápida (animaciones más cortas). */
+  battleSpeed: 'normal' | 'rapida';
+  /** Efectos de batalla: completos, reducidos (menos partículas) o mínimos (sin sacudidas). */
   combatFx: 'completos' | 'reducidos' | 'minimos';
   /** Zoom del mapa: 0 = por defecto, +1 un nivel más cerca, −1 más lejos (ver engine/zoom.ts). */
   zoomStep: number;
@@ -48,7 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   volume: 'medio',
   dayNight: true,
   questGuide: true,
-  combatSpeed: 'paso',
+  battleSpeed: 'normal',
   combatFx: 'completos',
   zoomStep: 0,
   volume3d: true,
@@ -60,7 +57,9 @@ export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    const parsed = JSON.parse(raw) as Partial<Settings>;
+    const parsed = JSON.parse(raw) as Partial<Settings> & { combatSpeed?: string };
+    // v0.7: «Velocidad del combate» (paso/lenta/normal) pasa a «Velocidad de batalla».
+    delete parsed.combatSpeed;
     return { ...DEFAULT_SETTINGS, ...parsed };
   } catch {
     return { ...DEFAULT_SETTINGS };

@@ -13,7 +13,7 @@ import { bfs, generateFloor } from '@/game/world/dungeonGen';
 import { dungeonZoneDef, emptyWorld, featureKey, floorZoneId, parseDungeonZone } from '@/game/world/dungeons';
 import { Zone } from '@/game/world/zone';
 import type { GameState } from '@/game/state';
-import { testState } from './helpers';
+import { defeat, testState } from './helpers';
 
 const opts = { width: 40, height: 40, rooms: [7, 10] as [number, number], chests: [3, 3] as [number, number], traps: [3, 3] as [number, number], ores: [3, 3] as [number, number], down: true };
 
@@ -113,9 +113,8 @@ describe('datos de mazmorras', () => {
 });
 
 // ---------------------------------------------------------------- en partida
-function settle(g: Game) {
-  if (g.phase === 'player' && g.combatTurn && g.actionUsed) g.waitTurn(); // economía de turno: acción hecha → fin de turno
-  for (let i = 0; i < 300 && g.phase === 'enemies'; i++) g.update(0.25);
+function settle(_g: Game) {
+  /* (sin turnos de enemigos en el mapa: no hay nada que esperar) */
 }
 
 /** Coloca al jugador al lado de un elemento y lo usa. */
@@ -255,7 +254,7 @@ describe('mazmorras en partida', () => {
     const exit3 = g.zone.exits.find((e) => e.digit === '3')!;
     g.useExit(exit3);
     expect(g.zone.id).toContain('__jefe'); // cerrado hasta matar al jefe
-    g.damageEnemy(boss, 9999, 'cortante');
+    defeat(g, boss);
     expect(g.state.flags['boss_rey_goblin']).toBe(true);
     expect(g.state.world.dungeons['cueva_goblin']!.cleared).toBe(true);
     // Salir y volver a entrar: nueva semilla

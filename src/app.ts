@@ -4,7 +4,6 @@
  * Une motor, partida, interfaz y guardado: menú principal, inicio/carga de
  * partida, menú de pausa, autoguardado y ciclo de vida de Android.
  */
-import { CAPTION_HOLD_MS } from '@/data/config/combat_pacing';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { getClass, getZoneDef } from '@/data/registry';
@@ -12,16 +11,15 @@ import { GameLoop } from '@/engine/loop';
 import { Input } from '@/engine/input';
 import { randomSeed } from '@/engine/rng';
 import { Game, type LevelUpEvent } from '@/game/game';
+import type { Battle } from '@/game/battle/battle';
 import { SaveManager, exportCode, importCode } from '@/game/save/saveManager';
 import { showExport, showImport } from '@/ui/transfer';
 import { defaultStores } from '@/game/save/storage';
 import { loadSettings, saveSettings, type Settings } from '@/game/settings';
 import { createNewGame, type GameState } from '@/game/state';
 import { Renderer } from '@/gfx/renderer';
-import { CombatCinema } from '@/gfx/cinema';
-import type { CombatFxEvent } from '@/game/combat/presentation';
-import type { DamageType } from '@/data/schema';
-import type { SfxId, DiceEvent } from '@/game/game';
+import type { DiceEvent } from '@/game/game';
+import { BattleScene } from '@/ui/battleScene';
 import { heroColors } from '@/gfx/sprites';
 import { creationScreen } from '@/ui/creation';
 import { characterSheet } from '@/ui/sheet';
@@ -41,12 +39,6 @@ import { helpScreen } from '@/ui/help';
 import { victoryScreen } from '@/ui/victory';
 import { Sfx } from '@/audio/sfx';
 
-/** Sonido de impacto por tipo de daño (capa sobre «golpe»/«herido»). */
-const IMPACT_SFX: Record<DamageType, SfxId> = {
-  cortante: 'imp_tajo', perforante: 'imp_contundente', contundente: 'imp_contundente', fuego: 'imp_fuego', frio: 'imp_hielo',
-  rayo: 'imp_rayo', veneno: 'imp_veneno', sagrado: 'imp_sagrado', necrotico: 'imp_sombra', arcano: 'imp_sombra',
-};
-
 /** Cada cuántos turnos se autoguarda además de al cambiar de zona. */
 const AUTOSAVE_EVERY_TURNS = 40;
 
@@ -64,14 +56,8 @@ export class App {
   private readonly sfx = new Sfx();
   /** La pantalla final espera a que se cierre el diálogo de la misión. */
   private pendingVictory = false;
-  /** Cinemática de combate (temblor, zoom de acción, partículas…). */
-  private readonly cinema = new CombatCinema();
-  /** Seguimiento del combate para banners (COMBATE / VICTORIA) y registro. */
-  private combatWas = false;
-  private combatEnding = false;
-  private readonly summary = { xp: 0, gold: 0, kills: 0, items: [] as Array<{ name: string; rarity: number }> };
-  /** Instante hasta el que los mensajes aún van al registro de combate (tras acabar). */
-  private logUntil = 0;
+  /** Escena de batalla abierta (el mapa queda en pausa debajo). */
+  private scene: BattleScene | null = null;
   /** Subidas de nivel que esperan a que acabe el combate y su banner de victoria. */
   private pendingLevelUps: LevelUpEvent[] = [];
 
@@ -80,7 +66,6 @@ export class App {
     private readonly ui: HTMLElement,
   ) {
     this.renderer = new Renderer(canvas);
-    this.renderer.cinema = this.cinema;
     this.loop = new GameLoop((dt) => this.tick(dt));
     new Input(canvas, {
       onTap: (x, y) => this.onTap(x, y),
@@ -92,6 +77,7 @@ export class App {
         if (this.game) this.game.heldDir = null;
       },
       onKey: (code) => {
+        if (this.scene) return;
         if (code === 'Space' || code === 'Period') this.game?.waitTurn();
         if (code === 'Escape') this.togglePause();
         if (code === 'KeyC') this.showSheet();
@@ -99,12 +85,6 @@ export class App {
         if (code === 'KeyJ') this.showJournal();
         if (code === 'KeyM') this.showZoneMap();
         if (code === 'KeyQ') this.game?.quickPotion();
-        if (code === 'KeyF') this.game?.flee();
-        const n = Number(code.replace('Digit', ''));
-        if (code.startsWith('Digit') && n >= 1 && this.game) {
-          const sk = this.game.cls.skills.filter((s) => s.unlockLevel <= this.game!.state.player.level)[n - 1];
-          if (sk) this.game.selectSkill(sk);
-        }
       },
     });
     window.addEventListener('resize', () => this.layout());
@@ -211,11 +191,9 @@ export class App {
     this.hud?.applySettings(this.settings);
     if (this.game) {
       this.game.stepDuration = this.settings.moveSpeed === 'rapida' ? 0.08 : 0.14;
-      this.game.combatSpeed = this.settings.combatSpeed;
     }
     this.sfx.enabled = this.settings.sound;
     this.sfx.volume = this.settings.volume;
-    this.cinema.setLevel(this.settings.combatFx);
     this.renderer.setZoomStep(this.settings.zoomStep);
     // El tamaño de interfaz cambia el layout: recalculamos el canvas.
     requestAnimationFrame(() => this.layout());
@@ -296,10 +274,9 @@ export class App {
       onInventory: () => this.showInventory(),
       onJoystick: (d) => this.setHeldDir(d),
       onSkill: (sk) => {
-        game.selectSkill(sk);
-        hud.combatUi.skillsOpen = false;
+        const err = game.useMapSkill(sk.id);
+        if (err) hud.pushMessage(err, 'warn');
       },
-      onFlee: () => game.flee(),
       onPotion: () => {
         const err = game.quickPotion();
         if (err) hud.pushMessage(err, 'warn');
@@ -308,30 +285,7 @@ export class App {
       onPetOrders: () => {
         if (!this.screen && !this.pauseClose) petOrders(this.ui, game, () => this.showPets());
       },
-      onBind: () => {
-        const err = game.bindPet();
-        if (err) hud.pushMessage(err, 'warn');
-      },
-      onAttack: () => {
-        const err = game.startAttack();
-        if (err) hud.pushMessage(err, 'warn');
-      },
-      onDefend: () => game.defend(),
-      onDash: () => {
-        const err = game.dash();
-        if (err) hud.pushMessage(err, 'warn');
-      },
-      onContinue: () => {
-        if (game.holdT > 0) return;
-        hud.duel.dismiss();
-        game.continueTurn();
-      },
       onZoom: (dir) => this.zoomMap(dir),
-      onSkipRound: () => {
-        hud.duel.flush();
-        game.skipRound();
-      },
-      onItems: () => hud.combatUi.openItems(game, (m) => hud.pushMessage(m, 'warn')),
       onOpenQuest: (id) => {
         if (!this.screen && !this.pauseClose) this.showJournal(id);
       },
@@ -339,45 +293,23 @@ export class App {
     this.hud = hud;
     this.ui.prepend(hud.root);
     hud.setGame(game);
-    // Presentación cinematográfica: la interfaz la activa (en tests el motor es instantáneo).
-    game.cinematic = true;
-    this.cinema.reset();
-    this.combatWas = false;
-    this.combatEnding = false;
     this.pendingLevelUps = [];
+    this.scene?.destroy();
+    this.scene = null;
     this.applyLook();
     this.applySettings();
 
-    // Mensajes: durante el combate van al REGISTRO persistente (no se desvanecen); el resto, como avisos.
-    game.events.on('message', (m) => {
-      const send = () => {
-        const inLog = m.kind !== 'info' && (game.inCombat || performance.now() < this.logUntil || hud.combatLog.isActive);
-        if (inLog) hud.combatLog.push(m.text, m.kind, m.cat);
-        else hud.pushMessage(m.text, m.kind);
-      };
-      if (m.delay && m.delay > 0) window.setTimeout(send, m.delay * 1000);
-      else send();
-    });
-    // Tiradas: las de ataque van a la tarjeta de duelo; el resto (huir, trampas, vínculo) al dado clásico.
+    game.events.on('message', (m) => hud.pushMessage(m.text, m.kind));
+    // Tiradas fuera de batalla (trampas, diálogos): dado clásico.
     game.events.on('dice', (d) => this.onDice(d));
-    game.events.on('cfx', (ev) => this.onCombatFx(ev));
-    // Combate por turnos: cartel de las acciones sin ataque (moverse, esperar) y aviso de «TU TURNO».
-    game.events.on('actorAction', ({ actor, name, lines }) => {
-      // Si la acción tuvo tarjeta de duelo, no se duplica con el cartel.
-      if (hud.duel.takeFresh()) return;
-      const hold = CAPTION_HOLD_MS[game.combatSpeed];
-      hud.combatUi.showAction(actor.kind === 'player' ? `Tú (${name})` : name, lines, actor.kind === 'enemy', hold);
+    // Batalla: aviso breve («!») y escena aparte.
+    game.events.on('battleSoon', () => {
+      this.sfx.play('combate');
+      buzz(this.settings.vibration, 25);
     });
-    game.events.on('playerTurn', () => {
-      hud.duel.dismiss();
-      if (game.combatSpeed === 'normal') return;
-      // Sin cartel grande de «TU TURNO»: sólo un sonido suave y una vibración corta.
-      if (this.settings.combatFx !== 'minimos') this.sfx.play('turno');
-      buzz(this.settings.vibration, 15);
-      window.setTimeout(() => hud.combatUi.hideAction(), 1400);
-    });
+    game.events.on('battleStart', ({ battle }) => this.openBattle(game, battle));
     game.events.on('playerHurt', ({ amount }) => buzz(this.settings.vibration, Math.min(80, 15 + amount * 4)));
-    // La subida de nivel espera a que acabe el combate y su banner de victoria (sin solaparse).
+    // La subida de nivel espera a que acabe la batalla.
     game.events.on('levelUp', (ev) => this.pendingLevelUps.push(ev));
     game.events.on('playerDied', () => this.showDeath());
     game.events.on('petTapped', () => {
@@ -395,8 +327,6 @@ export class App {
     });
     game.events.on('npcTalk', ({ npc }) => this.showNpcDialog(npc));
     game.events.on('zoneChanged', ({ zone, firstVisit }) => {
-      this.cinema.reset();
-      hud.duel.flush();
       hud.showBanner(zone.def.name, firstVisit ? zone.def.description : undefined);
       buzz(this.settings.vibration, 20);
       void this.autosave('cambio de zona');
@@ -421,7 +351,6 @@ export class App {
     const colors = heroColors(cls.look, p.portrait);
     this.renderer.heroColors = colors;
     this.hud.setPortrait(colors);
-    this.hud.combatUi.heroColors = colors;
     this.hud.setResource(cls.resource.short, cls.resource.color);
   }
 
@@ -472,11 +401,7 @@ export class App {
       inventoryScreen(
         game,
         () => this.setScreen(null),
-        () => {
-          // Usar un objeto en combate gasta el turno: cerramos para que se vea.
-          if (game.phase === 'enemies') this.setScreen(null);
-          void this.autosave('mochila');
-        },
+        () => void this.autosave('mochila'),
       ),
     );
   }
@@ -595,113 +520,60 @@ export class App {
       this.renderer.setInsets(ins.top * dpr, ins.bottom * dpr);
     }
     const blocked = !!this.ui.querySelector('.modal-back, .dialog-back');
-    // La cinemática marca el factor de tiempo: 0 en el «hit-stop», 0,4 en cámara lenta.
-    const scale = this.cinema.update(dt, game);
-    if (!this.pauseClose && !this.screen && !blocked) game.update(dt * scale);
-    this.trackCombat(game, blocked);
+    if (!this.pauseClose && !this.screen && !blocked) game.update(dt);
+    this.trackLevelUps(game, blocked);
     if (this.pendingVictory && !this.pauseClose && !this.screen && !blocked) {
       this.pendingVictory = false;
       this.setScreen(victoryScreen(game.state, () => this.setScreen(null), () => void this.quitToMenu()));
     }
+    // Con la escena de batalla abierta, el mapa no se dibuja (ahorra batería).
+    if (this.scene) return;
     this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, volume: this.settings.volume3d, questGuide: this.settings.questGuide });
     this.hud?.update(game, dt);
     this.hud?.zoom.update(this.renderer.zoomStep, this.renderer.zoomLimits);
   }
 
-  // ------------------------------------------------------- combate cinematográfico
-  /** Inicio y fin del combate: banners, registro y subidas de nivel en cola. */
-  private trackCombat(game: Game, blocked: boolean): void {
-    const hud = this.hud;
-    if (!hud) return;
-    const inCombat = game.inCombat && !game.isDead;
-    if (inCombat && !this.combatWas) {
-      // Empieza un combate (sin cartel grande: sólo un sonido suave).
-      this.combatWas = true;
-      this.combatEnding = false;
-      game.fled = false;
-      Object.assign(this.summary, { xp: 0, gold: 0, kills: 0, items: [] });
-      hud.combatLog.reset();
-      hud.combatLog.setActive(true);
-      if (this.settings.combatFx !== 'minimos') this.sfx.play('combate');
-    } else if (!inCombat && this.combatWas && !this.combatEnding) {
-      this.combatEnding = true;
-    }
-    if (this.combatEnding) {
-      // Esperamos a que la tarjeta de duelo y el golpe final terminen de verse.
-      const settled = hud.duel.idleFor(1300) && game.holdT <= 0 && !game.awaitingContinue;
-      if (game.isDead || settled) {
-        this.combatEnding = false;
-        this.combatWas = false;
-        hud.duel.flush();
-        // Sin banner de «¡VICTORIA!»: la XP ya sale pequeña flotando sobre el personaje.
-        this.logUntil = performance.now() + 4500;
-        window.setTimeout(() => {
-          if (!game.inCombat) hud.combatLog.setActive(false);
-        }, 4500);
-      }
-    }
-    // Subidas de nivel: tras el combate, y sin otro diálogo abierto.
-    if (this.pendingLevelUps.length && !blocked && !this.pauseClose && !this.screen && !game.inCombat && !this.combatWas) {
+  // ------------------------------------------------------------------- batalla
+  private openBattle(game: Game, battle: Battle): void {
+    if (this.scene || !this.hud) return;
+    game.heldDir = null;
+    this.hud.dismissDrawer();
+    this.scene = new BattleScene({
+      root: this.ui,
+      game,
+      battle,
+      heroColors: this.renderer.heroColors,
+      speed: this.settings.battleSpeed,
+      fx: this.settings.combatFx,
+      sfx: (id) => this.sfx.play(id),
+      vibrate: (ms) => buzz(this.settings.vibration, ms),
+      onFinish: () => {
+        this.scene?.destroy();
+        this.scene = null;
+        game.finishBattle();
+        if (!game.isDead) void this.autosave('batalla');
+      },
+    });
+  }
+
+  /** Subidas de nivel: tras la batalla, y sin otro diálogo abierto. */
+  private trackLevelUps(game: Game, blocked: boolean): void {
+    if (this.pendingLevelUps.length && !blocked && !this.pauseClose && !this.screen && !this.scene && !game.battle) {
       const list = this.pendingLevelUps.splice(0);
       for (const ev of list) this.showLevelUp(ev);
     }
   }
 
-  private posOf(game: Game, a: { kind: 'player' | 'ally' | 'pet' | 'enemy'; uid?: number }): { x: number; y: number } | null {
-    return game.actorPos(a);
-  }
-
-  /** Tirada: ataques y salvaciones de combate → tarjeta de duelo; el resto → dado clásico. */
+  /** Tirada fuera de batalla (trampas, diálogos, vínculo): dado clásico. */
   private onDice(d: DiceEvent): void {
-    const game = this.game;
-    const hud = this.hud;
-    if (!game || !hud) return;
-    if (d.attacker && d.defender) {
-      hud.duel.onDice(d);
-      this.cinema.onDuelStart(this.posOf(game, d.attacker), this.posOf(game, d.defender), d.lead ?? 0);
-      // Silbido del arma al empezar el ataque.
-      if (this.settings.combatFx !== 'minimos') this.sfx.play('whoosh', Math.max(0, (d.lead ?? 0) - 0.15));
-    } else hud.dice.show(d);
-  }
-
-  /** Evento de presentación del motor: tarjeta, partículas, temblor y sonido por tipo. */
-  private onCombatFx(ev: CombatFxEvent): void {
-    const game = this.game;
-    const hud = this.hud;
-    if (!game || !hud) return;
-    hud.duel.onCfx(ev);
-    this.cinema.onEvent(ev, game);
-    const layers = this.settings.combatFx !== 'minimos';
-    if (ev.type === 'hit') {
-      if (layers && ev.dmgType) this.sfx.play(IMPACT_SFX[ev.dmgType], ev.lead);
-      if (layers && ev.crit) this.sfx.play('critico_grave', ev.lead);
-    } else if (ev.type === 'kill') {
-      this.summary.kills++;
-      this.summary.xp += ev.xp;
-      this.summary.gold += ev.gold;
-      this.summary.items.push(...ev.items);
-      if (layers) {
-        this.sfx.play('desintegra', ev.lead + 0.05);
-        const rank = ev.items.reduce((m, it) => Math.max(m, it.rarity), -1);
-        // «Ding» más agudo cuanto más rara es la mejor pieza (o la moneda si solo hay oro).
-        if (rank >= 0) this.sfx.play('ding', ev.lead + 0.4, 1 + rank * 0.18);
-        else if (ev.gold > 0) this.sfx.play('moneda', ev.lead + 0.4);
-      }
-    }
+    this.hud?.dice.show(d);
   }
 
   private onTap(sx: number, sy: number): void {
     if (!this.game || this.pauseClose || this.screen || this.ui.querySelector('.modal-back, .dialog-back')) return;
     // Un toque en el mapa con el desplegable de habilidades abierto sólo lo cierra.
     if (this.hud?.dismissDrawer()) return;
-    // Paso a paso: tocar la pantalla también sirve como «Siguiente».
-    if (this.game.awaitingContinue) {
-      if (this.game.holdT <= 0) {
-        this.hud?.duel.dismiss();
-        this.game.continueTurn();
-      }
-      return;
-    }
+    if (this.scene || this.game.battle || this.game.pendingBattle) return;
     const t = this.renderer.screenToTile(sx, sy);
     this.game.tapTile(t.x, t.y);
   }

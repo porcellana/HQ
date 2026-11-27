@@ -7,6 +7,7 @@ import { levelProgress } from '@/game/rules/progression';
 import type { Settings } from '@/game/settings';
 import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
 import { h } from './dom';
+import * as Pets from '@/game/pets/pets';
 import { petName } from '@/game/pets/pets';
 import type { SkillDef } from '@/data/schema';
 import { DiceRoller } from './dice';
@@ -15,11 +16,7 @@ import { Minimap } from './minimap';
 import { SkillBar } from './skillbar';
 import * as Quests from '@/game/quests/quests';
 import { QuestTracker } from './questTracker';
-import { CombatUi } from './combatUi';
-import { CombatLogPanel } from './combatLogPanel';
-import { DuelCard } from './duelCard';
 import { ZoomControls } from './zoomControls';
-import { actorName, actorSprite } from './actorSprite';
 
 export interface HudActions {
   onWait(): void;
@@ -31,21 +28,12 @@ export interface HudActions {
   onInventory(): void;
   onJoystick(dir: { dx: number; dy: number } | null): void;
   onSkill(skill: SkillDef): void;
-  onFlee(): void;
   onMinimapTap(x: number, y: number): void;
   onPotion(): void;
   onPetOrders(): void;
-  onBind(): void;
-  onAttack(): void;
-  onDefend(): void;
-  onDash(): void;
-  onContinue(): void;
-  onItems(): void;
   onOpenQuest(id: string | null): void;
   /** Zoom del mapa: +1 acercar, −1 alejar, 0 restablecer. */
   onZoom(dir: -1 | 0 | 1): void;
-  /** «Saltar ronda» (combate paso a paso con muchos actores). */
-  onSkipRound(): void;
 }
 
 function bar(kind: string, thin = false): { el: HTMLDivElement; fill: HTMLElement; label: HTMLElement } {
@@ -70,13 +58,9 @@ export class Hud {
   private readonly actionBar: HTMLDivElement;
   readonly skillBar: SkillBar;
   readonly dice = new DiceRoller();
-  /** Tarjeta de duelo, registro de combate, banners y controles de zoom (v0.5). */
-  readonly duel: DuelCard;
-  readonly combatLog: CombatLogPanel;
   readonly zoom: ZoomControls;
-  /** Partida enlazada (nombres y sprites de la tarjeta de duelo). */
-  private game: Game | null = null;
-  private heroColors: HumanoidColors | null = null;
+  /** Desplegable de habilidades abierto. */
+  skillsOpen = false;
   private bannerTimer = 0;
   private resourceShort = 'PM';
   /** Última firma de datos mostrada, para no tocar el DOM si no cambia nada. */
@@ -88,8 +72,7 @@ export class Hud {
   private petSig = '';
   private layoutTick = 0;
   readonly tracker: QuestTracker;
-  readonly combatUi: CombatUi;
-  /** Columna izquierda bajo el panel: barra de turnos, estados y misiones. */
+  /** Columna izquierda bajo el panel. */
   private readonly leftCol: HTMLDivElement;
   /** Botón ✨ de la barra de exploración (abre el desplegable de habilidades). */
   private readonly drawerBtn: HTMLButtonElement;
@@ -123,7 +106,7 @@ export class Hud {
       h('button', { onClick: fn, attrs: { 'aria-label': label } }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
     // Barra inferior de exploración (una sola línea): accesos directos a todo.
     this.drawerBtn = btn('✨', 'Habilidad', () => {
-      this.combatUi.skillsOpen = !this.combatUi.skillsOpen;
+      this.skillsOpen = !this.skillsOpen;
     });
     this.questsBtn = btn('📖', 'Misiones', actions.onJournal);
     this.actionBar = h('div', { class: 'action-bar' }, [
@@ -137,39 +120,14 @@ export class Hud {
 
     // El desplegable de habilidades se cierra al elegir cualquier opción.
     const closing = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A): void => {
-      this.combatUi.skillsOpen = false;
+      this.skillsOpen = false;
       fn(...a);
     };
-    this.skillBar = new SkillBar(
-      closing(actions.onSkill), closing(actions.onDash), closing(actions.onPotion), closing(actions.onBind), closing(actions.onPetOrders),
-    );
-    this.duel = new DuelCard(
-      {
-        name: (a) => (this.game ? actorName(this.game, a) : ''),
-        sprite: (a) => (this.game ? actorSprite(this.game, a, this.heroColors) : null),
-      },
-      () => this.game?.combatSpeed ?? 'normal',
-    );
-    this.combatLog = new CombatLogPanel(document.getElementById('ui') ?? document.body);
+    this.skillBar = new SkillBar(closing(actions.onSkill), closing(actions.onPotion));
     this.zoom = new ZoomControls(actions.onZoom);
     this.minimap.onTapTile = actions.onMinimapTap;
     this.tracker = new QuestTracker(actions.onOpenQuest, () => void 0);
-    this.combatUi = new CombatUi(document.getElementById('ui') ?? document.body, {
-      onAttack: actions.onAttack,
-      onToggleSkills: () => {
-        this.combatUi.skillsOpen = !this.combatUi.skillsOpen;
-      },
-      onDefend: actions.onDefend,
-      onDash: actions.onDash,
-      onWait: actions.onWait,
-      onFlee: actions.onFlee,
-      onBind: actions.onBind,
-      onPetOrders: actions.onPetOrders,
-      onContinue: actions.onContinue,
-      onSkipRound: actions.onSkipRound,
-    });
-    this.combatUi.onItems = actions.onItems;
-    this.leftCol = h('div', { class: 'hud-left' }, [this.combatUi.turnBar, this.skillBar.statusRow]);
+    this.leftCol = h('div', { class: 'hud-left' }, []);
     this.root = h('div', { class: 'hud passthrough' }, [
       h('div', { class: 'hud-top' }, [panel, this.minimap.el]),
       this.leftCol,
@@ -181,18 +139,12 @@ export class Hud {
       this.tracker.el,
       this.skillBar.el,
       this.actionBar,
-      this.combatUi.menu,
-      this.combatUi.nextBtn,
-      this.combatUi.skipBtn,
-      // Pila de mensajes de combate (registro, cartel y tarjeta de duelo): pegada
-      // justo encima de los botones de combate para no tapar el mapa.
-      h('div', { class: 'combat-stack' }, [this.combatLog.el, this.combatUi.caption, this.duel.el]),
     ]);
   }
 
-  /** Enlaza la partida (para los retratos y nombres de la tarjeta de duelo). */
-  setGame(game: Game): void {
-    this.game = game;
+  /** Enlaza la partida. */
+  setGame(_game: Game): void {
+    /* (reservado) */
   }
 
   applySettings(s: Settings): void {
@@ -206,36 +158,20 @@ export class Hud {
 
   /** Altura en px CSS tapada por el panel superior y la barra de acciones. */
   insets(): { top: number; bottom: number } {
-    // Arriba: panel de vida y, si hay, la fila de estados/objetivo.
-    // (El seguimiento de misiones es texto translúcido: no empuja la cámara.)
-    const hudBottom = this.root.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0;
-    const row = this.skillBar.statusRow;
-    const rowBottom = row.childElementCount ? row.getBoundingClientRect().bottom : 0;
-    const tb = this.combatUi.turnBar;
-    const tbBottom = tb.style.display !== 'none' && tb.childElementCount ? tb.getBoundingClientRect().bottom : 0;
-    const top = Math.max(hudBottom, rowBottom, tbBottom);
-    // Abajo: la barra de acciones, el menú de combate o la de habilidades (lo que esté visible más arriba).
-    // (El desplegable de habilidades es transitorio: no empuja la cámara.)
-    const tops = [this.actionBar, this.combatUi.menu, this.combatUi.nextBtn]
-      .filter((el) => el.style.display !== 'none' && el.childElementCount + (el.textContent ? 1 : 0) > 0)
-      .map((el) => el.getBoundingClientRect().top)
-      .filter((t) => t > 0);
-    const barTop = tops.length ? Math.min(...tops) : window.innerHeight;
-    // En combate se reserva sitio para la tira de mensajes que aparece sobre los botones
-    // (así el personaje no queda tapado por la tarjeta de duelo).
-    const reserve = this.root.classList.contains('in-combat') ? 54 : 0;
-    return { top: top + 4, bottom: Math.max(0, window.innerHeight - barTop) + 4 + reserve };
+    const top = this.root.querySelector('.hud-top')?.getBoundingClientRect().bottom ?? 0;
+    const barTop = this.actionBar.style.display !== 'none' ? this.actionBar.getBoundingClientRect().top : 0;
+    const bar = barTop > 0 ? barTop : window.innerHeight;
+    return { top: top + 4, bottom: Math.max(0, window.innerHeight - bar) + 4 };
   }
 
   /** Cierra el desplegable de habilidades si estaba abierto. Devuelve true si lo cerró. */
   dismissDrawer(): boolean {
-    if (!this.combatUi.skillsOpen) return false;
-    this.combatUi.skillsOpen = false;
+    if (!this.skillsOpen) return false;
+    this.skillsOpen = false;
     return true;
   }
 
   setPortrait(colors: HumanoidColors): void {
-    this.heroColors = colors;
     const c = this.portrait.getContext('2d')!;
     c.imageSmoothingEnabled = false;
     c.fillStyle = '#000';
@@ -267,7 +203,7 @@ export class Hud {
   update(game: Game, dt: number): void {
     const p = game.state.player;
     const prog = levelProgress(p.xp);
-    const hpNow = game.hudHp;
+    const hpNow = p.hp;
     const sig = `${p.name}|${p.level}|${p.gold}|${hpNow}/${p.maxHp}|${p.mp}/${p.maxMp}|${p.xp}|${p.attributePoints}`;
     if (sig !== this.lastSig) {
       this.lastSig = sig;
@@ -286,15 +222,10 @@ export class Hud {
     this.minimap.draw(game.zone, game.view.rx, game.view.ry, dt);
     this.skillBar.update(game);
     this.tracker.update(game);
-    this.combatUi.update(game);
-    // En combate el menú de acciones sustituye a la barra normal; las habilidades se despliegan aparte.
-    const combat = game.inCombat && !game.isDead;
-    this.actionBar.style.display = combat ? 'none' : '';
-    // El desplegable de habilidades sólo se ve mientras está abierto (en combate y fuera).
-    this.skillBar.el.style.display = this.combatUi.skillsOpen ? '' : 'none';
-    this.drawerBtn.classList.toggle('active', this.combatUi.skillsOpen);
+    this.actionBar.style.display = game.battle || game.pendingBattle ? 'none' : '';
+    this.skillBar.el.style.display = this.skillsOpen && !game.battle ? '' : 'none';
+    this.drawerBtn.classList.toggle('active', this.skillsOpen);
     this.questsBtn.classList.toggle('alert', Quests.activeQuests(game.state).some((q) => Quests.isReady(game.state, q)));
-    this.root.classList.toggle('in-combat', combat);
     // Compañero: nombre y vida
     const cd = game.companionDef;
     const party = game.state.party;
@@ -307,7 +238,7 @@ export class Hud {
     }
     // Mascota: nombre, nivel y vida (tócala para darle órdenes)
     const pi = game.petInstance;
-    const pmax = pi ? game.petStatsNow().hp : 0;
+    const pmax = pi ? Pets.petStats(pi).hp : 0;
     const psig = pi ? `${pi.uid}|${pi.species}|${pi.nickname ?? ''}|${pi.hp}|${pmax}|${pi.down}|${pi.level}|${game.petOrder ?? ''}` : '';
     if (psig !== this.petSig) {
       this.petSig = psig;

@@ -76,12 +76,11 @@ export function settingsScreen(
   return h('div', { class: 'screen' }, [
     h('h2', { text: 'Ajustes' }),
     h('div', { class: 'settings-list' }, [
-      row('Velocidad del combate', 'combatSpeed', [
-        { value: 'paso', label: 'Paso a paso' },
-        { value: 'lenta', label: 'Lenta' },
+      row('Velocidad de batalla', 'battleSpeed', [
         { value: 'normal', label: 'Normal' },
+        { value: 'rapida', label: 'Rápida' },
       ]),
-      row('Efectos de combate', 'combatFx', [
+      row('Efectos de batalla', 'combatFx', [
         { value: 'completos', label: 'Completos' },
         { value: 'reducidos', label: 'Reducidos' },
         { value: 'minimos', label: 'Mínimos' },
