@@ -2,6 +2,14 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.9.3 · 2026-11-27 — Batalla más espectacular
+
+- **Ataques con carácter**: tajos con estela, estocadas, golpes contundentes con onda de choque y salto, garras, flechas con trayectoria en arco, proyectiles y **explosiones por elemento** (fuego, hielo con esquirlas, rayo quebrado, veneno, luz sagrada, sombra, arcano); carga de energía al lanzar y salvas a varios objetivos.
+- **Impacto**: hit-stop corto, sacudida, destello, deformación del sprite; **críticos** con estrella, destello de pantalla y doble tajo; vibración también al crítico propio.
+- **Números de daño con estilo** (crítico dorado con pop, resistido gris, vulnerable naranja ↑, curación verde, fallo cursivo que se desliza), barras de vida con estela de daño y color por nivel.
+- **Curaciones** con columna de luz, **mejoras** con aura de anillos, entrada de enemigos (los jefes caen con temblor y destello), muerte con destello y desintegración (más larga en jefes), aura de color bajo los pies según el estado.
+- **Escenarios**: parallax suave, partículas ambientales por bioma en dos capas (hojas, nieve, brasas, esporas, niebla, burbujas, polvo), viñeta y tinte de iluminación. Código en `gfx/battleFx.ts` (lógica pura, con tests) y `ui/battleFxDraw.ts`.
+
 ## v0.9.1 · 2026-11-27 — Mascotas: especies, evoluciones ramificadas y poderes
 
 - **42 especies** (antes 15) con sprites nuevos (zorro, pájaro, serpiente, escarabajo y medusa) y dos tipos nuevos, **hielo** ❄️ y **rayo** ⚡ (8 tipos con su tabla de eficacia). Hábitats también en el mundo procedural: `bioma:<id>` (nieve, montaña, costa, desierto, pantano, bosque, pradera) y `lugar:<cueva|mazmorra|ruinas>`; las etapas 2 y 3 sólo salen en zonas de nivel 8+ y 16+.

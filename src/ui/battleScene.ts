@@ -19,7 +19,7 @@ import { biomeOf, type Biome } from '@/game/battle/biome';
 import { STATUS_INFO } from '@/game/combat/status';
 import { itemDef } from '@/game/items/items';
 import * as Pets from '@/game/pets/pets';
-import { makeBattleBackground, ambientColor } from '@/gfx/battleBg';
+import { makeBattleBackground } from '@/gfx/battleBg';
 import { monsterSprite } from '@/gfx/monsters';
 import { LEVEL_DENSITY, ParticlePool, emitDissolve, emitHeal, emitImpact, emitStatusPuff, emitTrail, type FxLevel } from '@/gfx/particles';
 import { PAL } from '@/gfx/palette';
@@ -27,6 +27,8 @@ import { petSprite } from '@/gfx/pets';
 import { silhouette } from '@/gfx/silhouette';
 import { itemIconElement } from '@/gfx/items';
 import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
+import { ambientPos, ambientSpec, attackKind, damageStyle, elementOf, ghostStep, healStyle, hitStop, hpColor, missStyle, type AmbientSpec, type NumStyle } from '@/gfx/battleFx';
+import { drawArrow, drawAura, drawCritStar, drawExplosion, drawHealLight, drawOrb, drawShock, drawSlash, drawThrust, makeVignette } from './battleFxDraw';
 import { h } from './dom';
 
 export interface BattleSceneDeps {
@@ -74,6 +76,9 @@ interface Unit {
   /** Mensaje de nombre (enemigos). */
   name: string;
   enter: number;
+  /** Estela de daño de la barra de vida y deformación al golpear. */
+  hpGhost: number;
+  squash: number;
 }
 
 interface FloatText {
@@ -84,6 +89,15 @@ interface FloatText {
   size: number;
   t: number;
   life: number;
+  pop: number;
+  kind: string;
+}
+
+/** Efecto temporal en pantalla (explosiones, luz...). */
+interface Fx {
+  t: number;
+  life: number;
+  draw(ctx: CanvasRenderingContext2D, k: number): void;
 }
 
 interface Tween {
@@ -110,6 +124,13 @@ export class BattleScene {
   private units = new Map<string, Unit>();
   private pool = new ParticlePool(220);
   private floats: FloatText[] = [];
+  private fxs: Fx[] = [];
+  /** Dibujos de un solo fotograma (proyectiles en vuelo). */
+  private immediate: Array<(ctx: CanvasRenderingContext2D) => void> = [];
+  private hitStopT = 0;
+  private screenFlash = 0;
+  private vignette: HTMLCanvasElement | null = null;
+  private amb: AmbientSpec;
   private tweens: Tween[] = [];
   private bg: HTMLCanvasElement | null = null;
   private biome: Biome;
@@ -124,6 +145,7 @@ export class BattleScene {
   private density: number;
   private speedK: number;
   private activeId = '';
+  private lastAtk: { kind: ReturnType<typeof attackKind>; el: ReturnType<typeof elementOf>; color: string; from: string } | null = null;
   private shakeMag = 0;
   private shakeT = 0;
   private tint: { color: string; a: number } | null = null;
@@ -140,6 +162,7 @@ export class BattleScene {
   constructor(private readonly d: BattleSceneDeps) {
     const zone = d.game.zone.def;
     this.biome = biomeOf({ id: zone.id, kind: zone.kind, ...(zone.darkness !== undefined ? { darkness: zone.darkness } : {}), dungeon: zone.dungeon, generated: zone.generated });
+    this.amb = ambientSpec(this.biome);
     this.density = LEVEL_DENSITY[d.fx];
     this.speedK = d.speed === 'rapida' ? 0.55 : 1;
     this.canvas = h('canvas', { class: 'b-canvas' });
@@ -193,6 +216,7 @@ export class BattleScene {
     // Escala de los sprites (16 px de píxel art): enteros para que se vean nítidos.
     this.S = Math.max(3, Math.min(7, Math.floor(Math.min(this.W / 5.0, this.H / 4.2) / 16)));
     this.bg = makeBattleBackground(this.W, this.H, this.biome, 7);
+    this.vignette = makeVignette(this.W, this.H, this.amb.tint);
   }
 
   private spriteOf(c: Combatant): HTMLCanvasElement {
@@ -223,7 +247,7 @@ export class BattleScene {
     const u: Unit = {
       id: c.id, c, img, sil: silhouette(img, '#ffffff'), hx: 0, hy: 0, x: 0, y: 0, ox: 0, oy: 0, k: this.S + (c.boss ? 2 : 0), big: c.boss,
       phase: Math.random() * 6, flash: 0, shake: 0, alpha: entering ? 0 : 1, dissolve: 0, noise,
-      hpShown: b.hp(c), maxHp: b.maxHp(c), hpTarget: b.hp(c), dead: false, name: c.name, enter: entering ? 0 : 1,
+      hpShown: b.hp(c), maxHp: b.maxHp(c), hpTarget: b.hp(c), dead: false, name: c.name, enter: entering ? 0 : 1, hpGhost: b.hp(c), squash: 0,
     };
     this.units.set(c.id, u);
     return u;
@@ -281,8 +305,17 @@ export class BattleScene {
     this.raf = requestAnimationFrame((t) => this.frame(t));
   }
 
-  private update(dt: number): void {
-    this.time += dt;
+  private update(dtRaw: number): void {
+    this.time += dtRaw;
+    // Hit-stop: la acción se congela unas centésimas (los efectos de brillo siguen).
+    let dt = dtRaw;
+    if (this.hitStopT > 0) {
+      this.hitStopT -= dtRaw;
+      dt = 0;
+    }
+    this.screenFlash = Math.max(0, this.screenFlash - dtRaw * 5);
+    for (const f of this.fxs) f.t += dtRaw;
+    this.fxs = this.fxs.filter((f) => f.t < f.life);
     for (const t of [...this.tweens]) {
       t.t += dt;
       const k = Math.min(1, t.t / t.d);
@@ -293,17 +326,19 @@ export class BattleScene {
       }
     }
     this.pool.update(dt);
-    for (const f of this.floats) f.t += dt;
+    for (const f of this.floats) f.t += dtRaw;
     this.floats = this.floats.filter((f) => f.t < f.life);
     if (this.shakeT > 0) this.shakeT -= dt;
     for (const u of this.units.values()) {
-      u.flash = Math.max(0, u.flash - dt * 6);
+      u.flash = Math.max(0, u.flash - dtRaw * 6);
+      u.squash *= Math.max(0, 1 - dtRaw * 12);
       u.shake = Math.max(0, u.shake - dt * 3);
       if (u.enter < 1) {
-        u.enter = Math.min(1, u.enter + dt * 2.6);
+        u.enter = Math.min(1, u.enter + dtRaw * 2.6);
         u.alpha = u.enter;
       }
-      u.hpShown += (u.hpTarget - u.hpShown) * Math.min(1, dt * 7);
+      u.hpGhost = ghostStep(u.hpTarget, u.hpGhost, dtRaw);
+      u.hpShown += (u.hpTarget - u.hpShown) * Math.min(1, dtRaw * 7);
       if (Math.abs(u.hpTarget - u.hpShown) < 0.2) u.hpShown = u.hpTarget;
       // Se desliza hacia su sitio (al aparecer invocaciones).
       u.x += (u.hx - u.x) * Math.min(1, dt * 8);
@@ -338,18 +373,33 @@ export class BattleScene {
     }
     ctx.save();
     ctx.translate(sx, sy);
-    if (this.bg) ctx.drawImage(this.bg, 0, 0, W, H);
-    this.drawAmbient();
+    if (this.bg) {
+      // Parallax: el fondo respira despacio y se desplaza un poco con la acción.
+      const px = Math.sin(this.time * 0.25) * 3 - (this.activeUnitX() - W / 2) * 0.012;
+      ctx.drawImage(this.bg, -6 + px, -3, W + 12, H + 6);
+    }
+    this.drawAmbient(0);
     const list = [...this.units.values()].sort((a, b) => a.y - b.y);
     for (const u of list) this.drawUnit(u);
+    for (const f of this.fxs) f.draw(ctx, Math.min(1, f.t / f.life));
+    for (const fn of this.immediate) fn(ctx);
+    this.immediate.length = 0;
     // Partículas en espacio de sprite (escala S)
     ctx.save();
     ctx.scale(this.S, this.S);
     this.pool.draw(ctx);
     ctx.restore();
+    this.drawAmbient(1);
     for (const u of list) this.drawOverlay(u);
     this.drawFloats();
     ctx.restore();
+    if (this.vignette && this.d.fx !== 'minimos') ctx.drawImage(this.vignette, 0, 0, W, H);
+    if (this.screenFlash > 0) {
+      ctx.fillStyle = '#fff';
+      ctx.globalAlpha = Math.min(0.5, this.screenFlash * 0.5);
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
     if (this.tint && this.tint.a > 0) {
       ctx.fillStyle = this.tint.color;
       ctx.globalAlpha = this.tint.a;
@@ -359,15 +409,31 @@ export class BattleScene {
     if (this.wipe < 1) this.drawWipe();
   }
 
-  private drawAmbient(): void {
-    const { ctx, W, H } = this;
-    ctx.fillStyle = ambientColor(this.biome);
-    for (let i = 0; i < 14; i++) {
-      const t = this.time * (0.05 + (i % 5) * 0.012) + i * 0.37;
-      const x = ((i * 97.3 + Math.sin(t * 6 + i) * 14 + t * 40) % W + W) % W;
-      const y = H * (0.12 + ((i * 53) % 70) / 100) + Math.sin(t * 9 + i) * 6;
-      ctx.fillRect(Math.round(x), Math.round(y), 3, 3);
+  /** Partículas ambientales por bioma en dos capas de profundidad (0 detrás, 1 delante). */
+  private drawAmbient(layer: 0 | 1): void {
+    const { ctx, W, H, amb } = this;
+    const n = Math.round(amb.count * Math.max(0.4, this.density));
+    ctx.fillStyle = amb.color;
+    for (let i = layer; i < n; i += 2) {
+      const p = ambientPos(i, this.time, W, H, amb);
+      const sz = Math.max(2, Math.round(amb.size * p.depth * (this.S / 4)));
+      if (amb.kind === 'fog') {
+        ctx.globalAlpha = 0.12 * p.depth;
+        ctx.fillRect(Math.round(p.x - sz * 6), Math.round(p.y), sz * 14, sz * 2);
+        ctx.globalAlpha = 1;
+      } else if (amb.kind === 'bubbles') {
+        ctx.strokeStyle = amb.color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(Math.round(p.x), Math.round(p.y), sz + 1, sz + 1);
+      } else if (amb.kind === 'leaves') {
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), sz + 1, sz);
+      } else ctx.fillRect(Math.round(p.x), Math.round(p.y), sz, sz);
     }
+  }
+
+  private activeUnitX(): number {
+    const u = this.units.get(this.activeId);
+    return u ? u.x + u.ox : this.W / 2;
   }
 
   private drawWipe(): void {
@@ -387,15 +453,41 @@ export class BattleScene {
     const { ctx } = this;
     const k = u.k;
     const w = 16 * k;
-    const bob = Math.sin(this.time * 2.2 + u.phase);
-    const sc = 1 + 0.025 * bob;
-    const x = u.x + u.ox + (u.shake > 0 ? Math.sin(this.time * 70) * u.shake * 4 : 0);
-    const y = u.y + u.oy;
-    // Sombra
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    // Idle: respiración (más lenta y amplia en los grandes) y leve balanceo.
+    const bob = Math.sin(this.time * (u.big ? 1.5 : 2.2) + u.phase);
+    const sc = 1 + 0.025 * bob + u.squash * 0.12;
+    const wx = 1 - u.squash * 0.1;
+    // Entrada: los enemigos entran deslizándose; los jefes caen con rebote.
+    let ex = 0;
+    let ey = 0;
+    if (u.enter < 1) {
+      const e = ease(u.enter);
+      if (u.c.side === 'foe' && !u.big) ex = -(1 - e) * this.W * 0.18;
+      else if (u.big) ey = -(1 - e * e) * this.H * 0.3 + Math.abs(Math.sin(e * 9)) * (1 - e) * -12;
+    }
+    const x = u.x + u.ox + ex + (u.shake > 0 ? Math.sin(this.time * 70) * u.shake * 4 : 0);
+    const y = u.y + u.oy + ey;
+    // Sombra (se encoge si el personaje salta/avanza en vertical)
+    const lift = Math.max(0, -(u.oy + ey)) / Math.max(1, w);
+    ctx.fillStyle = `rgba(0,0,0,${Math.max(0.12, 0.38 - lift * 0.3)})`;
     ctx.beginPath();
-    ctx.ellipse(u.x, u.hy + 2, w * 0.38, w * 0.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(u.x + u.ox + ex, u.hy + 2, w * 0.38 * (1 - lift * 0.3), w * 0.1, 0, 0, Math.PI * 2);
     ctx.fill();
+    // Aura de estado bajo los pies (veneno verde, fuego naranja...)
+    if (!u.dead) {
+      const st = u.c.statuses.find((s) => s.turns > 0);
+      if (st) {
+        const col = STATUS_INFO[st.id].color;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.28 + 0.14 * Math.sin(this.time * 5);
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.ellipse(u.x + u.ox, u.hy + 2, w * 0.46, w * 0.14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
     ctx.save();
     ctx.globalAlpha = u.alpha;
     ctx.translate(x, y);
@@ -404,10 +496,10 @@ export class BattleScene {
       ctx.globalAlpha = 0.55;
     }
     const img = u.dissolve > 0 ? this.dissolved(u) : u.img;
-    ctx.drawImage(img, -w / 2, -w * sc + 2, w, w * sc);
+    ctx.drawImage(img, (-w * wx) / 2, -w * sc + 2, w * wx, w * sc);
     if (u.flash > 0) {
       ctx.globalAlpha = Math.min(1, u.flash) * 0.85;
-      ctx.drawImage(u.sil, -w / 2, -w * sc + 2, w, w * sc);
+      ctx.drawImage(u.sil, (-w * wx) / 2, -w * sc + 2, w * wx, w * sc);
     }
     ctx.restore();
   }
@@ -452,8 +544,15 @@ export class BattleScene {
       ctx.fillRect(u.x - bw / 2 - 1, ty - 1, bw + 2, 7);
       ctx.fillStyle = '#3a1010';
       ctx.fillRect(u.x - bw / 2, ty, bw, 5);
-      ctx.fillStyle = u.big ? '#a040ff' : '#d84040';
-      ctx.fillRect(u.x - bw / 2, ty, (bw * Math.max(0, u.hpShown)) / Math.max(1, u.maxHp), 5);
+      const mh = Math.max(1, u.maxHp);
+      if (u.hpGhost > u.hpShown) {
+        ctx.fillStyle = '#fff0c0';
+        ctx.fillRect(u.x - bw / 2, ty, (bw * Math.max(0, u.hpGhost)) / mh, 5);
+      }
+      ctx.fillStyle = u.big ? '#a040ff' : hpColor(u.hpShown / mh);
+      ctx.fillRect(u.x - bw / 2, ty, (bw * Math.max(0, u.hpShown)) / mh, 5);
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillRect(u.x - bw / 2, ty, (bw * Math.max(0, u.hpShown)) / mh, 1);
       ty -= 16;
     }
     // Estados (iconos sobre la cabeza)
@@ -503,14 +602,23 @@ export class BattleScene {
     ctx.textAlign = 'center';
     for (const f of this.floats) {
       const k = f.t / f.life;
-      const rise = (f.t < 0.18 ? -ease(f.t / 0.18) * 14 : -14 - (f.t - 0.18) * 22);
+      const rise = f.t < 0.18 ? -ease(f.t / 0.18) * 14 : -14 - (f.t - 0.18) * 22;
+      // «Pop»: aparece grande y se asienta (más en críticos); los fallos se deslizan.
+      const pop = f.t < 0.16 ? 1 + (f.pop - 1) * (1 - f.t / 0.16) : 1;
+      const dx = f.kind === 'miss' ? f.t * 26 : f.kind === 'crit' ? Math.sin(f.t * 40) * Math.max(0, 0.3 - f.t) * 14 : 0;
       ctx.globalAlpha = k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1;
-      ctx.font = `bold ${f.size}px system-ui, sans-serif`;
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = '#000';
-      ctx.strokeText(f.text, f.x, f.y + rise);
+      ctx.font = `${f.kind === 'miss' ? 'italic ' : ''}bold ${Math.round(f.size * pop)}px system-ui, sans-serif`;
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = f.kind === 'crit' ? 6 : 4;
+      ctx.strokeStyle = f.kind === 'crit' ? '#7a2a00' : '#000';
+      ctx.strokeText(f.text, f.x + dx, f.y + rise);
       ctx.fillStyle = f.color;
-      ctx.fillText(f.text, f.x, f.y + rise);
+      ctx.fillText(f.text, f.x + dx, f.y + rise);
+      if (f.kind === 'crit' && f.t < 0.5) {
+        ctx.fillStyle = '#fff';
+        ctx.globalAlpha *= 0.45 * (1 - f.t / 0.5);
+        ctx.fillText(f.text, f.x + dx, f.y + rise - 1);
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -519,9 +627,19 @@ export class BattleScene {
   private center(u: Unit): { x: number; y: number } {
     return { x: u.x + u.ox, y: u.y + u.oy - 8 * u.k };
   }
-  private float(u: Unit, text: string, color: string, size = 22): void {
+  private float(u: Unit, text: string, color: string, size = 22, st?: NumStyle): void {
     const c = this.center(u);
-    this.floats.push({ x: c.x + (Math.random() - 0.5) * 14, y: c.y - 8 * u.k * 0.4, text, color, size, t: 0, life: 1.0 });
+    this.floats.push({ x: c.x + (Math.random() - 0.5) * 14, y: c.y - 8 * u.k * 0.4, text, color, size, t: 0, life: st?.life ?? 1.0, pop: st?.pop ?? 1.2, kind: st?.kind ?? 'dmg' });
+  }
+  private floatStyled(u: Unit, st: NumStyle): void {
+    this.float(u, st.text, st.color, st.size, st);
+  }
+  private fxPush(life: number, draw: Fx['draw']): void {
+    if (this.fxs.length < 24) this.fxs.push({ t: 0, life, draw });
+  }
+  /** Centro del sprite en píxeles de pantalla. */
+  private pos(u: Unit): { x: number; y: number } {
+    return this.center(u);
   }
   private fxAt(u: Unit): { x: number; y: number } {
     const c = this.center(u);
@@ -547,6 +665,11 @@ export class BattleScene {
     });
     this.wipe = 1;
     for (const u of this.units.values()) u.ox = 0;
+    if ([...this.units.values()].some((u) => u.big)) {
+      this.shake(5, 0.4);
+      this.screenFlash = 0.8;
+      this.d.sfx('critico_grave');
+    }
     const foes = b.foes();
     const names = foes.map((f) => f.name);
     this.say(foes.some((f) => f.boss) ? `¡${names[0]}!` : names.length === 1 ? `¡${names[0]} aparece!` : `¡${names.slice(0, 2).join(' y ')}${names.length > 2 ? '…' : ''}!`, 1.2);
@@ -609,25 +732,30 @@ export class BattleScene {
         u.hpTarget = ev.hp;
         u.flash = 1;
         u.shake = ev.crit ? 1 : 0.6;
-        const col = ev.tag === 'estado' ? '#c8a0ff' : ev.crit ? '#ffd860' : ev.tag === 'vulnerable' ? '#ff9040' : ev.tag === 'resiste' || ev.tag === 'mitad' ? '#b0b0c0' : u.c.side === 'party' ? '#ff8a8a' : '#ffffff';
-        this.float(u, `${ev.crit ? '¡' : ''}${ev.amount}${ev.crit ? '!' : ''}`, col, ev.crit ? 30 : 24);
+        u.squash = ev.crit ? 1 : 0.6;
+        const toParty = u.c.side === 'party';
+        this.floatStyled(u, damageStyle(ev.amount, { crit: ev.crit, tag: ev.tag, toParty }));
         const p = this.fxAt(u);
         emitImpact(this.pool, ev.dmgType ?? null, p.x, p.y, { power: ev.crit ? 0.9 : 0.35, density: this.density });
+        this.hitFx(u, ev);
         this.d.sfx(ev.crit ? 'critico' : ev.dmgType ? IMPACT_SFX[ev.dmgType] : 'golpe');
-        if (u.c.side === 'party') {
+        if (toParty) {
           this.d.sfx('herido');
           if (u.id === 'player') this.d.vibrate(ev.crit ? 40 : 18);
-        }
-        if (ev.crit) this.shake(4, 0.25);
-        else if (ev.amount > 0 && u.c.side === 'party') this.shake(2, 0.15);
+        } else if (ev.crit) this.d.vibrate(25);
+        if (ev.crit) {
+          this.shake(5, 0.3);
+          this.screenFlash = 0.7;
+        } else if (ev.amount > 0) this.shake(toParty ? 2.5 : 1.5, 0.15);
+        this.hitStopT = this.d.fx === 'minimos' ? 0 : hitStop({ crit: ev.crit, killed: ev.killed, amount: ev.amount, maxHp: u.maxHp });
         await this.wait(ev.crit ? 0.42 : 0.3);
         break;
       }
       case 'miss': {
         const u = U(ev.id);
         if (!u) break;
-        this.float(u, ev.text, '#b8b0a0', 18);
-        u.ox += u.c.side === 'party' ? 10 : -10;
+        this.floatStyled(u, missStyle(ev.text));
+        u.ox += u.c.side === 'party' ? 12 : -12;
         this.d.sfx('fallo');
         await this.wait(0.28);
         break;
@@ -636,11 +764,15 @@ export class BattleScene {
         const u = U(ev.id);
         if (!u) break;
         u.hpTarget = ev.hp;
-        this.float(u, `+${ev.amount}`, '#70f090', 24);
+        u.hpGhost = Math.min(u.hpGhost, ev.hp);
+        this.floatStyled(u, healStyle(ev.amount));
         const p = this.fxAt(u);
         emitHeal(this.pool, p.x, p.y + 4, this.density);
+        const c = this.pos(u);
+        const r = 8 * u.k;
+        this.fxPush(0.7, (ctx, k) => drawHealLight(ctx, c.x, u.y + 2, k, r));
         this.d.sfx('ding');
-        await this.wait(0.35);
+        await this.wait(0.4);
         break;
       }
       case 'mp': {
@@ -665,7 +797,10 @@ export class BattleScene {
         this.float(u, ev.text, '#f2d888', 18);
         const p = this.fxAt(u);
         emitHeal(this.pool, p.x, p.y, this.density * 0.6);
-        await this.wait(0.3);
+        const c = this.pos(u);
+        const col = this.lastAtk?.color ?? '#f2d888';
+        this.fxPush(0.8, (ctx, k) => drawAura(ctx, c.x, u.y + 2, k, 8 * u.k, col));
+        await this.wait(0.35);
         break;
       }
       case 'defend': {
@@ -682,9 +817,17 @@ export class BattleScene {
         if (u.c.side === 'foe') {
           const colors = ['#ffffff', '#c8c0b0', '#e05050', '#a040ff'];
           const cx = this.fxAt(u);
-          await this.tween(0.75, (k) => {
+          const big = u.big;
+          if (big) {
+            this.shake(6, 0.6);
+            this.screenFlash = 0.9;
+          }
+          u.flash = 1;
+          await this.tween(big ? 1.2 : 0.75, (k) => {
             u.dissolve = k;
-            if (Math.random() < 0.5) emitDissolve(this.pool, cx.x, cx.y, colors, this.density * 0.35);
+            u.flash = Math.max(u.flash, (1 - k) * 0.6);
+            if (big && Math.random() < 0.3) this.shake(3, 0.1);
+            if (Math.random() < (big ? 0.9 : 0.5)) emitDissolve(this.pool, cx.x, cx.y + (Math.random() - 0.5) * 3, colors, this.density * (big ? 0.6 : 0.35));
           });
           u.alpha = 0;
           this.layout(false);
@@ -701,6 +844,8 @@ export class BattleScene {
         this.buildPartyRow(c);
         const p = this.fxAt(u);
         emitImpact(this.pool, 'necrotico', p.x, p.y, { power: 0.6, density: this.density });
+        const sc = this.pos(u);
+        this.fxPush(0.6, (ctx, k) => drawExplosion(ctx, sc.x, sc.y, k, 10 * u.k, 'necrotico'));
         this.d.sfx('imp_sombra');
         await this.wait(0.5);
         break;
@@ -734,9 +879,45 @@ export class BattleScene {
         }
         u && (u.ox = 0, u.oy = 0);
         if (this.activeId === ev.id) this.activeId = '';
+        this.lastAtk = null;
         break;
       }
       case 'end':
+        break;
+    }
+  }
+
+  /** Efecto visual del golpe sobre el objetivo, según el arma/elemento del ataque en curso. */
+  private hitFx(u: Unit, ev: Extract<BattleEvent, { t: 'hit' }>): void {
+    const a = ev.tag === 'estado' ? null : this.lastAtk;
+    const c = this.pos(u);
+    const k = u.k;
+    const dir = u.c.side === 'party' ? 1 : -1;
+    if (ev.crit) this.fxPush(0.4, (ctx, kk) => drawCritStar(ctx, c.x, c.y, kk, 11 * k));
+    if (!a) {
+      const el = elementOf(ev.dmgType);
+      if (el !== 'fisico') this.fxPush(0.45, (ctx, kk) => drawExplosion(ctx, c.x, c.y, kk, 7 * k, el));
+      return;
+    }
+    const col = a.color;
+    switch (a.kind) {
+      case 'slash':
+      case 'claw':
+        this.fxPush(0.3, (ctx, kk) => drawSlash(ctx, c.x, c.y, 8 * k, -dir, kk, col, ev.crit, a.kind === 'claw'));
+        if (ev.crit) this.fxPush(0.3, (ctx, kk) => drawSlash(ctx, c.x, c.y, 6 * k, -dir, kk, col, true, true));
+        break;
+      case 'thrust':
+        this.fxPush(0.25, (ctx, kk) => drawThrust(ctx, c.x, c.y, 9 * k, -dir, kk, col));
+        break;
+      case 'smash':
+        this.fxPush(0.4, (ctx, kk) => drawShock(ctx, c.x, u.y + 2, 10 * k, kk, col));
+        this.fxPush(0.3, (ctx, kk) => drawExplosion(ctx, c.x, c.y, kk, 5 * k, 'fisico'));
+        break;
+      case 'arrow':
+        this.fxPush(0.25, (ctx, kk) => drawExplosion(ctx, c.x, c.y, kk, 4 * k, 'fisico'));
+        break;
+      case 'orb':
+        this.fxPush(0.55, (ctx, kk) => drawExplosion(ctx, c.x, c.y, kk, 9 * k, a.el));
         break;
     }
   }
@@ -747,6 +928,9 @@ export class BattleScene {
     if (!from || !targets.length) return;
     const t0 = targets[0]!;
     const color = ev.color ?? (ev.dmgType ? SPELL_COLORS[ev.dmgType] : undefined) ?? '#d8d0bc';
+    const kind = attackKind(ev.style, ev.dmgType);
+    const el = elementOf(ev.dmgType);
+    this.lastAtk = { kind, el, color, from: ev.from };
     const dir = from.c.side === 'party' ? -1 : 1;
     if (ev.style === 'melee') {
       const gap = 16 * from.k * 0.55;
@@ -754,36 +938,58 @@ export class BattleScene {
       const ty = t0.y - from.hy;
       from.oy = 0;
       this.d.sfx('whoosh');
-      // Anticipación (retrocede un poco) y embestida
-      await this.tween(0.1, (k) => (from.ox = -dir * 6 * k));
+      // Anticipación (retrocede y se agacha) y embestida; el pesado (contundente) salta.
+      const jump = kind === 'smash' ? 10 : 0;
+      await this.tween(0.12, (k) => {
+        from.ox = -dir * 7 * k;
+        from.squash = -0.5 * k;
+      });
+      from.squash = 0;
       await this.tween(0.16, (k) => {
-        from.ox = -dir * 6 + (tx + dir * 6) * ease(k);
-        from.oy = ty * ease(k);
+        from.ox = -dir * 7 + (tx + dir * 7) * ease(k);
+        from.oy = ty * ease(k) - jump * Math.sin(k * Math.PI);
+        // Estela de imagen residual durante la embestida
+        if (k > 0.2 && this.d.fx !== 'minimos') {
+          const p = this.fxAt(from);
+          emitTrail(this.pool, p.x - dir * 2, p.y, color, this.density * 0.6);
+        }
       });
       return;
     }
     if (ev.style === 'ranged' || ev.style === 'cast') {
-      this.d.sfx(ev.style === 'cast' ? 'whoosh' : 'whoosh');
+      this.d.sfx('whoosh');
       if (ev.style === 'cast') {
         const p = this.fxAt(from);
         emitStatusPuff(this.pool, p.x, p.y - 3, color, this.density);
-        if (ev.dmgType && this.d.fx !== 'minimos') this.tint = { color, a: 0.0 };
-        await this.tween(0.22, (k) => {
+        const fc = this.pos(from);
+        const hasTint = !!ev.dmgType && this.d.fx !== 'minimos';
+        if (hasTint) this.tint = { color, a: 0 };
+        // Carga: círculo de energía que crece sobre el lanzador
+        await this.tween(0.26, (k) => {
           from.oy = -8 * Math.sin(k * Math.PI);
-          if (this.tint) this.tint.a = 0.16 * Math.sin(k * Math.PI);
+          if (this.tint) this.tint.a = 0.14 * Math.sin(k * Math.PI);
+          this.immediate.push((ctx) => drawOrb(ctx, fc.x - dir * 4, fc.y - 6, 3 + k * 5 * from.k * 0.3, el, this.time));
         });
         this.tint = null;
         from.oy = 0;
-      } else await this.tween(0.1, (k) => (from.ox = -dir * -6 * Math.sin(k * Math.PI)));
-      const a = this.fxAt(from);
-      await this.tween(0.26, (k) => {
-        const fromP = this.fxAt(from);
-        void a;
+      } else {
+        // Tensar el arco: retroceso y vuelta
+        await this.tween(0.12, (k) => {
+          from.ox = -dir * -7 * Math.sin(k * Math.PI);
+        });
+      }
+      // Proyectil en vuelo hacia cada objetivo, con arco, estela y giro
+      await this.tween(0.28, (k) => {
+        const f = this.pos(from);
         for (const t of targets) {
-          const tp = this.fxAt(t);
-          const x = fromP.x + (tp.x - fromP.x) * k;
-          const y = fromP.y + (tp.y - fromP.y) * k - Math.sin(k * Math.PI) * 3;
-          if (targets.length === 1 || t === targets[0]) emitTrail(this.pool, x, y, color, this.density);
+          const tp = this.pos(t);
+          const x = f.x + (tp.x - f.x) * k;
+          const y = f.y + (tp.y - f.y) * k - Math.sin(k * Math.PI) * (kind === 'arrow' ? 14 : 8);
+          const hh = kind === 'arrow' ? 14 : 8;
+          const tilt = Math.atan2(tp.y - f.y - Math.cos(k * Math.PI) * Math.PI * hh, tp.x - f.x);
+          if (kind === 'arrow') this.immediate.push((ctx) => drawArrow(ctx, x, y, tilt));
+          else this.immediate.push((ctx) => drawOrb(ctx, x, y, 4 + from.k * 0.4, el, this.time));
+          if (this.d.fx !== 'minimos' && (t === targets[0] || targets.length < 3)) emitTrail(this.pool, x / this.S, y / this.S, color, this.density);
         }
       });
       return;
@@ -791,7 +997,10 @@ export class BattleScene {
     // 'self': brillo sobre el objetivo (curas, mejoras)
     const p = this.fxAt(t0);
     emitStatusPuff(this.pool, p.x, p.y, color, this.density);
-    await this.tween(0.2, (k) => (from.oy = -5 * Math.sin(k * Math.PI)));
+    await this.tween(0.22, (k) => {
+      from.oy = -5 * Math.sin(k * Math.PI);
+      from.squash = 0.3 * Math.sin(k * Math.PI);
+    });
     from.oy = 0;
   }
 
