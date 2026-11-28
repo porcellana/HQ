@@ -5,7 +5,7 @@ import { maxHpFor, maxResourceFor, proficiencyBonus, unlockedSkills } from '@/ga
 import { derive } from '@/game/rules/derived';
 import { CURRENT_SAVE_VERSION, migrate } from '@/game/save/migrations';
 import { recalcPlayer } from '@/game/state';
-import { OVERLAYS } from '@/gfx/sprites';
+import { KNOWN_OVERLAYS } from '@/gfx/look';
 import { testState } from './helpers';
 
 describe('clases (datos)', () => {
@@ -27,16 +27,10 @@ describe('clases (datos)', () => {
         expect(s.unlockLevel).toBeLessThanOrEqual(20);
         expect(s.effects.length).toBeGreaterThan(0);
       }
-      expect(OVERLAYS[cls.look.overlay], `sprite "${cls.look.overlay}"`).toBeDefined();
+      expect(KNOWN_OVERLAYS, `plantilla "${cls.look.overlay}"`).toContain(cls.look.overlay);
     });
   }
 
-  it('las capas de sprite son de 16x16', () => {
-    for (const [id, rows] of Object.entries(OVERLAYS)) {
-      expect(rows.length, id).toBe(16);
-      rows.forEach((r, i) => expect(r.length, `${id} fila ${i}`).toBe(16));
-    }
-  });
 });
 
 describe('reglas de personaje', () => {

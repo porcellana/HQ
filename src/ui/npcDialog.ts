@@ -8,8 +8,8 @@ import type { DialogAction, DialogOption, NpcDef } from '@/data/schema';
 import { SKILLS, successChance } from '@/game/rules/skills';
 import type { Game } from '@/game/game';
 import * as Quests from '@/game/quests/quests';
-import { PAL } from '@/gfx/palette';
-import { spriteCanvas } from '@/gfx/sprites';
+import { DEFAULT_HERO_COLORS } from '@/gfx/look';
+import { heroPortrait } from '@/gfx/world3d/studio';
 import { h } from './dom';
 
 export interface DialogHandlers {
@@ -28,9 +28,10 @@ export function npcDialog(game: Game, npc: NpcDef, handlers: DialogHandlers): HT
   const sheet = h('div', { class: 'dialog-sheet' });
   back.append(sheet);
   const l = npc.look;
-  const portrait = spriteCanvas(
-    { hair: l.hair ?? PAL.hair, skin: l.skin ?? PAL.skin, cloth: l.cloth, clothDark: l.clothDark, pants: l.pants, ...(l.hat ? { hat: l.hat } : {}), ...(l.overlay ? { overlay: l.overlay } : {}) },
+  const portrait = heroPortrait(
+    { hair: l.hair ?? DEFAULT_HERO_COLORS.hair, skin: l.skin ?? DEFAULT_HERO_COLORS.skin, cloth: l.cloth, clothDark: l.clothDark, pants: l.pants, ...(l.hat ? { hat: l.hat } : {}), ...(l.overlay ? { overlay: l.overlay } : {}) },
     'dialog-portrait',
+    true,
   );
   const close = () => {
     back.remove();

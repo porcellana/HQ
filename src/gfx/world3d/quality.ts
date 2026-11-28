@@ -8,13 +8,12 @@ export interface QualityCfg {
   /** Densidad del decorado menor (hierba, flores...). */
   density: number;
   particles: number;
-  aa: boolean;
   lights: number;
 }
 export const QUALITY: Record<Quality, QualityCfg> = {
-  baja: { scale: 0.6, radius: 16, density: 0.3, particles: 40, aa: false, lights: 4 },
-  media: { scale: 0.85, radius: 22, density: 0.7, particles: 90, aa: false, lights: 7 },
-  alta: { scale: 1, radius: 30, density: 1, particles: 180, aa: true, lights: 10 },
+  baja: { scale: 0.7, radius: 16, density: 0.3, particles: 40, lights: 4 },
+  media: { scale: 0.9, radius: 22, density: 0.7, particles: 90, lights: 7 },
+  alta: { scale: 1, radius: 30, density: 1, particles: 180, lights: 10 },
 };
 export const lowerQuality = (q: Quality): Quality => (q === 'alta' ? 'media' : 'baja');
 

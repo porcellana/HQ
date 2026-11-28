@@ -12,7 +12,7 @@ import { zoneName } from '@/game/quests/guide';
 import type { PetSpeciesDef } from '@/data/schema';
 import type { Game } from '@/game/game';
 import * as Pets from '@/game/pets/pets';
-import { petSpriteCanvas } from '@/gfx/pets';
+import { petPortrait as petSpriteCanvas } from '@/gfx/world3d/studio';
 import { showDialog } from './dialogs';
 import { h } from './dom';
 

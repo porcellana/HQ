@@ -57,7 +57,7 @@ export class Minimap {
     const base = this.base!;
     this.t += dt;
     const ctx = this.el.getContext('2d')!;
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = true;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, 64, 64);
     const ox = Math.floor((64 - base.width) / 2);

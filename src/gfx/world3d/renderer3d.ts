@@ -1,45 +1,51 @@
 /**
  * RENDERIZADOR 3D DEL MAPA (WebGL2, sin librerías).
- * Lee el mismo estado que el 2D (game.zone, entidades, botín...) y lo dibuja como terreno
- * extruido con instancias low-poly. Un lienzo 2D encima (el de entrada) pinta etiquetas,
- * números flotantes y la guía de misión. La lógica de juego sigue siendo por casillas.
+ * Dibuja la zona como terreno suave con instancias redondeadas, personajes animados, cielo con
+ * degradado, agua con espuma y señalización diegética (cristales, runas y un espíritu guía).
+ * Un lienzo 2D encima (el de entrada) pinta nombres y números flotantes. La lógica de juego sigue
+ * siendo por casillas.
  */
 import { PET_SPECIES } from '@/data/registry';
+import { findPath } from '@/engine/pathfinding';
 import type { NpcDef } from '@/data/schema';
 import type { Point } from '@/engine/pathfinding';
 import { dangerLevel } from '@/game/combat/rules';
 import { STATUS_INFO } from '@/game/combat/status';
 import type { Game } from '@/game/game';
 import { itemDef, rarityOf } from '@/game/items/items';
-import { GOAL_ICON } from '@/game/quests/guide';
 import type { Zone } from '@/game/world/zone';
-import { DEFAULT_HERO_COLORS, type HumanoidColors } from '../sprites';
-import { PLAYER_SIGHT, lungeOffset, nightAmount, DAY_LENGTH_TURNS, type RenderOptions } from '../renderer';
-import type { MapView } from '../mapView';
+import { DEFAULT_HERO_COLORS, type HumanoidColors } from '../look';
+import { PLAYER_SIGHT, lungeOffset, nightAmount, DAY_LENGTH_TURNS, type RenderOptions } from '../viewconst';
 import { hexRgb } from './mesh';
-import { arrowModel, beamModel, beastRig, chestModel, dotModel, humanoidRig, lootModel, oreModel, ringModel, staticModel, type Rig } from './models';
+import { beastRig, chestModel, humanoidRig, lootModel, oreModel, staticModel, type Rig } from './models';
+import { rigMatrices, rigPose, type AnimState } from './anim';
+import { crystalMotion, gemModel, npcHasShop, npcSignal, pathAhead, runeRingModel, SIGNAL_COLOR, type SignalKind } from './signals';
+import { makeProg, SpriteBatch, type Prog } from './glutil';
 import { camDistance, FpsGuard, lowerQuality, QUALITY, remapDir, type Quality } from './quality';
-import { BLOB_FS, BLOB_VS, MAX_LIGHTS, PART_FS, PART_VS, WATER_FS, WATER_VS, WORLD_FS, WORLD_VS } from './shaders';
+import { BLOB_FS, BLOB_VS, MAX_LIGHTS, PART_FS, PART_VS, SKY_FS, SKY_VS, WATER_FS, WATER_VS, WORLD_FS, WORLD_VS } from './shaders';
 import { envFor, zoneStyle, type Env, type ZoneStyle } from './style';
-import { buildChunk, chunksInRadius, CHUNK, Geo, type ChunkData, type Light } from './terrain';
+import { buildChunk, buildSkirt, chunksInRadius, CHUNK, Geo, type ChunkData, type Light } from './terrain';
 import { ident, invert, lookAt, mul, perspective, project, trs, unprojectRay, type Mat4 } from './mat';
 
 interface Gpu { buf: WebGLBuffer; n: number }
 interface ChunkGpu { terrain: Gpu | null; water: Gpu | null; inst: WebGLBuffer | null; groups: Array<{ id: string; first: number; count: number }>; lights: Light[]; cx: number; cz: number }
 interface Ent {
   gx: number; gz: number; gy: number; yaw: number; scale: number; rig: Rig | null; mesh: Gpu | null; walk: number; flash: number; alpha: number;
-  hover: number; tile: Point | null; kind: string; label?: string; sub?: string; subCol?: string; bar?: { v: number; col: string }; icons?: string[]; hop?: number; sx?: number; sy?: number;
+  hover: number; tile: Point | null; kind: string; label?: string; subCol?: string; bar?: { v: number; col: string }; icons?: string[]; hop?: number; sx?: number; sy?: number;
+  st?: AnimState; k?: number; sig?: SignalKind; seed?: number;
 }
 interface Anim { x: number; z: number; yaw: number; sp: number; t: number }
 
 const ENV_HOLE_Y = 0.45;
 void ENV_HOLE_Y;
 
-export class Renderer3D implements MapView {
+export class Renderer3D {
   heroColors: HumanoidColors = DEFAULT_HERO_COLORS;
   pixelRatio = 1;
   private gl: WebGL2RenderingContext;
-  private progs!: { world: Prog; water: Prog; blob: Prog; part: Prog };
+  private progs!: { world: Prog; water: Prog; blob: Prog; part: Prog; sky: Prog };
+  private spr!: SpriteBatch;
+  private guide: { path: Point[]; key: string; t: number; pos: { x: number; z: number } | null } = { path: [], key: '', t: 0, pos: null };
   private quality: Quality = 'media';
   private step = 0;
   private zoomCur = 0;
@@ -54,7 +60,7 @@ export class Renderer3D implements MapView {
   private invVp: Mat4 | null = null;
   private eye: [number, number, number] = [0, 5, 5];
   private geoCache = new WeakMap<Zone, { geo: Geo; style: ZoneStyle }>();
-  private cur: { zone: Zone; geo: Geo; style: ZoneStyle; chunks: Map<number, ChunkGpu> } | null = null;
+  private cur: { zone: Zone; geo: Geo; style: ZoneStyle; chunks: Map<number, ChunkGpu>; skirt: Gpu | null } | null = null;
   private statics = new Map<string, Gpu>();
   private partGpu = new WeakMap<Float32Array, Gpu>();
   private rigCache = new Map<string, Rig>();
@@ -102,30 +108,16 @@ export class Renderer3D implements MapView {
   // ------------------------------------------------------------------ GL base
   private initGl(): void {
     const gl = this.gl;
-    const mk = (vs: string, fs: string, uniforms: string[]): Prog => {
-      const sh = (t: number, src: string) => {
-        const s = gl.createShader(t)!;
-        gl.shaderSource(s, src);
-        gl.compileShader(s);
-        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? 'shader');
-        return s;
-      };
-      const p = gl.createProgram()!;
-      gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
-      gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
-      gl.linkProgram(p);
-      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? 'link');
-      const u: Record<string, WebGLUniformLocation | null> = {};
-      for (const n of uniforms) u[n] = gl.getUniformLocation(p, n);
-      return { p, u };
-    };
+    const mk = (vs: string, fs: string, uniforms: string[]): Prog => makeProg(gl, vs, fs, uniforms);
     const lightU = ['uL', 'uLC', 'uNL'];
     this.progs = {
-      world: mk(WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uHole', 'uHoleOn', ...lightU]),
+      world: mk(WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uDis', 'uDisY', 'uDisCol', ...lightU]),
       water: mk(WATER_VS, WATER_FS, ['uVP', 'uTime', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uSky', 'uAmbTop', ...lightU]),
       blob: mk(BLOB_VS, BLOB_FS, ['uVP', 'uModel', 'uAlpha']),
       part: mk(PART_VS, PART_FS, ['uVP', 'uCenter', 'uTime', 'uVel', 'uSize', 'uScale', 'uGround', 'uBox', 'uBoxH', 'uColor']),
+      sky: mk(SKY_VS, SKY_FS, ['uInv', 'uEye', 'uTop', 'uHor', 'uFog', 'uSunDir', 'uSunCol', 'uTime', 'uStars', 'uFlat']),
     };
+    this.spr = new SpriteBatch(gl, 1400);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     gl.vertexAttribDivisor(4, 1);
@@ -301,7 +293,8 @@ export class Renderer3D implements MapView {
       e = { geo, style: zoneStyle(g) };
       this.geoCache.set(zone, e);
     }
-    this.cur = { zone, geo: e.geo, style: e.style, chunks: new Map() };
+    if (this.cur?.skirt) this.gl.deleteBuffer(this.cur.skirt.buf);
+    this.cur = { zone, geo: e.geo, style: e.style, chunks: new Map(), skirt: e.style.enclosed ? null : this.upload(buildSkirt(e.geo)) };
   }
 
   private chunkGpu(d: ChunkData): ChunkGpu {
@@ -414,6 +407,7 @@ export class Renderer3D implements MapView {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.disable(gl.BLEND);
     gl.depthMask(true);
+    this.drawSky(env, style);
     const fogDen = Math.max(env.fogDensity * 0.6, 1.9 / radius);
 
     // Luces cercanas: la antorcha del jugador + faroles/hogueras/cristales.
@@ -453,15 +447,18 @@ export class Renderer3D implements MapView {
     gl.uniform3fv(P.u.uAmbTop!, env.ambTop);
     gl.uniform3fv(P.u.uAmbBot!, env.ambBottom);
     gl.uniform4f(P.u.uFlash!, 0, 0, 0, 0);
-    gl.uniform3f(P.u.uHole!, px, py + 0.2, pz);
     gl.uniform4fv(P.u.uL!, lpos);
     gl.uniform3fv(P.u.uLC!, lcol);
     gl.uniform1i(P.u.uNL!, nl);
     const I = ident();
     gl.uniformMatrix4fv(P.u.uModel!, false, I);
 
-    // Terreno e instancias (con agujero «ver a través» sobre el jugador).
-    gl.uniform1f(P.u.uHoleOn!, 1);
+    // Terreno e instancias.
+    if (cur.skirt) {
+      this.noInstance();
+      this.bindMesh(cur.skirt);
+      gl.drawArrays(gl.TRIANGLES, 0, cur.skirt.n);
+    }
     for (const c of visible) {
       if (c.terrain) {
         this.noInstance();
@@ -487,19 +484,28 @@ export class Renderer3D implements MapView {
 
     // Entidades.
     const ents = this.collect(game, geo);
-    gl.uniform1f(P.u.uHoleOn!, 0);
     // Sombras blandas bajo las criaturas.
     this.drawShadows(ents);
     gl.useProgram(P.p);
+    this.drawXray(ents[0], P);
     for (const e of ents) this.drawEnt(e, P);
-    this.drawMarkers(game, geo, P, px, py, pz);
+    this.drawSignals(game, geo, ents, P, px, py, pz, opts.questGuide !== false);
     gl.uniformMatrix4fv(P.u.uModel!, false, I);
 
     // Agua (translúcida) y partículas.
     this.drawWater(visible, env, fogDen, dist * 0.8, lpos, lcol, nl);
     this.drawParticles(style, env, px, py, pz, q.particles);
+    // Halos de luz (brillo suave de antorchas, faroles y fuego) y destellos de señalización.
+    const hs = hexRgb('#ffffff');
+    void hs;
+    for (let i = 0; i < nl; i++) {
+      const l = L[i]!;
+      if (l.d < 0 && l.rad === 8) continue;
+      this.spr.add(l.x, l.y, l.z, Math.min(2.4, 0.5 + l.rad * 0.18), Math.min(0.5, 0.18 + (l.r + l.g + l.b) * 0.1), Math.min(1, l.r), Math.min(1, l.g), Math.min(1, l.b));
+    }
+    this.spr.flush(this.vp, this.glCanvas.height * 1.218);
 
-    this.drawOverlay(game, ents, opts);
+    this.drawOverlay(game, ents);
   }
 
   // ------------------------------------------------------------------ rigs
@@ -551,6 +557,7 @@ export class Renderer3D implements MapView {
     const hop = v.stepT >= 0 ? Math.sin(v.stepT * Math.PI) * 0.06 : 0;
     const pe: Ent = { gx: v.rx + 0.5 + v.bumpDx * lunge, gz: v.ry + 0.5 + v.bumpDy * lunge, gy: gy(v.rx + 0.5, v.ry + 0.5) + hop, yaw: v.bumpT > 0 && (v.bumpDx || v.bumpDy) ? Math.atan2(v.bumpDx, v.bumpDy) : pa.yaw, scale: 1, rig: hero, mesh: null, walk: pa.sp > 0.3 ? 1 : 0, flash: v.flashT, alpha: 1, hover: 0, tile: null, kind: 'player' };
     if (v.bumpT > 0) pe.yaw = Math.atan2(v.bumpDx, v.bumpDy);
+    this.setState(pe, v.bumpT, v.flashT);
     out.push(pe);
     (pe as Ent & { anim?: Anim }).anim = pa;
 
@@ -564,6 +571,7 @@ export class Renderer3D implements MapView {
       const bump = lungeOffset(ally.bumpT) / 16 * 2.2;
       const e: Ent = { gx: ally.rx + 0.5 + ally.bumpDx * bump, gz: ally.ry + 0.5 + ally.bumpDy * bump, gy: gy(ally.rx + 0.5, ally.ry + 0.5), yaw: an.yaw, scale: 1, rig: r, mesh: null, walk: an.sp > 0.3 ? 1 : 0, flash: ally.flashT, alpha: down ? 0.45 : 1, hover: 0, tile: { x: ally.x, y: ally.y }, kind: 'ally', label: ally.def.name };
       e.bar = { v: down ? 0 : game.state.party.hp / Math.max(1, game.allyStats().maxHp), col: '#5ad05a' };
+      this.setState(e, ally.bumpT, ally.flashT);
       (e as Ent & { anim?: Anim }).anim = an;
       reg(e, 0.9, 2);
       out.push(e);
@@ -577,6 +585,7 @@ export class Renderer3D implements MapView {
         const bump = lungeOffset(pu.bumpT) / 16 * 2.2;
         const e: Ent = { gx: pu.rx + 0.5 + pu.bumpDx * bump, gz: pu.ry + 0.5 + pu.bumpDy * bump, gy: gy(pu.rx + 0.5, pu.ry + 0.5), yaw: an.yaw, scale: 1, rig: r, mesh: null, walk: an.sp > 0.3 ? 1 : 0, flash: pu.flashT, alpha: pi.down ? 0.45 : 1, hover: 0, tile: { x: pu.x, y: pu.y }, kind: 'pet' };
         (e as Ent & { anim?: Anim }).anim = an;
+        this.setState(e, pu.bumpT, pu.flashT);
         reg(e, 0.7, 2);
         out.push(e);
       }
@@ -589,7 +598,7 @@ export class Renderer3D implements MapView {
       const an = this.animOf(n, n.x + 0.5, n.y + 0.5, dt, near ? face : { x: n.x + 0.5 + (n.facingLeft ? -1 : 1), z: n.y + 1.6 });
       const mark = game.npcMarker(n.id);
       const e: Ent = { gx: n.x + 0.5, gz: n.y + 0.5, gy: gy(n.x + 0.5, n.y + 0.5), yaw: an.yaw, scale: 1, rig: r, mesh: null, walk: 0, flash: 0, alpha: 1, hover: 0, tile: { x: n.x, y: n.y }, kind: 'npc', label: near ? n.name : '' };
-      if (mark) e.sub = mark === '?' ? '❓' : '❗';
+      e.sig = npcSignal(mark, npcHasShop(n)) ?? undefined;
       reg(e, 0.9, 3);
       out.push(e);
     }
@@ -607,7 +616,8 @@ export class Renderer3D implements MapView {
       const danger = dangerLevel(en.def.level, game.state.player.level);
       const col = { trivial: '#8a8a8a', facil: '#80c080', normal: '#ece6d6', dificil: '#f0a040', mortal: '#ff4040' }[danger];
       const e: Ent = { gx: en.rx + 0.5 + en.bumpDx * bump, gz: en.ry + 0.5 + en.bumpDy * bump, gy: gy(en.rx + 0.5, en.ry + 0.5), yaw: en.bumpT > 0 ? Math.atan2(en.bumpDx, en.bumpDy) : an.yaw, scale: sc, rig: r, mesh: null, walk: an.sp > 0.3 ? 1 : 0, flash: en.flashT, alpha: 1, hover: 0, tile: { x: en.x, y: en.y }, kind: en.def.boss ? 'boss' : 'enemy', label: `${danger === 'mortal' ? '☠' : ''}${en.def.level}`, subCol: col };
-      if (wild) e.sub = '🐾';
+      if (en.def.boss || danger === 'mortal') e.sig = 'danger';
+      this.setState(e, en.bumpT, en.flashT);
       if (en.statuses.length) e.icons = en.statuses.slice(0, 3).map((s) => STATUS_INFO[s.id].icon);
       (e as Ent & { anim?: Anim }).anim = an;
       reg(e, 0.9, 4);
@@ -633,18 +643,40 @@ export class Renderer3D implements MapView {
       else m = this.staticMesh(f.sprite, () => lootModel('#ff6060'));
       const near = Math.hypot(f.x - p.x, f.y - p.y) < 4;
       const e: Ent = { gx: f.x + 0.5, gz: f.y + 0.5, gy: gy(f.x + 0.5, f.y + 0.5), yaw: 0.2 + (f.x * 7 + f.y * 3) % 6 * 0.1, scale: 1, rig: null, mesh: m, walk: 0, flash: 0, alpha: f.dim ? 0.5 : 1, hover: 0, tile: { x: f.x, y: f.y }, kind: 'feature' };
-      if (f.sprite === 'chest' || f.sprite === 'chestLocked') e.sub = f.sprite === 'chestLocked' ? '🔒' : '✨';
-      else if (f.sprite.startsWith('ore') && near) e.sub = '⛏';
+      if (f.sprite === 'chest' || f.sprite === 'chestLocked') e.sig = 'chest';
+      else if (f.sprite.startsWith('ore') && near) e.sig = 'ore';
       reg(e, 0.8, 1);
       out.push(e);
     }
     return out;
   }
   private lastDt = 0.016;
+  /** Estado de animación de una criatura según su embestida (bumpT baja de 1,3 a 0) y su destello de golpe. */
+  private setState(e: Ent, bump: number, flash: number): void {
+    if (bump > 0) { e.st = 'attack'; e.k = 1 - Math.max(0, Math.min(1, bump / 1.3)); }
+    else if (flash > 0) { e.st = 'hurt'; e.k = 1 - Math.min(1, flash * 2.5); }
+    else e.st = e.walk ? 'walk' : 'idle';
+  }
 
+  /** Silueta translúcida del héroe cuando algo lo tapa (árboles, tejados): suave, sin recortes a trozos. */
+  private drawXray(e: Ent | undefined, P: Prog): void {
+    if (!e || !e.rig) return;
+    const gl = this.gl;
+    gl.enable(gl.BLEND);
+    gl.blendColor(0, 0, 0, 0.5);
+    gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
+    gl.depthFunc(gl.GREATER);
+    gl.depthMask(false);
+    this.drawEnt({ ...e, flash: 1.2, kind: 'xray' }, P);
+    gl.depthFunc(gl.LEQUAL);
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+  }
+  private matBuf: Float32Array[] = [];
   private drawEnt(e: Ent, P: Prog): void {
     const gl = this.gl;
-    gl.uniform4f(P.u.uFlash!, e.kind === 'ally' || e.kind === 'player' ? 1 : 1, e.kind === 'player' ? 0.2 : 0.25, 0.2, Math.min(0.75, e.flash * 0.75));
+    if (e.kind === 'xray') gl.uniform4f(P.u.uFlash!, 0.55, 0.8, 1, 0.8);
+    else gl.uniform4f(P.u.uFlash!, 1, e.kind === 'player' ? 0.2 : 0.25, 0.2, Math.min(0.75, e.flash * 0.75));
     if (e.mesh) {
       const m = trs(e.gx, e.gy, e.gz, e.yaw, e.scale);
       gl.uniformMatrix4fv(P.u.uModel!, false, m);
@@ -655,37 +687,17 @@ export class Renderer3D implements MapView {
     const rig = e.rig;
     if (!rig) return;
     const an = (e as Ent & { anim?: Anim }).anim;
-    const t = an ? an.t : this.time * 1.5;
-    const sw = Math.sin(t * 1.0), walk = e.walk;
-    const bob = rig.flyer ? 0.5 + Math.sin(this.time * 3 + e.gx) * 0.08 : walk ? Math.abs(Math.sin(t)) * 0.05 : Math.sin(this.time * 2 + e.gx * 3) * 0.012;
-    const base = trs(e.gx, e.gy + bob * e.scale + (rig.flyer ? 0.35 * e.scale : 0), e.gz, e.yaw, e.scale);
-    for (const part of rig.parts) {
-      let m = base;
-      const ph = part.phase;
-      const amp = walk ? 0.75 : 0.0;
-      let rx = 0, rz = 0;
-      switch (part.anim) {
-        case 'legL': rx = sw * amp; break;
-        case 'legR': rx = -sw * amp; break;
-        case 'armL': rx = -sw * amp * 0.8 + (walk ? 0 : Math.sin(this.time * 1.5) * 0.04); break;
-        case 'armR': rx = sw * amp * 0.8 + (walk ? 0 : -Math.sin(this.time * 1.5) * 0.04); break;
-        case 'legA': rx = (rig.flyer ? Math.sin(this.time * 4 + ph) * 0.4 : sw * amp * 0.9); break;
-        case 'legB': rx = (rig.flyer ? Math.sin(this.time * 4 + ph + 2) * 0.4 : -sw * amp * 0.9); break;
-        case 'tail': rx = Math.sin(this.time * 3 + e.gx) * 0.25 + (walk ? 0.2 : 0); break;
-        case 'wingL': rz = Math.sin(this.time * 14) * 0.8 + 0.2; break;
-        case 'wingR': rz = -Math.sin(this.time * 14) * 0.8 - 0.2; break;
-        default: break;
-      }
-      if (part.anim !== 'none' && part.anim !== 'body' && (rx || rz)) {
-        const pm = trs(part.pivot[0], part.pivot[1], part.pivot[2], 0, 1, rx);
-        const withZ = rz ? mulZ(pm, rz) : pm;
-        m = mul(base, withZ);
-      } else if (part.pivot[0] || part.pivot[1] || part.pivot[2]) m = mul(base, trs(part.pivot[0], part.pivot[1], part.pivot[2]));
-      gl.uniformMatrix4fv(P.u.uModel!, false, m);
+    const seed = e.seed ?? e.gx * 3.1 + e.gz;
+    const pose = rigPose(rig, { state: e.st ?? (e.walk ? 'walk' : 'idle'), k: e.k ?? 0, time: this.time, walkT: an ? an.t : this.time * 1.5, walk: e.walk, seed });
+    const lift = rig.flyer ? (0.5 + Math.sin(this.time * 3 + seed) * 0.08) * e.scale : 0;
+    const base = trs(e.gx, e.gy + lift, e.gz, e.yaw, e.scale);
+    const mats = rigMatrices(rig, base, pose, this.matBuf);
+    rig.parts.forEach((part, i) => {
+      gl.uniformMatrix4fv(P.u.uModel!, false, mats[i]!);
       const g = this.partMesh(part.mesh);
       this.bindMesh(g);
       gl.drawArrays(gl.TRIANGLES, 0, g.n);
-    }
+    });
   }
 
   private drawShadows(ents: Ent[]): void {
@@ -709,45 +721,124 @@ export class Renderer3D implements MapView {
     gl.disable(gl.BLEND);
   }
 
-  /** Salidas, ruta, destino de la misión y flecha guía. */
-  private drawMarkers(game: Game, geo: Geo, P: Prog, px: number, py: number, pz: number): void {
+  /** Señalización diegética: runas en el suelo, cristales flotantes, chispas y el espíritu guía. */
+  private drawSignals(game: Game, geo: Geo, ents: Ent[], P: Prog, px: number, py: number, pz: number, showGuide: boolean): void {
     const gl = this.gl;
-    const pulse = 0.5 + 0.5 * Math.sin(this.time * 3);
+    const t = this.time;
     gl.uniform4f(P.u.uFlash!, 0, 0, 0, 0);
     const draw = (g: Gpu, x: number, y: number, z: number, yaw: number, s: number): void => {
       gl.uniformMatrix4fv(P.u.uModel!, false, trs(x, y, z, yaw, s));
       this.bindMesh(g);
       gl.drawArrays(gl.TRIANGLES, 0, g.n);
     };
-    const ring = this.staticMesh('ringG', () => ringModel('#f2d888'));
-    const beam = this.staticMesh('beamG', () => beamModel('#f8e8a0'));
+    const gem = (k: SignalKind): Gpu => this.staticMesh(`gem:${k}`, () => gemModel(k));
+    const rune = (k: SignalKind): Gpu => this.staticMesh(`rune:${k}`, () => runeRingModel(k));
+    const spr = this.spr;
+    const rgb = (k: SignalKind): [number, number, number] => hexRgb(SIGNAL_COLOR[k]);
+    const sparkle = (k: SignalKind, x: number, y: number, z: number, h: number, a: number, n = 3): void => {
+      const c = rgb(k);
+      for (let i = 0; i < n; i++) {
+        const ang = t * 1.4 + (i / n) * 6.283, ph = (t * 0.6 + i / n) % 1;
+        spr.add(x + Math.cos(ang) * 0.3, y + h * ph, z + Math.sin(ang) * 0.3, 0.16 * (1 - ph * 0.5), a * Math.sin(ph * 3.14), c[0], c[1], c[2]);
+      }
+    };
+    for (const e of ents) {
+      if (!e.sig) continue;
+      const k = e.sig;
+      const mo = crystalMotion(t, e.gx * 1.3 + e.gz);
+      const top = (e.rig ? e.rig.height * e.scale : 0.7) + 0.34 + (e.rig?.flyer ? 0.5 : 0);
+      const near = Math.hypot(e.gx - px, e.gz - pz);
+      const fade = Math.min(1, Math.max(0.35, 1.4 - near / 16));
+      const c = rgb(k);
+      if (k === 'chest' || k === 'ore') {
+        sparkle(k, e.gx, e.gy + 0.25, e.gz, 0.7, 0.8 * fade, 3);
+        continue;
+      }
+      draw(gem(k), e.gx, e.gy + top + mo.y, e.gz, mo.yaw, k === 'danger' ? 1.2 : 1);
+      spr.add(e.gx, e.gy + top + 0.2 + mo.y, e.gz, 1.1, 0.34 * mo.glow * fade, c[0], c[1], c[2]);
+      sparkle(k, e.gx, e.gy + top - 0.1, e.gz, 0.6, 0.9 * fade, 3);
+      if (k === 'quest' || k === 'turnin' || k === 'danger') draw(rune(k), e.gx, e.gy + 0.01, e.gz, t * (k === 'danger' ? -0.9 : 0.6), (k === 'danger' ? 1.5 : 1) * (e.scale > 1 ? 1.4 : 1));
+    }
+    // Salidas: runa suave en el suelo y un par de chispas.
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3);
     for (const e of game.zone.exits) {
       const y = geo.heightAt(e.x + 0.5, e.y + 0.5);
-      draw(ring, e.x + 0.5, y + 0.02, e.y + 0.5, this.time * 0.5, 1 + pulse * 0.08);
-      if (!e.door) draw(beam, e.x + 0.5, y, e.y + 0.5, 0, 0.35);
+      const near = Math.hypot(e.x - game.playerPos.x, e.y - game.playerPos.y);
+      if (near > 14) continue;
+      draw(rune('exit'), e.x + 0.5, y, e.y + 0.5, t * 0.5, 0.95 + pulse * 0.05);
+      if (!e.door) sparkle('exit', e.x + 0.5, y + 0.1, e.y + 0.5, 1.0, 0.7, 3);
     }
+    // Ruta tocada: destellos suaves y runa en el destino.
     const v = game.view;
-    const dot = this.staticMesh('dot', dotModel);
-    v.path.forEach((p, i) => draw(dot, p.x + 0.5, geo.heightAt(p.x + 0.5, p.y + 0.5), p.y + 0.5, 0, i % 2 ? 0.8 : 1));
-    if (v.target) draw(ring, v.target.x + 0.5, geo.heightAt(v.target.x + 0.5, v.target.y + 0.5), v.target.y + 0.5, this.time * 2, 0.8 + pulse * 0.25);
-    // Meta de la misión: haz de luz y flecha.
+    const sd = rgb('exit');
+    v.path.forEach((p, i) => spr.add(p.x + 0.5, geo.heightAt(p.x + 0.5, p.y + 0.5) + 0.12, p.y + 0.5, 0.22 + 0.04 * Math.sin(t * 5 + i), 0.75, sd[0], sd[1], sd[2]));
+    if (v.target) draw(rune('exit'), v.target.x + 0.5, geo.heightAt(v.target.x + 0.5, v.target.y + 0.5), v.target.y + 0.5, t * 2, 0.8 + pulse * 0.2);
+    // Meta de la misión: anillo de runas, cristal violeta y un espíritu (luciérnaga) que guía el camino.
     const goal = game.questGoal;
-    if (goal?.point && !game.inCombat) {
+    if (showGuide && goal?.point && !game.inCombat) {
       const gp = goal.point;
       const gy = geo.heightAt(gp.x + 0.5, gp.y + 0.5);
-      const far = Math.hypot(gp.x - game.playerPos.x, gp.y - game.playerPos.y);
-      const gb = this.staticMesh('beamQ', () => beamModel('#8ae8ff'));
-      const gr = this.staticMesh('ringQ', () => ringModel('#8ae8ff'));
-      draw(gb, gp.x + 0.5, gy, gp.y + 0.5, 0, 1.3);
-      draw(gr, gp.x + 0.5, gy + 0.02, gp.y + 0.5, -this.time, 1.2 + pulse * 0.2);
-      if (far > 2.5) {
-        const dx = gp.x - v.rx, dz = gp.y - v.ry, d = Math.hypot(dx, dz) || 1;
-        const arrow = this.staticMesh('arrow', arrowModel);
-        const r = 1.35;
-        draw(arrow, px + (dx / d) * r, py + 0.12 + Math.sin(this.time * 4) * 0.04, pz + (dz / d) * r, Math.atan2(dx, dz), 0.8);
-      }
+      const gc = rgb('goal');
+      const mo = crystalMotion(t, 1.7);
+      draw(rune('goal'), gp.x + 0.5, gy, gp.y + 0.5, -t * 0.8, 1.3 + pulse * 0.1);
+      draw(gem('goal'), gp.x + 0.5, gy + 1.15 + mo.y, gp.y + 0.5, mo.yaw, 1.15);
+      spr.add(gp.x + 0.5, gy + 1.35 + mo.y, gp.y + 0.5, 1.3, 0.36 * mo.glow, gc[0], gc[1], gc[2]);
+      sparkle('goal', gp.x + 0.5, gy + 0.05, gp.y + 0.5, 1.6, 0.9, 5);
+      this.guideSpirit(game, geo, gp, px, py, pz);
     }
     gl.uniformMatrix4fv(P.u.uModel!, false, ident());
+  }
+
+  /** Luciérnaga que flota por delante del jugador siguiendo el camino y deja un rastro de luz. */
+  private guideSpirit(game: Game, geo: Geo, gp: Point, px: number, py: number, pz: number): void {
+    const t = this.time;
+    const from = game.playerPos;
+    const far = Math.hypot(gp.x - from.x, gp.y - from.y);
+    if (far < 2.5) return;
+    const key = `${game.zone.id}|${gp.x},${gp.y}|${from.x >> 1},${from.y >> 1}`;
+    if (this.guide.key !== key) {
+      const path = findPath(game.zone.width, game.zone.height, from, gp, (x, y) => game.playerCanWalk(x, y), { allowGoalBlocked: true, maxNodes: 2500 });
+      this.guide = { ...this.guide, key, path: path ?? [] };
+    }
+    const g = this.guide;
+    const pts = g.path.length ? pathAhead(g.path, from, 3, 6, 0.9) : (() => {
+      const dx = gp.x - from.x, dz = gp.y - from.y, d = Math.hypot(dx, dz) || 1;
+      return [3, 4.5, 6, 7.5, 9].map((s, i) => ({ x: from.x + 0.5 + (dx / d) * s, z: from.y + 0.5 + (dz / d) * s, k: i / 4 }));
+    })();
+    const c = hexRgb('#c8e8ff'), gc = hexRgb(SIGNAL_COLOR.goal);
+    pts.forEach((p, i) => {
+      const hy = geo.heightAt(p.x, p.z) + 0.55 + Math.sin(t * 3 + i) * 0.06;
+      const lead = i === 0;
+      if (lead) {
+        const wob = Math.sin(t * 2.2) * 0.12;
+        this.spr.add(p.x + wob, hy + 0.15, p.z - wob, 0.5, 0.95, c[0], c[1], c[2]);
+        this.spr.add(p.x + wob, hy + 0.15, p.z - wob, 1.4, 0.3, gc[0], gc[1], gc[2]);
+        g.pos = { x: p.x + wob, z: p.z - wob };
+      } else this.spr.add(p.x, hy - 0.08, p.z, 0.3 * (1 - p.k * 0.5), 0.5 * (1 - p.k * 0.7), gc[0], gc[1], gc[2]);
+    });
+    void px; void py; void pz;
+  }
+
+  private drawSky(env: Env, style: ZoneStyle): void {
+    const gl = this.gl, P = this.progs.sky;
+    if (!this.invVp) return;
+    gl.useProgram(P.p);
+    for (let i = 0; i < 6; i++) gl.disableVertexAttribArray(i);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.uniformMatrix4fv(P.u.uInv!, false, this.invVp);
+    gl.uniform3fv(P.u.uEye!, this.eye);
+    gl.uniform3fv(P.u.uTop!, env.skyTop);
+    gl.uniform3f(P.u.uHor!, env.skyHorizon[0] * 0.5 + env.fog[0] * 0.5, env.skyHorizon[1] * 0.5 + env.fog[1] * 0.5, env.skyHorizon[2] * 0.5 + env.fog[2] * 0.5);
+    gl.uniform3fv(P.u.uFog!, env.fog);
+    gl.uniform3fv(P.u.uSunDir!, env.sunDir);
+    gl.uniform3fv(P.u.uSunCol!, env.sunCol);
+    gl.uniform1f(P.u.uTime!, this.time);
+    gl.uniform1f(P.u.uStars!, env.stars);
+    gl.uniform1f(P.u.uFlat!, style.enclosed ? 1 : 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
   }
 
   private drawWater(visible: ChunkGpu[], env: Env, fogDen: number, fogOff: number, lpos: Float32Array, lcol: Float32Array, nl: number): void {
@@ -821,7 +912,7 @@ export class Renderer3D implements MapView {
   }
 
   // ------------------------------------------------------------- overlay 2D
-  private drawOverlay(game: Game, ents: Ent[], opts: RenderOptions): void {
+  private drawOverlay(game: Game, ents: Ent[]): void {
     const ctx = this.ctx2d;
     const W = this.overlay.width, H = this.overlay.height, dpr = this.pixelRatio;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -856,11 +947,6 @@ export class Renderer3D implements MapView {
         ctx.fillRect(p.x - w / 2, y - px(2), w * Math.max(0, Math.min(1, e.bar.v)), px(3));
         y -= px(7);
       }
-      if (e.sub) {
-        const bob = Math.sin(this.time * 4) * px(2);
-        text(e.sub, p.x, y + bob - px(1), e.sub.length > 1 ? 15 : 17, e.sub === '?' ? '#7fe07f' : '#f2d888');
-        y -= px(15);
-      }
       if (e.kind === 'enemy' || e.kind === 'boss') {
         text(e.label ?? '', p.x, y, e.kind === 'boss' ? 13 : 11, e.subCol ?? '#fff');
         if (e.icons) { text(e.icons.join(''), p.x, y - px(12), 11, '#fff', '#000', false); }
@@ -891,24 +977,7 @@ export class Renderer3D implements MapView {
       seen.add(x.label);
       const y = this.cur ? this.cur.geo.heightAt(x.x + 0.5, x.y + 0.5) : 0;
       const p = project(this.vp, x.x + 0.5, y + 1.6, x.y + 0.5);
-      if (p.w > 0) text(x.label, (p.x * 0.5 + 0.5) * W, (1 - (p.y * 0.5 + 0.5)) * H, 10, '#f2d888');
-    }
-    // Destino de la misión: icono y distancia sobre el haz.
-    const goal = game.questGoal;
-    if (goal?.point && opts.questGuide !== false && !game.inCombat) {
-      const gy = this.cur ? this.cur.geo.heightAt(goal.point.x + 0.5, goal.point.y + 0.5) : 0;
-      const p = project(this.vp, goal.point.x + 0.5, gy + 2.7, goal.point.y + 0.5);
-      const d = Math.round(Math.hypot(goal.point.x - pp.x, goal.point.y - pp.y));
-      let sx = (p.x * 0.5 + 0.5) * W, sy = (1 - (p.y * 0.5 + 0.5)) * H;
-      if (p.w <= 0) { sx = W / 2; sy = H * 0.2; }
-      const m = px(30);
-      const on = sx > m && sx < W - m && sy > m * 2 && sy < H - m * 3;
-      sx = Math.max(m, Math.min(W - m, sx));
-      sy = Math.max(m * 2, Math.min(H - m * 3, sy));
-      if (d > 1) {
-        text(GOAL_ICON[goal.kind], sx, sy, on ? 17 : 19, '#fff');
-        text(`${d} m`, sx, sy + px(13), 10, '#8ae8ff');
-      }
+      if (p.w > 0) text(x.label, (p.x * 0.5 + 0.5) * W, (1 - (p.y * 0.5 + 0.5)) * H, 10, '#e6f3ff', 'rgba(10,8,20,0.8)', false);
     }
   }
 
@@ -916,13 +985,4 @@ export class Renderer3D implements MapView {
   setDt(dt: number): void {
     this.lastDt = dt;
   }
-}
-
-interface Prog { p: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }
-
-/** Compone un giro sobre Z tras la matriz (para aletear). */
-function mulZ(m: Mat4, rz: number): Mat4 {
-  const c = Math.cos(rz), s = Math.sin(rz);
-  const z = new Float32Array([c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-  return mul(m, z);
 }

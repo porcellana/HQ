@@ -18,12 +18,11 @@ import { showExport, showImport } from '@/ui/transfer';
 import { defaultStores } from '@/game/save/storage';
 import { loadSettings, saveSettings, type Settings } from '@/game/settings';
 import { createNewGame, type GameState } from '@/game/state';
-import { Renderer } from '@/gfx/renderer';
-import type { MapView } from '@/gfx/mapView';
 import { Renderer3D } from '@/gfx/world3d/renderer3d';
 import type { DiceEvent } from '@/game/game';
 import { BattleScene } from '@/ui/battleScene';
-import { heroColors } from '@/gfx/sprites';
+import { heroColors, DEFAULT_HERO_COLORS, type HumanoidColors } from '@/gfx/look';
+import { zoneImage } from '@/gfx/mapImage';
 import { creationScreen } from '@/ui/creation';
 import { characterSheet } from '@/ui/sheet';
 import { inventoryScreen } from '@/ui/inventory';
@@ -42,16 +41,18 @@ import { helpScreen } from '@/ui/help';
 import { victoryScreen } from '@/ui/victory';
 import { Sfx } from '@/audio/sfx';
 
+/** Pantallas que se muestran como hoja inferior deslizable. */
+const SHEET_SCREENS = ['inventory', 'journal', 'pet-screen', 'stable', 'sheet', 'shop', 'talents', 'help', 'settings'];
+
 /** Cada cuántos turnos se autoguarda además de al cambiar de zona. */
 const AUTOSAVE_EVERY_TURNS = 40;
 
 export class App {
   private settings: Settings = loadSettings();
   private readonly saves = new SaveManager(defaultStores(), __APP_VERSION__);
-  private readonly r2d: Renderer;
   private r3d: Renderer3D | null = null;
-  private gl3dFailed = false;
-  private readonly glCanvas: HTMLCanvasElement | null;
+  private colors: HumanoidColors = DEFAULT_HERO_COLORS;
+  private readonly glCanvas: HTMLCanvasElement;
   private readonly loop: GameLoop;
   private game: Game | null = null;
   private hud: Hud | null = null;
@@ -70,16 +71,15 @@ export class App {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     private readonly ui: HTMLElement,
-    glCanvas: HTMLCanvasElement | null = null,
+    glCanvas: HTMLCanvasElement,
   ) {
     this.glCanvas = glCanvas;
-    this.r2d = new Renderer(canvas);
     this.loop = new GameLoop((dt) => this.tick(dt));
     new Input(canvas, {
       onTap: (x, y) => this.onTap(x, y),
       onHeldDir: (d) => this.setHeldDir(d),
       onZoom: (dir) => this.zoomMap(dir),
-      onDrag: (dx) => this.r3d && this.use3d && this.r3d.rotateBy(dx),
+      onDrag: (dx) => this.r3d?.rotateBy(dx),
       // Dos dedos: se cancelan la ruta y el movimiento pendientes (no se mueve ni ataca al soltar).
       onPinchStart: () => {
         this.game?.cancelPath();
@@ -120,8 +120,56 @@ export class App {
   // ------------------------------------------------------------- Pantallas
   private setScreen(el: HTMLElement | null): void {
     this.screen?.remove();
-    this.screen = el;
-    if (el) this.ui.append(el);
+    this.screen = null;
+    if (!el) return;
+    const sheet = SHEET_SCREENS.some((c) => el.classList.contains(c));
+    this.screen = sheet ? this.wrapSheet(el) : el;
+    this.ui.append(this.screen);
+  }
+
+  /** Envuelve una pantalla en una hoja inferior deslizable: se cierra arrastrando hacia abajo o tocando fuera. */
+  private wrapSheet(el: HTMLElement): HTMLElement {
+    const back = document.createElement('div');
+    back.className = 'sheet-back';
+    const panel = document.createElement('div');
+    panel.className = 'sheet-panel';
+    const grab = document.createElement('div');
+    grab.className = 'sheet-grab';
+    grab.append(document.createElement('i'));
+    panel.append(grab, el);
+    back.append(panel);
+    const close = (): void => {
+      const btn = [...el.querySelectorAll('button')].reverse().find((b) => /^(✕\s*)?(cerrar|volver)/i.test(b.textContent?.trim() ?? ''));
+      btn?.click();
+    };
+    let y0 = 0;
+    let dy = 0;
+    let drag = false;
+    grab.addEventListener('pointerdown', (e) => {
+      drag = true;
+      y0 = e.clientY;
+      dy = 0;
+      grab.setPointerCapture(e.pointerId);
+      panel.classList.add('drag');
+    });
+    grab.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      dy = Math.max(0, e.clientY - y0);
+      panel.style.transform = `translateY(${dy}px)`;
+    });
+    const end = (): void => {
+      if (!drag) return;
+      drag = false;
+      panel.classList.remove('drag');
+      if (dy > 110) close();
+      else panel.style.transform = '';
+    };
+    grab.addEventListener('pointerup', end);
+    grab.addEventListener('pointercancel', end);
+    back.addEventListener('click', (e) => {
+      if (e.target === back) close();
+    });
+    return back;
   }
 
   private async showMainMenu(): Promise<void> {
@@ -207,26 +255,20 @@ export class App {
     });
   }
 
-  /** ¿Se está dibujando en 3D ahora mismo? */
-  private get use3d(): boolean {
-    return !!this.r3d && this.settings.graphics === '3d' && !this.gl3dFailed;
+  /** Renderizador del mapa (siempre 3D). */
+  private get renderer(): Renderer3D {
+    return this.r3d!;
   }
 
-  /** Renderizador activo del mapa (3D con respaldo automático al 2D clásico). */
-  private get renderer(): MapView {
-    return this.use3d ? this.r3d! : this.r2d;
-  }
-
-  /** Crea o descarta el 3D según los ajustes; si WebGL falla se queda el 2D. */
-  private applyGraphics(): void {
-    if (this.settings.graphics === '3d' && !this.gl3dFailed && !this.r3d && this.glCanvas && Renderer3D.supported()) {
+  /** Crea el renderizador 3D; sin WebGL2 muestra un mensaje claro (no hay respaldo 2D). */
+  private initGraphics(): boolean {
+    if (this.r3d) return true;
+    if (Renderer3D.supported()) {
       try {
         const r = new Renderer3D(this.glCanvas, this.canvas, this.settings.quality);
-        r.heroColors = this.r2d.heroColors;
+        r.heroColors = this.colors;
         r.onContextLost = () => {
-          this.gl3dFailed = true;
-          this.applyGraphics();
-          this.toast('Se perdió el 3D: usando gráficos 2D clásicos.');
+          showDialog(this.ui, 'Gráficos detenidos', 'El sistema ha liberado la memoria gráfica del juego. Pulsa «Recargar» para continuar (tu partida está guardada).', [{ label: 'Recargar', kind: 'primary', action: () => { location.reload(); return false; } }]);
         };
         r.onAutoQuality = (q) => {
           this.settings = { ...this.settings, quality: q };
@@ -234,24 +276,21 @@ export class App {
           this.toast(`Rendimiento bajo: calidad gráfica «${q}».`);
         };
         this.r3d = r;
+        return true;
       } catch (e) {
-        console.warn('[3D] no disponible, uso 2D', e);
-        this.gl3dFailed = true;
+        console.warn('[3D] no se pudo iniciar', e);
       }
     }
-    const on = this.use3d;
-    if (this.glCanvas) this.glCanvas.style.display = on ? 'block' : 'none';
-    if (on) this.r3d!.setQuality(this.settings.quality);
-    else {
-      const c = this.canvas.getContext('2d');
-      c?.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    }
-    this.r2d.resize();
-    this.r3d?.resize();
+    this.ui.replaceChildren();
+    const box = document.createElement('div');
+    box.className = 'fatal';
+    box.innerHTML = '<h2>Gráficos 3D no disponibles</h2><p>Este juego necesita <b>WebGL 2</b> y tu dispositivo o navegador no lo admite. Actualiza el sistema, el WebView de Android o prueba con otro navegador (Chrome, Firefox, Edge o Safari recientes).</p>';
+    this.ui.append(box);
+    return false;
   }
 
   private applySettings(): void {
-    this.applyGraphics();
+    if (!this.initGraphics()) return;
     document.documentElement.classList.toggle('ui-grande', this.settings.uiScale === 'grande');
     this.hud?.applySettings(this.settings);
     if (this.game) {
@@ -259,6 +298,7 @@ export class App {
     }
     this.sfx.enabled = this.settings.sound;
     this.sfx.volume = this.settings.volume;
+    this.renderer.setQuality(this.settings.quality);
     this.renderer.setZoomStep(this.settings.zoomStep);
     // El tamaño de interfaz cambia el layout: recalculamos el canvas.
     requestAnimationFrame(() => this.layout());
@@ -416,7 +456,7 @@ export class App {
     if (!p || !this.hud) return;
     const cls = getClass(p.classId);
     const colors = heroColors(cls.look, p.portrait);
-    this.r2d.heroColors = colors;
+    this.colors = colors;
     if (this.r3d) this.r3d.heroColors = colors;
     this.hud.setPortrait(colors);
     this.hud.setResource(cls.resource.short, cls.resource.color);
@@ -493,7 +533,7 @@ export class App {
     if (!game || this.pauseClose || this.screen) return;
     game.heldDir = null;
     this.setScreen(
-      zoneMapScreen(game, this.r2d.zoneImage(game.zone), this.r2d.heroColors, () => this.setScreen(null), (x, y) => {
+      zoneMapScreen(game, zoneImage(game.zone), this.colors, () => this.setScreen(null), (x, y) => {
         this.setScreen(null);
         game.tapTile(x, y);
       }),
@@ -596,10 +636,9 @@ export class App {
     }
     // Con la escena de batalla abierta, el mapa no se dibuja (ahorra batería).
     if (this.scene) return;
-    this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, volume: this.settings.volume3d, questGuide: this.settings.questGuide });
+    this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, questGuide: this.settings.questGuide });
     this.hud?.update(game, dt);
     this.hud?.zoom.update(this.renderer.zoomStep, this.renderer.zoomLimits);
-    this.hud?.zoom.set3d(this.use3d);
   }
 
   // ------------------------------------------------------------------- batalla
@@ -607,14 +646,15 @@ export class App {
     if (this.scene || !this.hud) return;
     game.heldDir = null;
     this.hud.dismissDrawer();
-    this.scene = new BattleScene({
+    try {
+      this.scene = new BattleScene({
       root: this.ui,
       game,
       battle,
-      heroColors: this.r2d.heroColors,
+      heroColors: this.colors,
       speed: this.settings.battleSpeed,
       fx: this.settings.combatFx,
-      ...(this.use3d ? { backdrop3d: this.settings.quality } : {}),
+      quality: this.settings.quality,
       sfx: (id) => this.sfx.play(id),
       vibrate: (ms) => buzz(this.settings.vibration, ms),
       onFinish: () => {
@@ -624,6 +664,11 @@ export class App {
         if (!game.isDead) void this.autosave('batalla');
       },
     });
+    } catch (e) {
+      console.error('[batalla 3D]', e);
+      this.scene = null;
+      showDialog(this.ui, 'Gráficos de batalla', 'No se pudo iniciar la escena 3D de la batalla (memoria gráfica insuficiente). Cierra otras apps y vuelve a intentarlo.', [{ label: 'Recargar', kind: 'primary', action: () => { location.reload(); return false; } }]);
+    }
   }
 
   /** Subidas de nivel: tras la batalla, y sin otro diálogo abierto. */
@@ -651,7 +696,7 @@ export class App {
   private setHeldDir(d: { dx: number; dy: number } | null): void {
     if (!this.game) return;
     if (d) this.game.cancelPath();
-    this.game.heldDir = d && this.use3d ? this.r3d!.remap(d) : d;
+    this.game.heldDir = d ? this.r3d!.remap(d) : d;
   }
 
   /** Guarda en segundo plano; las llamadas se encadenan para no solaparse. */

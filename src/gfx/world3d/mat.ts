@@ -102,3 +102,26 @@ export function unprojectRay(inv: Mat4, nx: number, ny: number): { o: Vec3; d: V
   const a = p(-1), b = p(1);
   return { o: a, d: norm(sub(b, a)) };
 }
+
+export function translate(x: number, y: number, z: number): Mat4 {
+  const m = ident();
+  m[12] = x; m[13] = y; m[14] = z;
+  return m;
+}
+/** Giro sobre X (positivo: +y hacia +z). */
+export function rotX(a: number): Mat4 {
+  const c = Math.cos(a), s = Math.sin(a), m = ident();
+  m[5] = c; m[6] = s; m[9] = -s; m[10] = c;
+  return m;
+}
+/** Giro sobre Z (positivo: +x hacia +y). */
+export function rotZ(a: number): Mat4 {
+  const c = Math.cos(a), s = Math.sin(a), m = ident();
+  m[0] = c; m[1] = s; m[4] = -s; m[5] = c;
+  return m;
+}
+export function scaleXYZ(x: number, y: number, z: number): Mat4 {
+  const m = ident();
+  m[0] = x; m[5] = y; m[10] = z;
+  return m;
+}

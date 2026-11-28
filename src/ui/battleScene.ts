@@ -1,14 +1,14 @@
 /**
- * ESCENA DE BATALLA (estilo Final Fantasy, vista lateral) — capa de presentación
+ * ESCENA DE BATALLA 3D (estilo Final Fantasy, vista lateral) — capa de presentación
  * -----------------------------------------------------------------------------
  * La lógica vive en src/game/battle/battle.ts (sin DOM). Esta escena:
- *   - dibuja el escenario (fondo por bioma) y los sprites ampliados: tu grupo a
- *     la DERECHA y los enemigos a la IZQUIERDA, con respiración suave;
- *   - reproduce el guion de eventos de la batalla con animaciones (el atacante
- *     avanza y vuelve, destello, números flotantes, partículas por tipo de
- *     daño, desintegración al morir, sacudida suave);
+ *   - dibuja un diorama 3D del bioma con los combatientes como modelos animados
+ *     (grupo a la DERECHA, enemigos a la IZQUIERDA), sombras, auras y partículas;
+ *   - reproduce el guion de eventos de la batalla (el atacante avanza y golpea,
+ *     el objetivo reacciona, proyectiles, explosiones elementales, hit-stop,
+ *     números flotantes, desintegración al morir);
  *   - ofrece el menú táctil compacto: Atacar, Habilidad, Objeto, Defender, Huir.
- * Sin carteles grandes, sin zoom de cámara y sin tarjeta de duelo.
+ * Sin carteles grandes ni zoom brusco de cámara.
  */
 import { PET_SPECIES } from '@/data/registry';
 import type { DamageType } from '@/data/schema';
@@ -19,21 +19,22 @@ import { biomeOf, type Biome } from '@/game/battle/biome';
 import { STATUS_INFO } from '@/game/combat/status';
 import { itemDef } from '@/game/items/items';
 import * as Pets from '@/game/pets/pets';
-import { makeBattleBackground } from '@/gfx/battleBg';
-import { Backdrop3D } from '@/gfx/world3d/battle3d';
+import { Battle3D, STAGE_CENTER, type Projectile, type UnitDraw } from '@/gfx/world3d/battle3d';
 import { QUALITY, type Quality } from '@/gfx/world3d/quality';
-import { nightAmount } from '@/gfx/renderer';
-import { monsterSprite } from '@/gfx/monsters';
-import { LEVEL_DENSITY, ParticlePool, emitDissolve, emitHeal, emitImpact, emitStatusPuff, emitTrail, type FxLevel } from '@/gfx/particles';
-import { PAL } from '@/gfx/palette';
-import { petSprite } from '@/gfx/pets';
-import { silhouette } from '@/gfx/silhouette';
+import { nightAmount } from '@/gfx/viewconst';
+import { Fx3D, buffBurst, critBurst, dissolveDust, explosion, healBurst, impact, shockRing, statusPuff, trailPuff } from '@/gfx/world3d/fx3d';
+import { beastRig, humanoidRig, type Rig } from '@/gfx/world3d/models';
+import type { AnimState } from '@/gfx/world3d/anim';
+import { rigPortrait } from '@/gfx/world3d/studio';
 import { itemIconElement } from '@/gfx/items';
-import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
+import type { HumanoidColors } from '@/gfx/look';
 import { ambientPos, ambientSpec, attackKind, damageStyle, elementOf, ghostStep, healStyle, hitStop, hpColor, missStyle, type AmbientSpec, type NumStyle } from '@/gfx/battleFx';
-import { drawArrow, drawAura, drawCritStar, drawExplosion, drawHealLight, drawOrb, drawShock, drawSlash, drawThrust, makeVignette } from './battleFxDraw';
+import { drawAura, drawCritStar, drawExplosion, drawHealLight, drawShock, drawSlash, drawThrust, makeVignette } from './battleFxDraw';
 import { h } from './dom';
 import { lootSummary } from './lootSummary';
+
+export type FxLevel = 'completos' | 'reducidos' | 'minimos';
+const LEVEL_DENSITY: Record<FxLevel, number> = { completos: 1, reducidos: 0.5, minimos: 0.2 };
 
 export interface BattleSceneDeps {
   root: HTMLElement;
@@ -42,12 +43,11 @@ export interface BattleSceneDeps {
   heroColors: HumanoidColors;
   speed: 'normal' | 'rapida';
   fx: FxLevel;
+  quality: Quality;
   sfx(id: SfxId): void;
   vibrate(ms: number): void;
   /** Se pulsó «Continuar» tras la victoria/derrota (la partida aplica el resultado). */
   onFinish(): void;
-  /** Fondo 3D del bioma (undefined = fondo pixel art clásico). */
-  backdrop3d?: Quality;
 }
 
 const IMPACT_SFX: Record<DamageType, SfxId> = {
@@ -58,15 +58,24 @@ const IMPACT_SFX: Record<DamageType, SfxId> = {
 interface Unit {
   id: string;
   c: Combatant;
-  img: HTMLCanvasElement;
-  sil: HTMLCanvasElement;
-  /** Posición base (pies, centro) y desplazamiento de animación. */
+  rig: Rig;
+  /** Clave para el retrato del orden de turnos. */
+  key: string;
+  scale: number;
+  /** Posición en el mundo (se desliza hacia la de destino). */
+  wx: number;
+  wz: number;
+  twx: number;
+  twz: number;
+  /** Posición base de los pies en pantalla (px) y desplazamiento de animación (px); `lift` = salto en px. */
   hx: number;
   hy: number;
   x: number;
   y: number;
   ox: number;
   oy: number;
+  lift: number;
+  /** Píxeles de alto / 16 (las proporciones de los efectos 2D se miden con esto). */
   k: number;
   big: boolean;
   phase: number;
@@ -74,7 +83,6 @@ interface Unit {
   shake: number;
   alpha: number;
   dissolve: number;
-  noise: Float32Array;
   hpShown: number;
   maxHp: number;
   hpTarget: number;
@@ -85,6 +93,10 @@ interface Unit {
   /** Estela de daño de la barra de vida y deformación al golpear. */
   hpGhost: number;
   squash: number;
+  /** Animación en curso. */
+  st: AnimState;
+  stT: number;
+  stDur: number;
 }
 
 interface FloatText {
@@ -128,24 +140,22 @@ export class BattleScene {
   private readonly panelEl: HTMLDivElement;
   private readonly btns: Record<'attack' | 'skill' | 'item' | 'defend' | 'flee', HTMLButtonElement>;
   private units = new Map<string, Unit>();
-  private pool = new ParticlePool(220);
+  private fx3: Fx3D;
   private floats: FloatText[] = [];
   private fxs: Fx[] = [];
-  /** Dibujos de un solo fotograma (proyectiles en vuelo). */
-  private immediate: Array<(ctx: CanvasRenderingContext2D) => void> = [];
+  /** Proyectiles 3D de este fotograma (se rellenan a diario desde las animaciones). */
+  private projectiles: Projectile[] = [];
   private hitStopT = 0;
   private screenFlash = 0;
   private vignette: HTMLCanvasElement | null = null;
   private amb: AmbientSpec;
   private tweens: Tween[] = [];
-  private bg: HTMLCanvasElement | null = null;
-  private glCanvas: HTMLCanvasElement | null = null;
-  private backdrop: Backdrop3D | null = null;
+  private glCanvas: HTMLCanvasElement;
+  private b3: Battle3D;
   private biome: Biome;
   private W = 0;
   private H = 0;
   private dpr = 1;
-  private S = 4;
   private time = 0;
   private raf = 0;
   private last = 0;
@@ -172,25 +182,18 @@ export class BattleScene {
     this.biome = biomeOf({ id: zone.id, kind: zone.kind, ...(zone.darkness !== undefined ? { darkness: zone.darkness } : {}), dungeon: zone.dungeon, generated: zone.generated });
     this.amb = ambientSpec(this.biome);
     this.density = LEVEL_DENSITY[d.fx];
+    this.fx3 = new Fx3D(this.density);
     this.speedK = d.speed === 'rapida' ? 0.55 : 1;
     this.canvas = h('canvas', { class: 'b-canvas' });
     this.ctx = this.canvas.getContext('2d')!;
     this.msgEl = h('div', { class: 'b-msg' });
     this.orderEl = h('div', { class: 'b-order' });
-    // Fondo 3D opcional (si WebGL falla, se usa el fondo pixel art de siempre).
-    if (d.backdrop3d) {
-      try {
-        const gc = h('canvas', { class: 'b-gl' });
-        const z = d.game.zone;
-        const outdoor = z.def.kind === 'town' || z.def.kind === 'wild' || z.def.kind === 'world';
-        this.backdrop = new Backdrop3D(gc, this.biome, (z.id.length * 7 + d.game.state.turn) & 255, outdoor ? nightAmount(d.game.state.turn) : 0, QUALITY[d.backdrop3d]);
-        this.glCanvas = gc;
-      } catch (e) {
-        console.warn('[batalla 3D] sin fondo 3D', e);
-        this.backdrop = null;
-      }
-    }
-    this.stage = h('div', { class: 'b-stage' }, [...(this.glCanvas ? [this.glCanvas] : []), this.canvas, this.orderEl, this.msgEl]);
+    const gc = h('canvas', { class: 'b-gl' });
+    const z = d.game.zone;
+    const outdoor = z.def.kind === 'town' || z.def.kind === 'wild' || z.def.kind === 'world';
+    this.b3 = new Battle3D(gc, this.biome, (z.id.length * 7 + d.game.state.turn) & 255, outdoor ? nightAmount(d.game.state.turn) : 0, QUALITY[d.quality]);
+    this.glCanvas = gc;
+    this.stage = h('div', { class: 'b-stage' }, [this.glCanvas, this.canvas, this.orderEl, this.msgEl]);
     this.partyEl = h('div', { class: 'b-party' });
     const mk = (key: keyof BattleScene['btns'], ico: string, label: string, fn: () => void) => {
       const b = h('button', { class: `b-btn b-${key}`, onClick: fn, attrs: { 'aria-label': label } }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
@@ -211,9 +214,9 @@ export class BattleScene {
     d.root.append(this.el);
     this.canvas.addEventListener('pointerdown', (e) => this.onTap(e));
     this.setEnabled(false);
+    this.buildParty();
     this.measure();
     this.buildUnits();
-    this.buildParty();
     this.ro = new ResizeObserver(() => {
       this.measure();
       this.layout(true);
@@ -222,6 +225,12 @@ export class BattleScene {
     this.last = performance.now();
     this.raf = requestAnimationFrame((t) => this.frame(t));
     void this.director();
+  }
+
+  private uiH = 0;
+  /** Altura libre sobre el panel inferior. */
+  private usableH(): number {
+    return Math.max(this.H * 0.45, this.H - this.uiH + 6);
   }
 
   // ======================================================== tamaño y unidades
@@ -234,42 +243,39 @@ export class BattleScene {
     this.canvas.height = Math.round(this.H * this.dpr);
     this.canvas.style.width = `${this.W}px`;
     this.canvas.style.height = `${this.H}px`;
-    // Escala de los sprites (16 px de píxel art): enteros para que se vean nítidos.
-    this.S = Math.max(3, Math.min(7, Math.floor(Math.min(this.W / 5.0, this.H / 4.2) / 16)));
-    if (this.backdrop) this.backdrop.resize(this.W, this.H, Math.min(this.dpr, 2) * (this.d.backdrop3d ? QUALITY[this.d.backdrop3d].scale : 1));
-    else this.bg = makeBattleBackground(this.W, this.H, this.biome, 7);
+    this.uiH = (this.el.querySelector('.b-ui') as HTMLElement | null)?.getBoundingClientRect().height ?? this.H * 0.3;
+    this.b3.resize(this.W, this.H, this.dpr * QUALITY[this.d.quality].scale, this.usableH());
     this.vignette = makeVignette(this.W, this.H, this.amb.tint);
   }
 
-  private spriteOf(c: Combatant): HTMLCanvasElement {
+  /** Modelo 3D del combatiente (y una clave para su retrato en la lista de turnos). */
+  private rigOf(c: Combatant): { rig: Rig; key: string } {
     const g = this.d.game;
-    if (c.kind === 'player') return humanoidSprite(this.d.heroColors).left;
+    const hero = (col: HumanoidColors): Rig => humanoidRig({ skin: col.skin, hair: col.hair, cloth: col.cloth, clothDark: col.clothDark, pants: col.pants, hat: col.hat, overlay: col.overlay });
+    if (c.kind === 'player') return { rig: hero(this.d.heroColors), key: 'player' };
     if (c.kind === 'ally') {
       const l = g.companionDef?.look;
-      if (!l) return humanoidSprite(this.d.heroColors).left;
-      return humanoidSprite({
-        hair: l.hair ?? PAL.hair, skin: l.skin ?? PAL.skin, cloth: l.cloth, clothDark: l.clothDark, pants: l.pants,
-        ...(l.hat ? { hat: l.hat } : {}), ...(l.overlay ? { overlay: l.overlay } : {}),
-      }).left;
+      if (!l) return { rig: hero(this.d.heroColors), key: 'player' };
+      return { rig: humanoidRig({ skin: l.skin ?? '#d9a67a', hair: l.hair ?? '#3a2418', cloth: l.cloth, clothDark: l.clothDark, pants: l.pants, hat: l.hat, overlay: l.overlay }), key: `ally:${g.companionDef?.id}` };
     }
     if (c.kind === 'pet') {
       const sp = g.petInstance ? PET_SPECIES.get(g.petInstance.species) : undefined;
-      return sp ? petSprite(sp.look, sp.stage).left : humanoidSprite(this.d.heroColors).left;
+      return sp ? { rig: beastRig(sp.look.shape, sp.look), key: `pet:${sp.id}` } : { rig: hero(this.d.heroColors), key: 'player' };
     }
     const def = c.enemy!.def;
     const wild = def.pet ? PET_SPECIES.get(def.pet.species) : undefined;
-    return (wild ? petSprite(wild.look, wild.stage) : monsterSprite(def.look)).right;
+    const look = wild ? wild.look : def.look;
+    return { rig: beastRig(look.shape, look, wild ? undefined : def.look.overlay), key: `e:${wild ? 'w' + wild.id : def.id}` };
   }
 
   private addUnit(c: Combatant, entering = false): Unit {
-    const img = this.spriteOf(c);
+    const { rig, key } = this.rigOf(c);
     const b = this.d.battle;
-    const noise = new Float32Array(256);
-    for (let i = 0; i < 256; i++) noise[i] = Math.random();
     const u: Unit = {
-      id: c.id, c, img, sil: silhouette(img, '#ffffff'), hx: 0, hy: 0, x: 0, y: 0, ox: 0, oy: 0, k: this.S + (c.boss ? 2 : 0), big: c.boss,
-      phase: Math.random() * 6, flash: 0, shake: 0, alpha: entering ? 0 : 1, dissolve: 0, noise,
+      id: c.id, c, rig, key, scale: c.boss ? 1.5 : c.side === 'foe' ? 1.08 : 1, wx: 0, wz: 0, twx: 0, twz: 0, hx: 0, hy: 0, x: 0, y: 0, ox: 0, oy: 0, lift: 0, k: 4, big: c.boss,
+      phase: Math.random() * 6, flash: 0, shake: 0, alpha: entering ? 0 : 1, dissolve: 0,
       hpShown: b.hp(c), maxHp: b.maxHp(c), hpTarget: b.hp(c), dead: false, name: c.name, enter: entering ? 0 : 1, hpGhost: b.hp(c), squash: 0,
+      st: 'idle', stT: 0, stDur: 1,
     };
     this.units.set(c.id, u);
     return u;
@@ -282,7 +288,7 @@ export class BattleScene {
 
   /** Coloca a cada unidad en su casilla de formación (grupo a la derecha, enemigos a la izquierda). */
   private layout(snap: boolean): void {
-    const { W, H } = this;
+    const W = this.W, H = this.usableH();
     const party = [...this.units.values()].filter((u) => u.c.side === 'party');
     const foes = [...this.units.values()].filter((u) => u.c.side === 'foe' && !u.dead);
     // Grupo: columna diagonal (el jugador al frente).
@@ -290,29 +296,33 @@ export class BattleScene {
     party.sort((a, b) => order(a) - order(b));
     const np = party.length;
     party.forEach((u, i) => {
-      u.hy = H * (np === 1 ? 0.72 : 0.5 + (0.3 * (i + 0.5)) / np + (np === 2 ? 0.05 : 0));
-      u.hx = W * (0.78 + 0.04 * ((i + (3 - np)) % 3) - 0.0) + (np === 1 ? W * 0.04 : 0);
+      u.hx = W * (np === 1 ? 0.74 : 0.77 - 0.06 * (i % 2));
+      u.hy = H * (np === 1 ? 0.76 : 0.6 + (0.3 * (i + 0.5)) / np);
     });
-    // Enemigos: dos columnas escalonadas.
+    // Enemigos: una o dos columnas escalonadas (los grandes, solos, al centro-izquierda).
     const nf = foes.length;
     const cols = nf > 2 ? 2 : 1;
     foes.forEach((u, i) => {
       if (u.big && nf === 1) {
-        u.hx = W * 0.27;
-        u.hy = H * 0.76;
+        u.hx = W * 0.3;
+        u.hy = H * 0.8;
         return;
       }
       const col = cols === 1 ? 0 : i % 2;
       const row = cols === 1 ? i : Math.floor(i / 2);
       const rows = cols === 1 ? nf : Math.ceil(nf / 2);
-      u.hx = W * (cols === 1 ? 0.24 + (nf === 2 ? (i % 2) * 0.1 : 0) : 0.34 - col * 0.17 + (row % 2) * 0.02);
-      u.hy = H * (cols === 1 ? 0.55 + (0.26 * (i + 0.5)) / Math.max(1, nf) + 0.03 : 0.5 + (0.3 * (row + 0.5)) / rows + col * 0.035);
+      u.hx = W * (cols === 1 ? 0.27 + (nf === 2 ? (i % 2) * 0.09 : 0) : 0.36 - col * 0.17 + (row % 2) * 0.02);
+      u.hy = H * (cols === 1 ? 0.6 + (0.26 * (i + 0.5)) / Math.max(1, nf) + 0.03 : 0.58 + (0.3 * (row + 0.5)) / rows + col * 0.035);
     });
+    const ppu = this.b3.pixelsPerUnit;
     for (const u of this.units.values()) {
-      u.k = this.S + (u.big ? 2 : 0);
+      const [gx, gz] = this.b3.groundAt(u.hx, u.hy);
+      u.twx = gx;
+      u.twz = gz;
+      u.k = (u.rig.height * u.scale * ppu) / 16;
       if (snap) {
-        u.x = u.hx;
-        u.y = u.hy;
+        u.wx = gx;
+        u.wz = gz;
       }
     }
   }
@@ -323,9 +333,16 @@ export class BattleScene {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.update(dt);
-    this.backdrop?.draw(dt, this.activeUnitX() - this.W / 2);
+    this.drawGl(dt);
     this.render();
     this.raf = requestAnimationFrame((t) => this.frame(t));
+  }
+
+  /** Anima una unidad: ataque, golpe, muerte... (`dur` en segundos). */
+  private setAnim(u: Unit, st: AnimState, dur = 0.5): void {
+    u.st = st;
+    u.stT = 0;
+    u.stDur = Math.max(0.05, dur * this.speedK);
   }
 
   private update(dtRaw: number): void {
@@ -348,14 +365,19 @@ export class BattleScene {
         t.done();
       }
     }
-    this.pool.update(dt);
+    this.fx3.update(dt);
     for (const f of this.floats) f.t += dtRaw;
     this.floats = this.floats.filter((f) => f.t < f.life);
     if (this.shakeT > 0) this.shakeT -= dt;
+    const ppu = this.b3.pixelsPerUnit;
     for (const u of this.units.values()) {
       u.flash = Math.max(0, u.flash - dtRaw * 6);
       u.squash *= Math.max(0, 1 - dtRaw * 12);
       u.shake = Math.max(0, u.shake - dt * 3);
+      if (u.st !== 'idle' && u.st !== 'cheer' && u.st !== 'die') {
+        u.stT += dt;
+        if (u.stT >= u.stDur) u.st = 'idle';
+      } else if (u.st === 'die') u.stT = Math.min(u.stDur, u.stT + dt);
       if (u.enter < 1) {
         u.enter = Math.min(1, u.enter + dtRaw * 2.6);
         u.alpha = u.enter;
@@ -364,10 +386,66 @@ export class BattleScene {
       u.hpShown += (u.hpTarget - u.hpShown) * Math.min(1, dtRaw * 7);
       if (Math.abs(u.hpTarget - u.hpShown) < 0.2) u.hpShown = u.hpTarget;
       // Se desliza hacia su sitio (al aparecer invocaciones).
-      u.x += (u.hx - u.x) * Math.min(1, dt * 8);
-      u.y += (u.hy - u.y) * Math.min(1, dt * 8);
+      u.wx += (u.twx - u.wx) * Math.min(1, dt * 8);
+      u.wz += (u.twz - u.wz) * Math.min(1, dt * 8);
+      const p = this.b3.project(u.wx, 0, u.wz);
+      u.x = p.x;
+      u.y = p.y;
+      u.hx = p.x;
+      u.hy = p.y;
+      u.k = (u.rig.height * u.scale * ppu) / 16;
     }
     this.syncRows();
+  }
+
+  /** Estado de animación efectivo de una unidad. */
+  private poseState(u: Unit): { state: AnimState; k: number } {
+    if (u.st === 'idle') return { state: u.dead ? 'die' : u.c.defending ? 'defend' : 'idle', k: u.dead ? 1 : 0 };
+    return { state: u.st, k: u.st === 'die' ? Math.min(1, u.stT / u.stDur) : u.stT / u.stDur };
+  }
+
+  /** Dibuja el escenario 3D: combatientes, anillos, proyectiles y partículas. */
+  private drawGl(dt: number): void {
+    const ppu = this.b3.pixelsPerUnit, dpx = this.b3.depthPixels;
+    const units: UnitDraw[] = [];
+    let focus = 0;
+    for (const u of this.units.values()) {
+      if (u.alpha <= 0.01 || u.dissolve >= 1) continue;
+      const ps = this.poseState(u);
+      const status = u.dead ? undefined : u.c.statuses.find((s) => s.turns > 0);
+      let ring: string | undefined;
+      if (this.targeting?.valid.has(u.id)) ring = this.targeting.kind === 'ally' ? '#7dff9a' : '#ff6a5a';
+      else if (this.activeId === u.id && !u.dead) ring = '#ffe08a';
+      const wxo = u.wx + (u.ox + (u.shake > 0 ? Math.sin(this.time * 70) * u.shake * 4 : 0)) / ppu;
+      const toward = u.c.side === 'party' ? -1 : 1;
+      units.push({
+        rig: u.rig, x: wxo, y: u.lift / ppu, z: u.wz + u.oy / dpx, yaw: toward * (Math.PI / 2 - 0.5), scale: u.scale,
+        anim: { state: ps.state, k: ps.k, time: this.time, walkT: this.time * 1.5, walk: 0, seed: u.phase },
+        flash: u.flash, squash: u.squash, dissolve: u.dissolve, shadow: u.alpha * Math.max(0.3, 1 - u.lift / 120), aura: status ? STATUS_INFO[status.id].color : undefined, ring,
+        dissolveCol: u.big ? '#c070ff' : '#ffcf70',
+      });
+      if (this.activeId === u.id) focus = (u.wx - STAGE_CENTER[0]) * 0.18;
+    }
+    const sprites: Array<[number, number, number, number, number, number, number, number]> = [];
+    this.fx3.write((x, y, z, size, alpha, r, g, b) => sprites.push([x, y, z, size, alpha, r, g, b]));
+    this.drawAmbientGl(sprites);
+    const shake = this.shakeT > 0 && this.d.fx !== 'minimos' ? this.shakeMag * Math.min(1, this.shakeT * 4) : 0;
+    this.b3.draw(dt, { units, shakeX: Math.sin(this.time * 70) * shake, shakeY: Math.cos(this.time * 83) * shake, focusX: focus, sprites, projectiles: this.projectiles });
+    this.projectiles = [];
+  }
+
+  /** Ambiente del bioma: motas suaves en 3D (polen, brasas, nieve, esporas, niebla...). */
+  private drawAmbientGl(out: Array<[number, number, number, number, number, number, number, number]>): void {
+    const amb = this.amb;
+    const n = Math.round(amb.count * Math.max(0.4, this.density) * 0.6);
+    const hex = amb.color.replace('#', '');
+    const col = [parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255];
+    for (let i = 0; i < n; i++) {
+      const p = ambientPos(i, this.time, 36, 22, amb);
+      const x = 8 + (p.x / 36) * 20, z = 6 + (p.y / 22) * 12;
+      const y = 0.2 + (1 - p.depth) * 2.6 + Math.sin(this.time * 0.8 + i) * 0.1;
+      out.push([x, y, z, amb.kind === 'fog' ? 2.4 : 0.07 + 0.05 * p.depth, amb.kind === 'fog' ? 0.06 : 0.55, col[0]!, col[1]!, col[2]!]);
+    }
   }
 
   /** Espera `s` segundos (escalados por la velocidad de batalla). */
@@ -381,38 +459,23 @@ export class BattleScene {
   }
 
   // ================================================================= dibujado
+  /** Capa 2D (vectorial) sobre el 3D: efectos de trazo, nombres, barras, números y viñeta. */
   private render(): void {
     const { ctx, W, H } = this;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = true;
     ctx.clearRect(0, 0, W, H);
-    // Sacudida suave de toda la escena
     let sx = 0;
     let sy = 0;
     if (this.shakeT > 0 && this.d.fx !== 'minimos') {
       const m = this.shakeMag * Math.min(1, this.shakeT * 4);
-      sx = Math.sin(this.time * 70) * m;
-      sy = Math.cos(this.time * 83) * m * 0.7;
+      sx = Math.sin(this.time * 70) * m * 0.5;
+      sy = Math.cos(this.time * 83) * m * 0.35;
     }
     ctx.save();
     ctx.translate(sx, sy);
-    if (this.bg) {
-      // Parallax: el fondo respira despacio y se desplaza un poco con la acción.
-      const px = Math.sin(this.time * 0.25) * 3 - (this.activeUnitX() - W / 2) * 0.012;
-      ctx.drawImage(this.bg, -6 + px, -3, W + 12, H + 6);
-    }
-    this.drawAmbient(0);
-    const list = [...this.units.values()].sort((a, b) => a.y - b.y);
-    for (const u of list) this.drawUnit(u);
     for (const f of this.fxs) f.draw(ctx, Math.min(1, f.t / f.life));
-    for (const fn of this.immediate) fn(ctx);
-    this.immediate.length = 0;
-    // Partículas en espacio de sprite (escala S)
-    ctx.save();
-    ctx.scale(this.S, this.S);
-    this.pool.draw(ctx);
-    ctx.restore();
-    this.drawAmbient(1);
+    const list = [...this.units.values()].sort((a, b) => a.y - b.y);
     for (const u of list) this.drawOverlay(u);
     this.drawFloats();
     ctx.restore();
@@ -432,191 +495,92 @@ export class BattleScene {
     if (this.wipe < 1) this.drawWipe();
   }
 
-  /** Partículas ambientales por bioma en dos capas de profundidad (0 detrás, 1 delante). */
-  private drawAmbient(layer: 0 | 1): void {
-    const { ctx, W, H, amb } = this;
-    const n = Math.round(amb.count * Math.max(0.4, this.density));
-    ctx.fillStyle = amb.color;
-    for (let i = layer; i < n; i += 2) {
-      const p = ambientPos(i, this.time, W, H, amb);
-      const sz = Math.max(2, Math.round(amb.size * p.depth * (this.S / 4)));
-      if (amb.kind === 'fog') {
-        ctx.globalAlpha = 0.12 * p.depth;
-        ctx.fillRect(Math.round(p.x - sz * 6), Math.round(p.y), sz * 14, sz * 2);
-        ctx.globalAlpha = 1;
-      } else if (amb.kind === 'bubbles') {
-        ctx.strokeStyle = amb.color;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(Math.round(p.x), Math.round(p.y), sz + 1, sz + 1);
-      } else if (amb.kind === 'leaves') {
-        ctx.fillRect(Math.round(p.x), Math.round(p.y), sz + 1, sz);
-      } else ctx.fillRect(Math.round(p.x), Math.round(p.y), sz, sz);
-    }
-  }
-
-  private activeUnitX(): number {
-    const u = this.units.get(this.activeId);
-    return u ? u.x + u.ox : this.W / 2;
-  }
-
   private drawWipe(): void {
     const { ctx, W, H } = this;
-    const n = 9;
-    ctx.fillStyle = '#000';
-    for (let i = 0; i < n; i++) {
-      const w = W * (1 - this.wipe);
-      const y = (H * i) / n;
-      if (i % 2) ctx.fillRect(0, y, w, H / n + 1);
-      else ctx.fillRect(W - w, y, w, H / n + 1);
-    }
+    ctx.fillStyle = '#05040a';
+    ctx.globalAlpha = 1 - this.wipe;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
   }
 
-  private drawUnit(u: Unit): void {
-    if (u.alpha <= 0.01) return;
-    const { ctx } = this;
-    const k = u.k;
-    const w = 16 * k;
-    // Idle: respiración (más lenta y amplia en los grandes) y leve balanceo.
-    const bob = Math.sin(this.time * (u.big ? 1.5 : 2.2) + u.phase);
-    const sc = 1 + 0.025 * bob + u.squash * 0.12;
-    const wx = 1 - u.squash * 0.1;
-    // Entrada: los enemigos entran deslizándose; los jefes caen con rebote.
-    let ex = 0;
-    let ey = 0;
-    if (u.enter < 1) {
-      const e = ease(u.enter);
-      if (u.c.side === 'foe' && !u.big) ex = -(1 - e) * this.W * 0.18;
-      else if (u.big) ey = -(1 - e * e) * this.H * 0.3 + Math.abs(Math.sin(e * 9)) * (1 - e) * -12;
-    }
-    const x = u.x + u.ox + ex + (u.shake > 0 ? Math.sin(this.time * 70) * u.shake * 4 : 0);
-    const y = u.y + u.oy + ey;
-    // Sombra (se encoge si el personaje salta/avanza en vertical)
-    const lift = Math.max(0, -(u.oy + ey)) / Math.max(1, w);
-    ctx.fillStyle = `rgba(0,0,0,${Math.max(0.12, 0.38 - lift * 0.3)})`;
-    ctx.beginPath();
-    ctx.ellipse(u.x + u.ox + ex, u.hy + 2, w * 0.38 * (1 - lift * 0.3), w * 0.1, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Aura de estado bajo los pies (veneno verde, fuego naranja...)
-    if (!u.dead) {
-      const st = u.c.statuses.find((s) => s.turns > 0);
-      if (st) {
-        const col = STATUS_INFO[st.id].color;
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.28 + 0.14 * Math.sin(this.time * 5);
-        ctx.fillStyle = col;
-        ctx.beginPath();
-        ctx.ellipse(u.x + u.ox, u.hy + 2, w * 0.46, w * 0.14, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-    }
-    ctx.save();
-    ctx.globalAlpha = u.alpha;
-    ctx.translate(x, y);
-    if (u.dead && u.c.side === 'party') {
-      ctx.rotate(-Math.PI / 2.3);
-      ctx.globalAlpha = 0.55;
-    }
-    const img = u.dissolve > 0 ? this.dissolved(u) : u.img;
-    ctx.drawImage(img, (-w * wx) / 2, -w * sc + 2, w * wx, w * sc);
-    if (u.flash > 0) {
-      ctx.globalAlpha = Math.min(1, u.flash) * 0.85;
-      ctx.drawImage(u.sil, (-w * wx) / 2, -w * sc + 2, w * wx, w * sc);
-    }
-    ctx.restore();
-  }
-
-  /** Copia del sprite con huecos que crecen (desintegración de arriba abajo). */
-  private dissolved(u: Unit): HTMLCanvasElement {
-    const c = document.createElement('canvas');
-    c.width = 16;
-    c.height = 16;
-    const x = c.getContext('2d')!;
-    x.drawImage(u.img, 0, 0);
-    const id = x.getImageData(0, 0, 16, 16);
-    for (let py = 0; py < 16; py++) {
-      for (let px = 0; px < 16; px++) {
-        const thr = u.dissolve * 1.35 - (py / 16) * 0.35;
-        if (u.noise[py * 16 + px]! < thr) id.data[(py * 16 + px) * 4 + 3] = 0;
-      }
-    }
-    x.putImageData(id, 0, 0);
-    return c;
+  private feetY(u: Unit): number {
+    return u.y + u.oy - u.lift;
   }
 
   private drawOverlay(u: Unit): void {
     if (u.alpha < 0.3 || (u.dead && u.c.side === 'foe')) return;
     const { ctx } = this;
     const k = u.k;
-    const top = u.y + u.oy - 16 * k - 4;
+    const ux = u.x + u.ox;
+    const top = this.feetY(u) - 16 * k - 4;
     ctx.textAlign = 'center';
     const foe = u.c.side === 'foe';
     let ty = top;
     if (foe) {
       // Nombre y barra de vida del enemigo
-      const bw = Math.max(46, 12 * k);
-      ctx.font = `bold ${u.big ? 13 : 11}px system-ui, sans-serif`;
+      const bw = Math.max(52, 11 * k);
+      ctx.font = `600 ${u.big ? 13 : 11}px system-ui, sans-serif`;
       ctx.lineWidth = 3;
-      ctx.strokeStyle = '#000';
-      ctx.strokeText(u.name, u.x, ty);
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(8,6,14,0.85)';
+      ctx.strokeText(u.name, ux, ty);
       ctx.fillStyle = u.big ? '#e8c0ff' : '#f4efe0';
-      ctx.fillText(u.name, u.x, ty);
-      ty += 4;
-      ctx.fillStyle = '#000';
-      ctx.fillRect(u.x - bw / 2 - 1, ty - 1, bw + 2, 7);
-      ctx.fillStyle = '#3a1010';
-      ctx.fillRect(u.x - bw / 2, ty, bw, 5);
+      ctx.fillText(u.name, ux, ty);
+      ty += 5;
+      const bh = 6;
+      const rr = (x: number, y: number, w: number, hh: number, c: string) => {
+        ctx.fillStyle = c;
+        ctx.beginPath();
+        ctx.roundRect(x, y, Math.max(0, w), hh, hh / 2);
+        ctx.fill();
+      };
+      rr(ux - bw / 2 - 1.5, ty - 1.5, bw + 3, bh + 3, 'rgba(8,6,14,0.7)');
+      rr(ux - bw / 2, ty, bw, bh, '#2a1018');
       const mh = Math.max(1, u.maxHp);
-      if (u.hpGhost > u.hpShown) {
-        ctx.fillStyle = '#fff0c0';
-        ctx.fillRect(u.x - bw / 2, ty, (bw * Math.max(0, u.hpGhost)) / mh, 5);
-      }
-      ctx.fillStyle = u.big ? '#a040ff' : hpColor(u.hpShown / mh);
-      ctx.fillRect(u.x - bw / 2, ty, (bw * Math.max(0, u.hpShown)) / mh, 5);
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
-      ctx.fillRect(u.x - bw / 2, ty, (bw * Math.max(0, u.hpShown)) / mh, 1);
+      if (u.hpGhost > u.hpShown) rr(ux - bw / 2, ty, (bw * Math.max(0, u.hpGhost)) / mh, bh, '#fff0c0');
+      rr(ux - bw / 2, ty, (bw * Math.max(0, u.hpShown)) / mh, bh, u.big ? '#a040ff' : hpColor(u.hpShown / mh));
+      rr(ux - bw / 2 + 1, ty + 1, Math.max(0, (bw * Math.max(0, u.hpShown)) / mh - 2), 1.5, 'rgba(255,255,255,0.3)');
       ty -= 16;
     }
     // Estados (iconos sobre la cabeza)
     const st = u.c.statuses.filter((s) => s.turns > 0 || s.id === 'aturdido');
     if (st.length && !u.dead) {
       ctx.font = '13px sans-serif';
-      st.forEach((s, i) => ctx.fillText(STATUS_INFO[s.id].icon, u.x + (i - (st.length - 1) / 2) * 15, (foe ? ty - 2 : top - 2) + Math.sin(this.time * 4 + i) * 1.5));
+      st.forEach((s, i) => ctx.fillText(STATUS_INFO[s.id].icon, ux + (i - (st.length - 1) / 2) * 15, (foe ? ty - 2 : top - 2) + Math.sin(this.time * 4 + i) * 1.5));
     }
-    if (u.c.defending && !u.dead) {
-      ctx.font = '16px sans-serif';
-      ctx.fillText('🛡️', u.x + 16 * k * 0.4, u.y - 16 * k * 0.5);
-    }
-    // Marca de turno activo
+    // Marca de turno activo: gema flotante dorada
     if (this.activeId === u.id && !u.dead) {
-      ctx.fillStyle = '#f2d888';
-      ctx.strokeStyle = '#000';
+      const ay = (foe ? ty - 12 : top - 12) + Math.sin(this.time * 6) * 2.5;
+      ctx.fillStyle = '#ffe08a';
+      ctx.strokeStyle = 'rgba(40,24,6,0.8)';
       ctx.lineWidth = 2;
-      const ay = (foe ? ty - 12 : top - 12) + Math.sin(this.time * 6) * 2;
       ctx.beginPath();
-      ctx.moveTo(u.x - 6, ay - 8);
-      ctx.lineTo(u.x + 6, ay - 8);
-      ctx.lineTo(u.x, ay);
+      ctx.moveTo(ux, ay);
+      ctx.lineTo(ux + 7, ay - 9);
+      ctx.lineTo(ux, ay - 18);
+      ctx.lineTo(ux - 7, ay - 9);
       ctx.closePath();
       ctx.stroke();
       ctx.fill();
     }
-    // Objetivo elegible
+    // Objetivo elegible: nombre, nivel y flecha
     if (this.targeting?.valid.has(u.id)) {
       const pulse = 0.5 + 0.5 * Math.sin(this.time * 7);
-      ctx.strokeStyle = this.targeting.kind === 'ally' ? `rgba(120,255,150,${0.5 + 0.5 * pulse})` : `rgba(255,90,70,${0.5 + 0.5 * pulse})`;
-      ctx.lineWidth = 3;
+      ctx.fillStyle = this.targeting.kind === 'ally' ? `rgba(120,255,150,${0.6 + 0.4 * pulse})` : `rgba(255,110,90,${0.6 + 0.4 * pulse})`;
+      const ay = top - (foe ? 34 : 16) - pulse * 4;
       ctx.beginPath();
-      ctx.ellipse(u.hx, u.hy + 2, 16 * k * 0.5 + pulse * 3, 16 * k * 0.15 + pulse, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = ctx.strokeStyle;
-      const ay = top - (foe ? 30 : 16) - pulse * 4;
-      ctx.beginPath();
-      ctx.moveTo(u.x - 8, ay - 10);
-      ctx.lineTo(u.x + 8, ay - 10);
-      ctx.lineTo(u.x, ay + 2);
+      ctx.moveTo(ux - 8, ay - 10);
+      ctx.lineTo(ux + 8, ay - 10);
+      ctx.lineTo(ux, ay + 2);
       ctx.fill();
+      const lv = u.c.enemy ? ` · Nv ${u.c.enemy.def.level}` : '';
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.strokeStyle = 'rgba(8,6,14,0.85)';
+      ctx.lineWidth = 3;
+      const txt = `${u.name}${lv}`;
+      ctx.strokeText(txt, ux, ay - 14);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(txt, ux, ay - 14);
     }
   }
 
@@ -630,10 +594,10 @@ export class BattleScene {
       const pop = f.t < 0.16 ? 1 + (f.pop - 1) * (1 - f.t / 0.16) : 1;
       const dx = f.kind === 'miss' ? f.t * 26 : f.kind === 'crit' ? Math.sin(f.t * 40) * Math.max(0, 0.3 - f.t) * 14 : 0;
       ctx.globalAlpha = k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1;
-      ctx.font = `${f.kind === 'miss' ? 'italic ' : ''}bold ${Math.round(f.size * pop)}px system-ui, sans-serif`;
+      ctx.font = `${f.kind === 'miss' ? 'italic ' : ''}800 ${Math.round(f.size * pop)}px system-ui, sans-serif`;
       ctx.lineJoin = 'round';
       ctx.lineWidth = f.kind === 'crit' ? 6 : 4;
-      ctx.strokeStyle = f.kind === 'crit' ? '#7a2a00' : '#000';
+      ctx.strokeStyle = f.kind === 'crit' ? 'rgba(122,42,0,0.95)' : 'rgba(10,6,16,0.9)';
       ctx.strokeText(f.text, f.x + dx, f.y + rise);
       ctx.fillStyle = f.color;
       ctx.fillText(f.text, f.x + dx, f.y + rise);
@@ -647,8 +611,9 @@ export class BattleScene {
   }
 
   // ====================================================== utilidades de efectos
+  /** Centro del cuerpo en pantalla. */
   private center(u: Unit): { x: number; y: number } {
-    return { x: u.x + u.ox, y: u.y + u.oy - 8 * u.k };
+    return { x: u.x + u.ox, y: this.feetY(u) - 8 * u.k };
   }
   private float(u: Unit, text: string, color: string, size = 22, st?: NumStyle): void {
     const c = this.center(u);
@@ -664,9 +629,10 @@ export class BattleScene {
   private pos(u: Unit): { x: number; y: number } {
     return this.center(u);
   }
-  private fxAt(u: Unit): { x: number; y: number } {
-    const c = this.center(u);
-    return { x: c.x / this.S, y: c.y / this.S };
+  /** Punto del cuerpo en el mundo (fracción de altura) para partículas y proyectiles. */
+  private body(u: Unit, frac = 0.55): { x: number; y: number; z: number } {
+    const ppu = this.b3.pixelsPerUnit, dpx = this.b3.depthPixels;
+    return { x: u.wx + u.ox / ppu, y: u.lift / ppu + u.rig.height * u.scale * frac, z: u.wz + u.oy / dpx };
   }
   private shake(mag: number, t: number): void {
     this.shakeMag = mag;
@@ -677,15 +643,20 @@ export class BattleScene {
   private async director(): Promise<void> {
     const b = this.d.battle;
     // Entrada: transición breve y unidades que se deslizan
+    const ox0 = new Map<string, number>();
     for (const u of this.units.values()) {
-      u.ox = u.c.side === 'foe' ? -this.W * 0.3 : this.W * 0.3;
+      ox0.set(u.id, u.c.side === 'foe' ? -this.W * 0.3 : this.W * 0.3);
       u.enter = 0;
       u.alpha = 0;
     }
-    await this.tween(0.55, (k) => {
+    await this.tween(0.6, (k) => {
       this.wipe = ease(k);
-      for (const u of this.units.values()) u.ox *= 0.86;
+      for (const u of this.units.values()) {
+        u.ox = ox0.get(u.id)! * (1 - ease(k));
+        if (u.big) u.lift = (1 - k * k) * this.H * 0.25;
+      }
     });
+    for (const u of this.units.values()) u.lift = 0;
     this.wipe = 1;
     for (const u of this.units.values()) u.ox = 0;
     if ([...this.units.values()].some((u) => u.big)) {
@@ -756,10 +727,12 @@ export class BattleScene {
         u.flash = 1;
         u.shake = ev.crit ? 1 : 0.6;
         u.squash = ev.crit ? 1 : 0.6;
+        if (!u.dead && !ev.killed) this.setAnim(u, 'hurt', 0.4);
         const toParty = u.c.side === 'party';
         this.floatStyled(u, damageStyle(ev.amount, { crit: ev.crit, tag: ev.tag, toParty }));
-        const p = this.fxAt(u);
-        emitImpact(this.pool, ev.dmgType ?? null, p.x, p.y, { power: ev.crit ? 0.9 : 0.35, density: this.density });
+        const bp = this.body(u);
+        impact(this.fx3, elementOf(ev.dmgType), bp.x, bp.y, bp.z, ev.crit ? 0.9 : 0.35, toParty ? 1 : -1);
+        if (ev.crit) critBurst(this.fx3, bp.x, bp.y, bp.z);
         this.hitFx(u, ev);
         this.d.sfx(ev.crit ? 'critico' : ev.dmgType ? IMPACT_SFX[ev.dmgType] : 'golpe');
         if (toParty) {
@@ -789,8 +762,8 @@ export class BattleScene {
         u.hpTarget = ev.hp;
         u.hpGhost = Math.min(u.hpGhost, ev.hp);
         this.floatStyled(u, healStyle(ev.amount));
-        const p = this.fxAt(u);
-        emitHeal(this.pool, p.x, p.y + 4, this.density);
+        const bp = this.body(u);
+        healBurst(this.fx3, bp.x, bp.y, bp.z);
         const c = this.pos(u);
         const r = 8 * u.k;
         this.fxPush(0.7, (ctx, k) => drawHealLight(ctx, c.x, u.y + 2, k, r));
@@ -809,8 +782,8 @@ export class BattleScene {
         if (!u) break;
         const info = STATUS_INFO[ev.status];
         this.float(u, info.icon, info.color, 24);
-        const p = this.fxAt(u);
-        emitStatusPuff(this.pool, p.x, p.y - 4, info.color, this.density);
+        const bp = this.body(u, 0.8);
+        statusPuff(this.fx3, bp.x, bp.y, bp.z, info.color);
         await this.wait(0.25);
         break;
       }
@@ -818,10 +791,10 @@ export class BattleScene {
         const u = U(ev.id);
         if (!u) break;
         this.float(u, ev.text, '#f2d888', 18);
-        const p = this.fxAt(u);
-        emitHeal(this.pool, p.x, p.y, this.density * 0.6);
-        const c = this.pos(u);
+        const bp = this.body(u);
         const col = this.lastAtk?.color ?? '#f2d888';
+        buffBurst(this.fx3, bp.x, bp.y, bp.z, col);
+        const c = this.pos(u);
         this.fxPush(0.8, (ctx, k) => drawAura(ctx, c.x, u.y + 2, k, 8 * u.k, col));
         await this.wait(0.35);
         break;
@@ -837,21 +810,24 @@ export class BattleScene {
         if (!u) break;
         u.dead = true;
         this.d.sfx(u.c.side === 'foe' ? 'desintegra' : 'muerte');
+        this.setAnim(u, 'die', 0.55);
         if (u.c.side === 'foe') {
           const colors = ['#ffffff', '#c8c0b0', '#e05050', '#a040ff'];
-          const cx = this.fxAt(u);
+          const cx = this.body(u, 0.3);
           const big = u.big;
           if (big) {
             this.shake(6, 0.6);
             this.screenFlash = 0.9;
           }
           u.flash = 1;
-          await this.tween(big ? 1.2 : 0.75, (k) => {
-            u.dissolve = k;
-            u.flash = Math.max(u.flash, (1 - k) * 0.6);
+          await this.wait(0.35);
+          await this.tween(big ? 1.2 : 0.8, (k) => {
+            u.dissolve = Math.max(0.001, k);
+            u.flash = Math.max(u.flash, (1 - k) * 0.5);
             if (big && Math.random() < 0.3) this.shake(3, 0.1);
-            if (Math.random() < (big ? 0.9 : 0.5)) emitDissolve(this.pool, cx.x, cx.y + (Math.random() - 0.5) * 3, colors, this.density * (big ? 0.6 : 0.35));
+            if (Math.random() < (big ? 0.9 : 0.6)) dissolveDust(this.fx3, cx.x, cx.y * (1 - k * 0.3), cx.z, colors);
           });
+          u.dissolve = 1;
           u.alpha = 0;
           this.layout(false);
         } else await this.wait(0.35);
@@ -862,11 +838,13 @@ export class BattleScene {
         if (!c) break;
         const u = this.addUnit(c, true);
         this.layout(false);
-        u.x = u.hx;
-        u.y = u.hy;
+        u.wx = u.twx;
+        u.wz = u.twz;
         this.buildPartyRow(c);
-        const p = this.fxAt(u);
-        emitImpact(this.pool, 'necrotico', p.x, p.y, { power: 0.6, density: this.density });
+        this.measure();
+        this.layout(false);
+        const bp = this.body(u);
+        explosion(this.fx3, 'necrotico', bp.x, bp.y, bp.z, 0.7);
         const sc = this.pos(u);
         this.fxPush(0.6, (ctx, k) => drawExplosion(ctx, sc.x, sc.y, k, 10 * u.k, 'necrotico'));
         this.d.sfx('imp_sombra');
@@ -895,12 +873,12 @@ export class BattleScene {
         if (u && (u.ox !== 0 || u.oy !== 0)) {
           const ox0 = u.ox;
           const oy0 = u.oy;
-          await this.tween(0.18, (k) => {
+          await this.tween(0.2, (k) => {
             u.ox = ox0 * (1 - ease(k));
             u.oy = oy0 * (1 - ease(k));
           });
         }
-        u && (u.ox = 0, u.oy = 0);
+        u && (u.ox = 0, u.oy = 0, u.lift = 0);
         if (this.activeId === ev.id) this.activeId = '';
         this.lastAtk = null;
         break;
@@ -933,15 +911,19 @@ export class BattleScene {
         this.fxPush(0.25, (ctx, kk) => drawThrust(ctx, c.x, c.y, 9 * k, -dir, kk, col));
         break;
       case 'smash':
+        shockRing(this.fx3, u.wx, u.wz, 0.9, col);
         this.fxPush(0.4, (ctx, kk) => drawShock(ctx, c.x, u.y + 2, 10 * k, kk, col));
         this.fxPush(0.3, (ctx, kk) => drawExplosion(ctx, c.x, c.y, kk, 5 * k, 'fisico'));
         break;
       case 'arrow':
         this.fxPush(0.25, (ctx, kk) => drawExplosion(ctx, c.x, c.y, kk, 4 * k, 'fisico'));
         break;
-      case 'orb':
+      case 'orb': {
+        const bp = this.body(u);
+        explosion(this.fx3, a.el, bp.x, bp.y, bp.z, 0.8);
         this.fxPush(0.55, (ctx, kk) => drawExplosion(ctx, c.x, c.y, kk, 9 * k, a.el));
         break;
+      }
     }
   }
 
@@ -957,74 +939,80 @@ export class BattleScene {
     const dir = from.c.side === 'party' ? -1 : 1;
     if (ev.style === 'melee') {
       const gap = 16 * from.k * 0.55;
-      const tx = t0.x - dir * gap - from.hx;
-      const ty = t0.y - from.hy;
+      const tx = t0.hx - dir * gap - from.hx;
+      const ty = t0.hy - from.hy;
       from.oy = 0;
       this.d.sfx('whoosh');
+      this.setAnim(from, 'attack', 0.56);
       // Anticipación (retrocede y se agacha) y embestida; el pesado (contundente) salta.
-      const jump = kind === 'smash' ? 10 : 0;
-      await this.tween(0.12, (k) => {
+      const jump = kind === 'smash' ? 16 : 6;
+      await this.tween(0.14, (k) => {
         from.ox = -dir * 7 * k;
         from.squash = -0.5 * k;
       });
       from.squash = 0;
-      await this.tween(0.16, (k) => {
+      await this.tween(0.17, (k) => {
         from.ox = -dir * 7 + (tx + dir * 7) * ease(k);
-        from.oy = ty * ease(k) - jump * Math.sin(k * Math.PI);
-        // Estela de imagen residual durante la embestida
+        from.oy = ty * ease(k);
+        from.lift = jump * Math.sin(k * Math.PI);
         if (k > 0.2 && this.d.fx !== 'minimos') {
-          const p = this.fxAt(from);
-          emitTrail(this.pool, p.x - dir * 2, p.y, color, this.density * 0.6);
+          const bp = this.body(from, 0.5);
+          trailPuff(this.fx3, bp.x, bp.y, bp.z, color);
         }
       });
+      from.lift = 0;
       return;
     }
     if (ev.style === 'ranged' || ev.style === 'cast') {
       this.d.sfx('whoosh');
       if (ev.style === 'cast') {
-        const p = this.fxAt(from);
-        emitStatusPuff(this.pool, p.x, p.y - 3, color, this.density);
-        const fc = this.pos(from);
+        this.setAnim(from, 'cast', 0.62);
+        const bp = this.body(from, 0.7);
+        statusPuff(this.fx3, bp.x, bp.y, bp.z, color);
         const hasTint = !!ev.dmgType && this.d.fx !== 'minimos';
         if (hasTint) this.tint = { color, a: 0 };
-        // Carga: círculo de energía que crece sobre el lanzador
-        await this.tween(0.26, (k) => {
-          from.oy = -8 * Math.sin(k * Math.PI);
+        // Carga: esfera de energía que crece sobre el lanzador
+        await this.tween(0.28, (k) => {
+          from.lift = 6 * Math.sin(k * Math.PI);
           if (this.tint) this.tint.a = 0.14 * Math.sin(k * Math.PI);
-          this.immediate.push((ctx) => drawOrb(ctx, fc.x - dir * 4, fc.y - 6, 3 + k * 5 * from.k * 0.3, el, this.time));
+          const b = this.body(from, 0.78);
+          this.projectiles.push({ x: b.x - dir * 0.18, y: b.y, z: b.z, kind: 'orb', color, size: 0.06 + k * 0.16 });
+          if (k > 0.3) trailPuff(this.fx3, b.x - dir * 0.18, b.y, b.z, color);
         });
         this.tint = null;
-        from.oy = 0;
+        from.lift = 0;
       } else {
         // Tensar el arco: retroceso y vuelta
-        await this.tween(0.12, (k) => {
-          from.ox = -dir * -7 * Math.sin(k * Math.PI);
+        this.setAnim(from, 'attack', 0.5);
+        await this.tween(0.2, (k) => {
+          from.ox = -dir * -6 * Math.sin(k * Math.PI);
         });
       }
       // Proyectil en vuelo hacia cada objetivo, con arco, estela y giro
       await this.tween(0.28, (k) => {
-        const f = this.pos(from);
+        const f = this.body(from, 0.72);
         for (const t of targets) {
-          const tp = this.pos(t);
-          const x = f.x + (tp.x - f.x) * k;
-          const y = f.y + (tp.y - f.y) * k - Math.sin(k * Math.PI) * (kind === 'arrow' ? 14 : 8);
-          const hh = kind === 'arrow' ? 14 : 8;
-          const tilt = Math.atan2(tp.y - f.y - Math.cos(k * Math.PI) * Math.PI * hh, tp.x - f.x);
-          if (kind === 'arrow') this.immediate.push((ctx) => drawArrow(ctx, x, y, tilt));
-          else this.immediate.push((ctx) => drawOrb(ctx, x, y, 4 + from.k * 0.4, el, this.time));
-          if (this.d.fx !== 'minimos' && (t === targets[0] || targets.length < 3)) emitTrail(this.pool, x / this.S, y / this.S, color, this.density);
+          const tp = this.body(t, 0.55);
+          const arc = kind === 'arrow' ? 0.75 : 0.35;
+          const x = f.x + (tp.x - f.x) * k, z = f.z + (tp.z - f.z) * k;
+          const y = f.y + (tp.y - f.y) * k + Math.sin(k * Math.PI) * arc;
+          const dy = tp.y - f.y + Math.cos(k * Math.PI) * Math.PI * arc;
+          const hyp = Math.hypot(tp.x - f.x, tp.z - f.z) || 1;
+          this.projectiles.push({ x, y, z, kind: kind === 'arrow' ? 'arrow' : 'orb', color, size: kind === 'arrow' ? 1 : 0.1, yaw: Math.atan2(tp.x - f.x, tp.z - f.z), pitch: -Math.atan2(dy, hyp) });
+          if (this.d.fx !== 'minimos' && (t === targets[0] || targets.length < 3)) trailPuff(this.fx3, x, y, z, color);
         }
       });
       return;
     }
     // 'self': brillo sobre el objetivo (curas, mejoras)
-    const p = this.fxAt(t0);
-    emitStatusPuff(this.pool, p.x, p.y, color, this.density);
-    await this.tween(0.22, (k) => {
-      from.oy = -5 * Math.sin(k * Math.PI);
+    const bp = this.body(t0, 0.5);
+    statusPuff(this.fx3, bp.x, bp.y, bp.z, color);
+    this.setAnim(from, 'cast', 0.5);
+    await this.tween(0.24, (k) => {
+      from.lift = 5 * Math.sin(k * Math.PI);
       from.squash = 0.3 * Math.sin(k * Math.PI);
     });
-    from.oy = 0;
+    from.lift = 0;
   }
 
   /** Fin de la batalla: pausa, saltitos y panel de resultado. */
@@ -1041,12 +1029,8 @@ export class BattleScene {
     if (b.outcome === 'victory') {
       this.say('¡Victoria!', 2);
       this.d.sfx('victoria_acorde');
-      for (let i = 0; i < 2; i++) {
-        await this.tween(0.22, (k) => {
-          for (const u of this.units.values()) if (u.c.side === 'party' && !u.dead) u.oy = -10 * Math.sin(k * Math.PI);
-        });
-      }
-      for (const u of this.units.values()) u.oy = 0;
+      for (const u of this.units.values()) if (u.c.side === 'party' && !u.dead) u.st = 'cheer';
+      await this.wait(0.9);
     } else {
       this.say('Has caído...', 2);
       await this.wait(0.8);
@@ -1227,10 +1211,7 @@ export class BattleScene {
     for (const id of ids.slice(0, 8)) {
       const u = this.units.get(id);
       if (!u || u.dead) continue;
-      const c = document.createElement('canvas');
-      c.width = 16;
-      c.height = 16;
-      c.getContext('2d')!.drawImage(u.img, 0, 0);
+      const c = rigPortrait(u.key, u.rig, '', u.scale);
       chips.push(h('span', { class: `o-chip ${u.c.side}${chips.length === 0 ? ' first' : ''}`, attrs: { title: u.name } }, [c]));
     }
     this.orderEl.replaceChildren(...chips);
@@ -1299,7 +1280,7 @@ export class BattleScene {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
-    this.backdrop?.destroy();
+    this.b3.destroy();
     window.clearTimeout(this.msgTimer);
     this.el.remove();
   }

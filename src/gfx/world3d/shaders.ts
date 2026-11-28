@@ -34,24 +34,29 @@ precision highp float;
 in vec3 vCol; in vec3 vNrm; in vec3 vWorld; in float vEmis;
 uniform vec3 uCam; uniform vec3 uFogCol; uniform float uFogDen; uniform float uFogOff;
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmbTop; uniform vec3 uAmbBot;
-uniform vec4 uFlash; uniform vec3 uHole; uniform float uHoleOn;
+uniform vec4 uFlash;
+uniform float uDis; uniform float uDisY; uniform vec3 uDisCol;
 uniform vec4 uL[${MAXL}]; uniform vec3 uLC[${MAXL}]; uniform int uNL;
 out vec4 o;
 void main(){
-  if (uHoleOn > 0.5) {
-    vec3 cp = uHole - uCam; float L = length(cp); vec3 dir = cp / L;
-    vec3 cf = vWorld - uCam; float t = dot(cf, dir);
-    if (t < L - 0.5 && t > 0.0 && vWorld.y > uHole.y + 0.45) {
-      float d = length(cf - dir * t);
-      float k = smoothstep(0.7, 1.7, d);
-      float nz = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-      if (k < nz) discard;
-    }
+  float edge = 0.0;
+  if (uDis > 0.0) {
+    float nn = 0.5 + 0.25 * sin(vWorld.x * 9.0 + vWorld.y * 5.0) * sin(vWorld.z * 8.0 + 1.7) + 0.25 * sin(vWorld.y * 11.0 + vWorld.x * 4.0 + vWorld.z * 3.0);
+    float hh = clamp((vWorld.y - uDisY) / 1.6, 0.0, 1.0);
+    float thr = uDis * 1.5 - (1.0 - hh) * 0.55;
+    if (nn < thr) discard;
+    edge = 1.0 - smoothstep(0.0, 0.1, nn - thr);
   }
   vec3 n = normalize(vNrm);
+  vec3 V = normalize(uCam - vWorld);
   vec3 amb = mix(uAmbBot, uAmbTop, n.y * 0.5 + 0.5);
-  float d = max(dot(n, normalize(uSunDir)), 0.0);
-  vec3 lit = amb + uSunCol * (d * 0.85 + 0.0);
+  // Luz envolvente suave (media lambert) con rampa blanda: volumen sin cantos duros.
+  float wrap = clamp((dot(n, normalize(uSunDir)) + 0.45) / 1.45, 0.0, 1.0);
+  float d = wrap * wrap * (3.0 - 2.0 * wrap);
+  vec3 lit = amb * 0.95 + uSunCol * d * 0.82;
+  // Contraluz suave en los bordes (aspecto de cuento).
+  float rim = pow(1.0 - max(dot(n, V), 0.0), 2.6);
+  lit += (uAmbTop * 0.55 + uSunCol * 0.2) * rim * 0.26;
   for (int i = 0; i < ${MAXL}; i++) {
     if (i >= uNL) break;
     vec3 dv = uL[i].xyz - vWorld; float dist = length(dv);
@@ -59,14 +64,16 @@ void main(){
     lit += uLC[i] * a * a * (0.55 + 0.45 * max(dot(n, dv / max(dist, 0.001)), 0.0));
   }
   vec3 col = vCol * lit;
-  if (vEmis > 0.5) col = vCol * 1.15;
+  if (vEmis > 0.5) col = vCol * 1.25;
   col = mix(col, uFlash.rgb, uFlash.a);
+  col = mix(col, uDisCol * 1.7, edge);
   float dc = max(distance(vWorld, uCam) - uFogOff, 0.0);
   float f = 1.0 - exp(-pow(dc * uFogDen, 2.0));
   col = mix(col, uFogCol, clamp(f, 0.0, 1.0));
   // Tono suave (contraste y saturación ligeras).
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
-  col = mix(vec3(lum), col, 1.12);
+  col = mix(vec3(lum), col, 1.14);
+  col = col / (1.0 + col * 0.12) * 1.1;
   o = vec4(col, 1.0);
 }`;
 
@@ -163,3 +170,63 @@ void main(){
   o = vec4(uColor.rgb, a);
 }`;
 export const MAX_LIGHTS = MAXL;
+
+export const SKY_VS = `#version 300 es
+precision highp float;
+out vec2 vUv;
+void main(){
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.9999, 1.0);
+}`;
+export const SKY_FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform mat4 uInv; uniform vec3 uEye; uniform vec3 uTop; uniform vec3 uHor; uniform vec3 uFog; uniform vec3 uSunDir; uniform vec3 uSunCol;
+uniform float uTime; uniform float uStars; uniform float uFlat;
+out vec4 o;
+float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+  return mix(mix(h2(i), h2(i+vec2(1,0)), f.x), mix(h2(i+vec2(0,1)), h2(i+vec2(1,1)), f.x), f.y); }
+void main(){
+  if (uFlat > 0.5) { o = vec4(uFog, 1.0); return; }
+  vec4 w = uInv * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
+  vec3 dir = normalize(w.xyz / w.w - uEye);
+  float y = dir.y;
+  vec3 col = mix(uHor, uTop, smoothstep(0.0, 0.75, y));
+  col = mix(uFog, col, smoothstep(-0.08, 0.1, y));
+  float sd = max(dot(dir, normalize(uSunDir)), 0.0);
+  col += uSunCol * (pow(sd, 6.0) * 0.14 + pow(sd, 90.0) * 0.55);
+  if (y > 0.02) {
+    vec2 uv = dir.xz / (y + 0.35) * 1.3 + vec2(uTime * 0.012, 0.0);
+    float c = vn(uv * 1.7) * 0.55 + vn(uv * 3.9) * 0.3 + vn(uv * 8.1) * 0.15;
+    float cl = smoothstep(0.52, 0.8, c) * smoothstep(0.02, 0.25, y);
+    col = mix(col, mix(uHor, vec3(1.0), 0.7) * (0.65 + 0.35 * length(uSunCol)), cl * 0.55);
+    float st = step(0.9965, h2(floor(dir.xz / (y + 0.2) * 150.0)));
+    col += vec3(st) * uStars * smoothstep(0.1, 0.5, y);
+  }
+  o = vec4(col, 1.0);
+}`;
+
+export const SPR_VS = `#version 300 es
+precision highp float;
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec4 aSizeA;
+layout(location=2) in vec3 aCol;
+uniform mat4 uVP; uniform float uScale;
+out vec3 vC; out float vA;
+void main(){
+  vec4 c = uVP * vec4(aPos, 1.0);
+  gl_Position = c;
+  gl_PointSize = clamp(aSizeA.x * uScale / max(c.w, 0.3), 2.0, 420.0);
+  vC = aCol; vA = aSizeA.y;
+}`;
+export const SPR_FS = `#version 300 es
+precision mediump float;
+in vec3 vC; in float vA; out vec4 o;
+void main(){
+  vec2 d = gl_PointCoord - 0.5; float r = length(d) * 2.0;
+  float a = pow(max(1.0 - r, 0.0), 1.7) * vA;
+  float core = pow(max(1.0 - r, 0.0), 6.0);
+  o = vec4(vC + core * 0.6, a);
+}`;

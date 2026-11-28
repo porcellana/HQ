@@ -8,6 +8,7 @@ const ui = document.getElementById('ui');
 if (!canvas || !ui) throw new Error('Falta #game o #ui en index.html');
 
 const gl3d = document.getElementById('game3d') as HTMLCanvasElement | null;
+if (!gl3d) throw new Error('Falta #game3d en index.html');
 const app = new App(canvas, ui, gl3d);
 void app.start();
 

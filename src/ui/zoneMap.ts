@@ -7,7 +7,8 @@
 import type { Game } from '@/game/game';
 import { npcMarker } from '@/game/quests/quests';
 import { GOAL_ICON } from '@/game/quests/guide';
-import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
+import type { HumanoidColors } from '@/gfx/look';
+import { heroPortrait } from '@/gfx/world3d/studio';
 import { getZoneDef } from '@/data/registry';
 import { activeSeed } from '@/game/world/procgen';
 import { worldOverview } from '@/game/world/procgen/overview';
@@ -192,7 +193,7 @@ export function zoneMapScreen(
   }, { passive: false });
 
   // --------------------------------------------------------------- dibujo
-  const hero = humanoidSprite(heroColors).right;
+  const hero = heroPortrait(heroColors, '', true);
   const goal = game.questGoal;
   let t = 0;
   const draw = () => {
@@ -210,7 +211,7 @@ export function zoneMapScreen(
     }
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = true;
     ctx.fillStyle = '#07060a';
     ctx.fillRect(0, 0, w, hh);
     ctx.drawImage(zoneImg, offX, offY, zone.width * scale, zone.height * scale);

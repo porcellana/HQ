@@ -67,41 +67,6 @@ export function drawShock(ctx: C, x: number, y: number, r: number, k: number, co
   ctx.restore();
 }
 
-export function drawArrow(ctx: C, x: number, y: number, ang: number, color = '#e8e0c8'): void {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(ang);
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(-14, 0);
-  ctx.lineTo(8, 0);
-  ctx.stroke();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(-14, 0);
-  ctx.lineTo(8, 0);
-  ctx.stroke();
-  ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.moveTo(11, 0);
-  ctx.lineTo(5, -3);
-  ctx.lineTo(5, 3);
-  ctx.fill();
-  ctx.restore();
-}
-
-/** Proyectil mágico con halo del color del elemento. */
-export function drawOrb(ctx: C, x: number, y: number, r: number, el: Element, t: number): void {
-  const [a, b] = ELEMENT_COLORS[el];
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  glow(ctx, x, y, r * 2.4, b, 'rgba(0,0,0,0)', 0.55);
-  glow(ctx, x, y, r * (1 + 0.1 * Math.sin(t * 30)), a, b, 1);
-  ctx.restore();
-}
-
 /** Explosión de magia con forma propia por elemento. */
 export function drawExplosion(ctx: C, x: number, y: number, k: number, r: number, el: Element): void {
   const [a, b] = ELEMENT_COLORS[el];

@@ -8,7 +8,7 @@ import { createItem } from '@/game/items/items';
 import * as Pets from '@/game/pets/pets';
 import { wildEnemyDef } from '@/game/pets/wild';
 import { CURRENT_SAVE_VERSION, migrate } from '@/game/save/migrations';
-import { PET_SHAPES } from '@/gfx/pets';
+import { BEAST_SHAPES } from '@/gfx/world3d/models';
 import { defeat, testState } from './helpers';
 
 describe('datos de mascotas', () => {
@@ -38,7 +38,7 @@ describe('datos de mascotas', () => {
         else if (h.startsWith('lugar:')) expect(['cueva', 'mazmorra', 'ruinas']).toContain(h.slice(6));
         else expect(ZONES.has(h) || DUNGEONS.has(h), `hábitat ${h}`).toBe(true);
       }
-      expect(PET_SHAPES).toContain(s.look.shape);
+      expect(BEAST_SHAPES).toContain(s.look.shape);
       if (s.stage === 1) expect(Pets.movesUpTo(s, 1).length).toBeGreaterThan(0);
     });
   }

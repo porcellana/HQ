@@ -92,7 +92,7 @@ describe('modelos y mallas', () => {
       for (const p of r.parts) expect(p.mesh.every(Number.isFinite), shape).toBe(true);
     }
     for (const ov of ['guerrero', 'mago', 'picaro', 'clerigo', 'barbaro', 'explorador', 'druida', 'bardo']) {
-      expect(humanoidRig({ skin: '#d9a67a', hair: '#333', cloth: '#a00', clothDark: '#500', pants: '#222', overlay: ov }).parts.length).toBe(5);
+      expect(humanoidRig({ skin: '#d9a67a', hair: '#333', cloth: '#a00', clothDark: '#500', pants: '#222', overlay: ov }).parts.length).toBe(6);
     }
   });
   it('MeshBuilder.append transforma y conserva el número de vértices', () => {

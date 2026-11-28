@@ -72,7 +72,7 @@ export function journalScreen(game: Game, onClose: () => void, initialOpen: stri
 
     const body: HTMLElement[] = [];
     if (tab === 'curso') {
-      if (!active.length) body.push(h('p', { class: 'muted qj-empty', text: 'No tienes misiones en curso. Habla con la gente: quien tenga ❗ encima te dará trabajo.' }));
+      if (!active.length) body.push(h('p', { class: 'muted qj-empty', text: 'No tienes misiones en curso. Habla con la gente: quien tenga un cristal dorado encima te dará trabajo.' }));
       for (const q of active) body.push(activeCard(game, q, tracked?.id === q.id, story, render));
       if (fresh.length) {
         body.push(h('h3', { class: 'qj-sub', text: '❗ Misiones nuevas' }));

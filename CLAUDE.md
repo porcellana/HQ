@@ -1,6 +1,6 @@
 # Ecos del Abismo — contexto para Claude
 
-RPG de mazmorreo por turnos (reglas D&D 5e), vista cenital 2D pixel art, móvil vertical. TypeScript + Vite + Canvas, Capacitor (APK), PWA. Todo en español. Código en `/home/user/HQ`, rama `ccr-7e7ceb27-hc9arl`. El prototipo `heroquest/` NO se toca.
+RPG de mazmorreo por turnos (reglas D&D 5e), **todo en 3D suave (WebGL2 puro, mallas por código)**, móvil vertical. TypeScript + Vite, Capacitor (APK), PWA. Todo en español. Código en `/home/user/HQ`, rama `ccr-7e7ceb27-hc9arl`. El prototipo `heroquest/` NO se toca.
 
 ## Cómo trabajar (preferencias del usuario)
 - **Respuestas MUY breves; ahorrar tokens**; hacerlo bien igualmente. Sin preguntas triviales: decide y anota en el README.
@@ -16,16 +16,14 @@ RPG de mazmorreo por turnos (reglas D&D 5e), vista cenital 2D pixel art, móvil 
 - `src/gfx`: pixel art generado por código (tiles, sprites, partículas, fondos de batalla) y `renderer.ts`. `src/ui`: HUD/pantallas en DOM; `battleScene.ts` es la escena de batalla (canvas + menú) (`styles.css` con bloques por versión, los últimos ganan).
 - `tests/`: vitest (≈400). `scripts/`: iconos y proyecto Android. CI `.github/workflows/android-apk.yml` publica web (GitHub Pages) y APK (Release con enlace fijo).
 
-## Estado (v0.10.0)
+## Estado (v0.11.0)
 Hitos 1-7 + identidad (trasfondos, talentos, compañeros, diálogos con tiradas), mascotas, **batalla por turnos estilo Final Fantasy en escena aparte** (grupo a la derecha, enemigos a la izquierda, iniciativa, menú Atacar/Habilidad/Objeto/Defender/Huir, fondos por bioma; el combate táctico del mapa se eliminó), mapa grande, zoom, misiones claras, sonido. **Mundo procedural por semilla** (`src/game/world/procgen`, biomas en `src/data/biomes`, guardado en `state.world.gen`, save v9; aldeas/pueblos/ciudades, campamentos, ruinas, cuevas, mazmorras con jefe, misiones generadas, mapa del mundo 🌍, rótulo de zona con iconos). Zonas generadas: nivel jugador ±1 fijado al descubrirlas. Ajuste «Velocidad de batalla». **Mascotas v0.9.1**: 42 especies/8 tipos, `evolutions` ramificadas (nivel+vínculo/naturaleza/objeto), `passive`, naturalezas, vínculo con niveles, hábitats `bioma:`/`lugar:` (save v10).
-
-v0.9.3: efectos de batalla en `gfx/battleFx.ts` (puro, testeado) + `ui/battleFxDraw.ts` (dibujo); `battleScene` usa `fxPush` (efectos con vida), `immediate` (proyectiles) y `hitStopT`.
 
 v0.9.4: botín/economía/comercio (`game/economy/curve.ts`, `shop.ts`: recompra, mejoras, basura, bolsa; `items/loot.ts` con `LootCtx`; conjuntos en `data/sets`; ~135 objetos nuevos; `ui/shop.ts` con filtros). `ui/lootSummary.ts` (fichas de botín) está listo pero sin conectar en `battleScene.showPanel`.
 
-v0.10.0: **mundo 3D** (WebGL2) en `src/gfx/world3d/` (terrain/models/style/quality/renderer3d/battle3d, puro lo geométrico y testeado en `tests/world3d.test.ts`), interfaz común `gfx/mapView.ts`, ajustes Gráficos/Calidad (auto-baja de calidad por fps), fondo 3D en batalla (sprites 2D encima), botón Interactuar (`Game.contextAction`), eventos al viajar, ríos/costas procedurales, clases Bárbaro/Explorador/Druida/Bardo. El 2D clásico (`gfx/renderer.ts`) sigue como respaldo. Dev: `window.__dev.newGame(clase, zona)`.
+v0.11.0: **TODO 3D, sin 2D ni respaldo** (sin WebGL2: mensaje). `src/gfx/world3d/`: `mesh.ts` (primitivas suaves ball/rbox/lathe/limb/ribbon con normales por vértice), `models.ts` (props y rigs; `BEAST_SHAPES`), `anim.ts` (poses puras + `rigMatrices`, compartidas por mapa, batalla y retratos), `terrain.ts` (relieve curvo, bisel/redondeo de muros, `buildSkirt`), `renderer3d.ts` (mapa), `battle3d.ts` + `ui/battleScene.ts` (batalla 3D: unidades con posición de mundo; `layout` proyecta fracciones de pantalla al suelo con la cámara base; offsets en px → mundo con `ppu`), `fx3d.ts` (partículas 3D puras), `signals.ts` (cristales/runas/espíritu guía; sustituye haz/flecha/❗), `studio.ts` (retratos 3D cacheados para el DOM), `glutil.ts` (`SpriteBatch` de destellos). Sin sprites: `gfx/look.ts` (colores de héroe), `viewconst.ts`, `items.ts` (iconos vectoriales), `mapImage.ts`. UI: `ui/styles.css` rehecho («Pergamino y cristal»); `app.setScreen` envuelve en hoja inferior deslizable las pantallas de `SHEET_SCREENS`. Tests: `tests/render3d.test.ts` y `world3d.test.ts`. Dev: `window.__dev.newGame(clase, zona)`, `__game`, `__app`.
 
 ## Pendiente (en este orden)
-0. 3D: interiores con techo recortable, modelos 3D para los combatientes de la batalla (hoy sprites), sombras con shadow map en calidad Alta, ciclo día/noche visible en batalla.
+0. 3D: casas con interior y techo recortable, sombras con shadow map en calidad Alta, bloom a pantalla completa opcional, cuevas con rocas redondeadas de verdad (hoy muros en bloque biselado), más animaciones por enemigo/jefe, retratos con pose por clase, ciclo día/noche visible en batalla.
 1. Interiores de casas en el mundo procedural, música/ambiente real por bioma, misiones de escolta y eventos al viajar.
-2. Pulido de batalla: más animaciones por clase/enemigo, fondos por hora del día, selección de objetivo con información (nombre/nivel) al mantener pulsado.
+2. Conectar `ui/lootSummary.ts` en el panel de victoria; selección de objetivo con información al mantener pulsado.

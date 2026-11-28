@@ -2,7 +2,8 @@
 import { getZoneDef } from '@/data/registry';
 import type { SaveSummary } from '@/game/save/saveManager';
 import type { Settings } from '@/game/settings';
-import { DEFAULT_HERO_COLORS, humanoidSprite } from '@/gfx/sprites';
+import { DEFAULT_HERO_COLORS } from '@/gfx/look';
+import { heroPortrait } from '@/gfx/world3d/studio';
 import { h } from './dom';
 
 export interface MainMenuActions {
@@ -14,12 +15,7 @@ export interface MainMenuActions {
 }
 
 function heroImage(): HTMLCanvasElement {
-  const c = h('canvas', { class: 'menu-hero' });
-  c.width = 16;
-  c.height = 16;
-  const ctx = c.getContext('2d')!;
-  ctx.drawImage(humanoidSprite(DEFAULT_HERO_COLORS).right, 0, 0);
-  return c;
+  return heroPortrait({ ...DEFAULT_HERO_COLORS, overlay: 'guerrero', hat: '#aeb3c2' }, 'menu-hero');
 }
 
 export function formatDate(iso: string): string {
@@ -78,13 +74,9 @@ export function settingsScreen(
     { value: true, label: 'Sí' },
     { value: false, label: 'No' },
   ];
-  return h('div', { class: 'screen' }, [
+  return h('div', { class: 'screen settings' }, [
     h('h2', { text: 'Ajustes' }),
     h('div', { class: 'settings-list' }, [
-      row('Gráficos', 'graphics', [
-        { value: '3d', label: '3D' },
-        { value: '2d', label: '2D clásico' },
-      ]),
       row('Calidad gráfica', 'quality', [
         { value: 'baja', label: 'Baja' },
         { value: 'media', label: 'Media' },
@@ -120,9 +112,8 @@ export function settingsScreen(
         { value: 'medio', label: 'Medio' },
         { value: 'alto', label: 'Alto' },
       ]),
-      row('Volumen 3D', 'volume3d', onOff),
       row('Día y noche', 'dayNight', onOff),
-      row('Guía de misión (flecha GPS)', 'questGuide', onOff),
+      row('Espíritu guía de misión', 'questGuide', onOff),
       inGame ? h('button', { text: '💾 Guardar partida', onClick: inGame.onSave }) : null,
       inGame ? h('button', { text: '❓ Cómo se juega', onClick: inGame.onHelp }) : null,
       transfer ? h('button', { text: '📤 Exportar partida', onClick: transfer.onExport }) : null,

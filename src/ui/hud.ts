@@ -5,7 +5,8 @@
 import type { Game } from '@/game/game';
 import { levelProgress } from '@/game/rules/progression';
 import type { Settings } from '@/game/settings';
-import { humanoidSprite, type HumanoidColors } from '@/gfx/sprites';
+import type { HumanoidColors } from '@/gfx/look';
+import { heroPortrait } from '@/gfx/world3d/studio';
 import { h } from './dom';
 import * as Pets from '@/game/pets/pets';
 import { petName } from '@/game/pets/pets';
@@ -90,8 +91,8 @@ export class Hud {
 
   constructor(actions: HudActions) {
     this.portrait = h('canvas', { class: 'hud-portrait' });
-    this.portrait.width = 16;
-    this.portrait.height = 16;
+    this.portrait.width = 96;
+    this.portrait.height = 96;
     this.portrait.addEventListener('click', () => actions.onSheet());
     this.nameEl = h('b');
     this.goldEl = h('span', { class: 'hud-gold' });
@@ -189,10 +190,9 @@ export class Hud {
 
   setPortrait(colors: HumanoidColors): void {
     const c = this.portrait.getContext('2d')!;
-    c.imageSmoothingEnabled = false;
-    c.fillStyle = '#000';
-    c.fillRect(0, 0, 16, 16);
-    c.drawImage(humanoidSprite(colors).right, 0, 0);
+    c.imageSmoothingEnabled = true;
+    c.clearRect(0, 0, this.portrait.width, this.portrait.height);
+    c.drawImage(heroPortrait(colors, '', true), 0, 0, this.portrait.width, this.portrait.height);
   }
 
   showBanner(title: string, subtitle?: string, icons: ReadonlyArray<{ icon: string; label: string }> = []): void {

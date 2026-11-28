@@ -16,7 +16,8 @@ import {
 } from '@/game/rules/character';
 import { createNewGame } from '@/game/state';
 import { derive } from '@/game/rules/derived';
-import { PORTRAIT_COUNT, heroColors, spriteCanvas } from '@/gfx/sprites';
+import { PORTRAIT_COUNT, heroColors } from '@/gfx/look';
+import { heroPortrait } from '@/gfx/world3d/studio';
 import { h } from './dom';
 
 export interface CreationResult {
@@ -38,7 +39,7 @@ export function creationScreen(onDone: (r: CreationResult) => void, onCancel: ()
         { class: 'class-grid' },
         classList().map((cls) =>
           h('button', { class: 'class-card', onClick: () => customize(cls) }, [
-            spriteCanvas(heroColors(cls.look, 1), 'class-sprite'),
+            heroPortrait(heroColors(cls.look, 1), 'class-sprite'),
             h('strong', { text: cls.name }),
             h('em', { text: cls.role }),
             h('small', { text: cls.description }),
@@ -67,7 +68,7 @@ export function creationScreen(onDone: (r: CreationResult) => void, onCancel: ()
     const nameInput = h('input', { attrs: { type: 'text', maxlength: '16', placeholder: 'Nombre', 'aria-label': 'Nombre' } });
     nameInput.value = RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)] ?? 'Aventurero';
     const portraitBox = h('div', { class: 'portrait-big' });
-    const drawPortrait = () => portraitBox.replaceChildren(spriteCanvas(heroColors(cls.look, portrait), 'portrait-canvas'));
+    const drawPortrait = () => portraitBox.replaceChildren(heroPortrait(heroColors(cls.look, portrait), 'portrait-canvas'));
     const pointsEl = h('div', { class: 'points-left' });
     const statsBox = h('div', { class: 'stat-list' });
     const derivedBox = h('div', { class: 'derived' });

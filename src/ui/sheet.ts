@@ -9,7 +9,8 @@ import { STAT_HINTS, STAT_MAX, STAT_NAMES, formatMod, proficiencyBonus } from '@
 import { derive } from '@/game/rules/derived';
 import { levelProgress } from '@/game/rules/progression';
 import { recalcPlayer, type PlayerState } from '@/game/state';
-import { heroColors, spriteCanvas } from '@/gfx/sprites';
+import { heroColors } from '@/gfx/look';
+import { heroPortrait } from '@/gfx/world3d/studio';
 import { skillList } from './creation';
 import { h } from './dom';
 
@@ -21,7 +22,7 @@ export function characterSheet(p: PlayerState, onClose: () => void, onChanged: (
     const d = derive(p);
     root.replaceChildren(
       h('div', { class: 'sheet-head' }, [
-        spriteCanvas(heroColors(cls.look, p.portrait), 'portrait-canvas'),
+        heroPortrait(heroColors(cls.look, p.portrait), 'portrait-canvas'),
         h('div', {}, [
           h('h2', { text: p.name }),
           h('div', { class: 'subtitle', text: `${cls.name} de nivel ${p.level}` }),

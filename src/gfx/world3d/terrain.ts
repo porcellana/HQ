@@ -142,7 +142,8 @@ export class Geo {
   heightAt(x: number, z: number): number {
     const fx = Math.min(this.w, Math.max(0, x)), fz = Math.min(this.h, Math.max(0, z));
     const x0 = Math.min(this.w - 1, Math.floor(fx)), z0 = Math.min(this.h - 1, Math.floor(fz));
-    const tx = fx - x0, tz = fz - z0;
+    const tx0 = fx - x0, tz0 = fz - z0;
+    const tx = tx0 * tx0 * (3 - 2 * tx0), tz = tz0 * tz0 * (3 - 2 * tz0);
     const a = this.vert(x0, z0), b = this.vert(x0 + 1, z0), c = this.vert(x0, z0 + 1), d = this.vert(x0 + 1, z0 + 1);
     return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
   }
@@ -248,22 +249,41 @@ export function buildChunk(geo: Geo, cx: number, cz: number, opts: BuildOpts = {
       const sp = geo.spriteAt(x, y);
       const def = t3(sp);
       const hv = [geo.vert(x, y), geo.vert(x + 1, y), geo.vert(x + 1, y + 1), geo.vert(x, y + 1)];
-      const jit = 0.965 + 0.07 * hash2(x, y, 11);
 
       if (k === 'ground' || k === 'mount' || k === 'water' || k === 'deck') {
         const own = k === 'mount' ? groundColor(geo, x, y, (hv[0]! + hv[1]! + hv[2]! + hv[3]!) / 4) : groundColor(geo, x, y, 0);
-        const cc = [
-          shade(vcolor(x, y, own, k === 'ground' ? 0.5 : 0.25), jit), shade(vcolor(x + 1, y, own, k === 'ground' ? 0.5 : 0.25), jit),
-          shade(vcolor(x + 1, y + 1, own, k === 'ground' ? 0.5 : 0.25), jit), shade(vcolor(x, y + 1, own, k === 'ground' ? 0.5 : 0.25), jit),
-        ] as [RGB, RGB, RGB, RGB];
-        const p = [[x, hv[0]!, y], [x + 1, hv[1]!, y], [x + 1, hv[2]!, y + 1], [x, hv[3]!, y + 1]];
-        if (((x + y) & 1) === 0) {
-          T.tri(p[0]!, p[3]!, p[2]!, cc[0], 0, 0, 0, cc[0], cc[3], cc[2]);
-          T.tri(p[0]!, p[2]!, p[1]!, cc[0], 0, 0, 0, cc[0], cc[2], cc[1]);
-        } else {
-          T.tri(p[0]!, p[3]!, p[1]!, cc[0], 0, 0, 0, cc[0], cc[3], cc[1]);
-          T.tri(p[1]!, p[3]!, p[2]!, cc[1], 0, 0, 0, cc[1], cc[3], cc[2]);
-        }
+        const own1 = k === 'ground' ? 0.5 : 0.25;
+        const cc = [vcolor(x, y, own, own1), vcolor(x + 1, y, own, own1), vcolor(x + 1, y + 1, own, own1), vcolor(x, y + 1, own, own1)] as [RGB, RGB, RGB, RGB];
+        // Subdivisión suave: alturas con interpolación curva y normales del relieve (sin facetas).
+        const SUB = geo.amp > 0 || k === 'mount' ? 3 : 1;
+        const gv: Array<{ p: number[]; n: number[]; c: RGB }> = [];
+        const e = 0.18;
+        for (let j = 0; j <= SUB; j++)
+          for (let i = 0; i <= SUB; i++) {
+            const u = i / SUB, v = j / SUB, px = x + u, pz = y + v;
+            const ph = SUB === 1 ? hv[0]! + (hv[1]! - hv[0]!) * u + (hv[3]! - hv[0]!) * v + (hv[0]! - hv[1]! - hv[3]! + hv[2]!) * u * v : geo.heightAt(px, pz);
+            let n = [0, 1, 0];
+            if (SUB > 1) {
+              const gx = geo.heightAt(px + e, pz) - geo.heightAt(px - e, pz), gz = geo.heightAt(px, pz + e) - geo.heightAt(px, pz - e);
+              const l = Math.hypot(gx, 2 * e, gz);
+              n = [-gx / l, (2 * e) / l, -gz / l];
+            }
+            const bl = mix(mix(cc[0], cc[1], u), mix(cc[3], cc[2], u), v);
+            const patch = k === 'ground' && geo.amp > 0 ? 0.93 + 0.14 * vnoise(px * 0.45, pz * 0.45, geo.g.seed + 3) : 0.97 + 0.06 * hash2(x, y, 11);
+            gv.push({ p: [px, ph, pz], n, c: shade(bl, patch) });
+          }
+        const gi = (i: number, j: number): { p: number[]; n: number[]; c: RGB } => gv[j * (SUB + 1) + i]!;
+        for (let j = 0; j < SUB; j++)
+          for (let i = 0; i < SUB; i++) {
+            const A = gi(i, j), Bq = gi(i + 1, j), Cq = gi(i + 1, j + 1), D = gi(i, j + 1);
+            if (((x + y + i + j) & 1) === 0) {
+              T.triN(A.p, D.p, Cq.p, A.n, D.n, Cq.n, A.c, D.c, Cq.c);
+              T.triN(A.p, Cq.p, Bq.p, A.n, Cq.n, Bq.n, A.c, Cq.c, Bq.c);
+            } else {
+              T.triN(A.p, D.p, Bq.p, A.n, D.n, Bq.n, A.c, D.c, Bq.c);
+              T.triN(Bq.p, D.p, Cq.p, Bq.n, D.n, Cq.n, Bq.c, D.c, Cq.c);
+            }
+          }
         // Agua: cubre las casillas con alguna esquina bajo el nivel del agua.
         if (hv.some((h) => h < WATER_Y)) {
           const wc = col(k === 'water' ? def.col : geo.klass(x - 1, y) === 'water' ? t3(geo.spriteAt(x - 1, y)).col : geo.klass(x + 1, y) === 'water' ? t3(geo.spriteAt(x + 1, y)).col : geo.klass(x, y - 1) === 'water' ? t3(geo.spriteAt(x, y - 1)).col : t3(geo.spriteAt(x, y + 1)).col);
@@ -323,20 +343,71 @@ export function buildChunk(geo: Geo, cx: number, cz: number, opts: BuildOpts = {
       const tops = geo.cornerTops(x, y);
       const base = col(def.col);
       const topCol = k === 'roof' ? shade(base, 0.95 + 0.1 * hash2(x, y, 9)) : shade(base, geo.g.kind === 'town' ? 1.15 : 0.92);
-      const P = (cxn: number, cyn: number, h: number) => [cxn, h, cyn];
-      T.quad(P(x, y, tops[0]), P(x, y + 1, tops[3]), P(x + 1, y + 1, tops[2]), P(x + 1, y, tops[1]), topCol);
+      // Aristas libres (sin bloque vecino): norte, sur, oeste, este. Se biselan y se redondean con normales.
+      const B = sp === 'caveWall' ? 0.24 : sp === 'woodWall' || k === 'roof' ? 0.07 : 0.12;
+      const free = { n: !geo.isBlock(x, y - 1), s: !geo.isBlock(x, y + 1), w: !geo.isBlock(x - 1, y), e: !geo.isBlock(x + 1, y) };
+      // Esquinas: NO, NE, SE, SO; cada una toca dos aristas.
+      const cn: Array<{ cx: number; cz: number; a: boolean; b: boolean; ax: number; az: number; bx: number; bz: number }> = [
+        { cx: x, cz: y, a: free.n, b: free.w, ax: 0, az: -1, bx: -1, bz: 0 },
+        { cx: x + 1, cz: y, a: free.n, b: free.e, ax: 0, az: -1, bx: 1, bz: 0 },
+        { cx: x + 1, cz: y + 1, a: free.s, b: free.e, ax: 0, az: 1, bx: 1, bz: 0 },
+        { cx: x, cz: y + 1, a: free.s, b: free.w, ax: 0, az: 1, bx: -1, bz: 0 },
+      ];
+      const outOf = (i: number): [number, number] => {
+        const q = cn[i]!;
+        let ox = 0, oz = 0;
+        if (q.a) { ox += q.ax; oz += q.az; }
+        if (q.b) { ox += q.bx; oz += q.bz; }
+        const l = Math.hypot(ox, oz);
+        return l > 0 ? [ox / l, oz / l] : [0, 0];
+      };
+      const topV = cn.map((q, i) => {
+        let ix = 0, iz = 0;
+        if (q.a) { ix -= q.ax * B; iz -= q.az * B; }
+        if (q.b) { ix -= q.bx * B; iz -= q.bz * B; }
+        const [ox, oz] = outOf(i);
+        const nl = Math.hypot(ox * 0.6, 1, oz * 0.6);
+        return { p: [q.cx + ix, tops[i]!, q.cz + iz], n: [(ox * 0.6) / nl, 1 / nl, (oz * 0.6) / nl], bev: Math.hypot(ox, oz) > 0 };
+      });
+      // Normal real del plano de la cara (los tejados tienen pendiente) mezclada con el redondeo de los bordes.
+      {
+        const p0 = topV[0]!.p, p1 = topV[1]!.p, p3 = topV[3]!.p;
+        const e1 = [p1[0]! - p0[0]!, p1[1]! - p0[1]!, p1[2]! - p0[2]!], e2 = [p3[0]! - p0[0]!, p3[1]! - p0[1]!, p3[2]! - p0[2]!];
+        let pn = [e2[1]! * e1[2]! - e2[2]! * e1[1]!, e2[2]! * e1[0]! - e2[0]! * e1[2]!, e2[0]! * e1[1]! - e2[1]! * e1[0]!];
+        const pl = Math.hypot(pn[0]!, pn[1]!, pn[2]!) || 1;
+        pn = [pn[0]! / pl, pn[1]! / pl, pn[2]! / pl];
+        for (const v of topV) {
+          const nx = v.n[0]! * 0.5 + pn[0]!, ny = v.n[1]! * 0.5 + pn[1]!, nz = v.n[2]! * 0.5 + pn[2]!, l = Math.hypot(nx, ny, nz) || 1;
+          v.n = [nx / l, ny / l, nz / l];
+        }
+      }
       if (k === 'roof') {
-        // Alero: un reborde oscuro y a veces chimenea.
+        // Tejas: franjas con un tono alterno suave (de norte a sur) en vez de un plano liso.
+        const S = 4;
+        const lerp3 = (a: number[], b: number[], u: number): number[] => [a[0]! + (b[0]! - a[0]!) * u, a[1]! + (b[1]! - a[1]!) * u, a[2]! + (b[2]! - a[2]!) * u];
+        for (let i = 0; i < S; i++) {
+          const u0 = i / S, u1 = (i + 1) / S;
+          const cs = shade(topCol, i % 2 ? 1.05 : 0.93);
+          const cs2 = shade(topCol, i % 2 ? 0.93 : 1.05);
+          const a = lerp3(topV[0]!.p, topV[3]!.p, u0), b = lerp3(topV[1]!.p, topV[2]!.p, u0), c2 = lerp3(topV[1]!.p, topV[2]!.p, u1), d = lerp3(topV[0]!.p, topV[3]!.p, u1);
+          const na = lerp3(topV[0]!.n, topV[3]!.n, u0), nb = lerp3(topV[1]!.n, topV[2]!.n, u0), nc = lerp3(topV[1]!.n, topV[2]!.n, u1), nd = lerp3(topV[0]!.n, topV[3]!.n, u1);
+          T.triN(a, d, c2, na, nd, nc, cs, cs2, cs2);
+          T.triN(a, c2, b, na, nc, nb, cs, cs2, cs);
+        }
+      } else {
+        T.triN(topV[0]!.p, topV[3]!.p, topV[2]!.p, topV[0]!.n, topV[3]!.n, topV[2]!.n, topCol, topCol, topCol);
+        T.triN(topV[0]!.p, topV[2]!.p, topV[1]!.p, topV[0]!.n, topV[2]!.n, topV[1]!.n, topCol, topCol, topCol);
+      }
+      if (k === 'roof') {
         if (hash2(x, y, 4) > 0.86 && geo.klass(x, y - 1) === 'roof') addInst('chimney', x + 0.5, (tops[0] + tops[3]) / 2 + 0.05, y + 0.5, 0, 1);
       }
-      // Lados: al sur/este/oeste/norte, hasta la altura del vecino o del suelo.
-      const edges: Array<[number, number, number, number, number, number, number]> = [
-        // dx, dz, ax,az (esquina A), bx,bz (esquina B)
-        [0, -1, x, y, x + 1, y], [0, 1, x + 1, y + 1, x, y + 1], [-1, 0, x, y + 1, x, y], [1, 0, x + 1, y, x + 1, y + 1],
-      ].map((e) => e as [number, number, number, number, number, number, number]);
-      for (const [dx, dz, ax, az, bx, bz] of edges) {
+      // Lados: hasta la altura del vecino o del suelo; el borde superior baja un bisel con normal suave.
+      const edges: Array<[number, number, number, number, number, number, number, number, boolean]> = [
+        [0, -1, x, y, x + 1, y, 0, 1, free.n], [0, 1, x + 1, y + 1, x, y + 1, 2, 3, free.s], [-1, 0, x, y + 1, x, y, 3, 0, free.w], [1, 0, x + 1, y, x + 1, y + 1, 1, 2, free.e],
+      ];
+      for (const [dx, dz, ax, az, bx, bz, ia, ib, fr] of edges) {
         const nx = x + dx, ny = y + dz;
-        const ta = topAt(tops, x, y, ax, az), tb = topAt(tops, x, y, bx, bz);
+        const ta = tops[ia]!, tb = tops[ib]!;
         let la: number, lb: number;
         if (geo.isBlock(nx, ny)) {
           const nt = geo.cornerTops(nx, ny);
@@ -350,16 +421,31 @@ export function buildChunk(geo: Geo, cx: number, cz: number, opts: BuildOpts = {
         const wallCol = k === 'roof' ? PLASTER : base;
         const faceK = dz === 1 ? 1 : dz === -1 ? 0.72 : 0.86;
         const cT = shade(wallCol, faceK * (0.92 + 0.1 * hash2(x, y, 6)));
-        const cB = shade(cT, 0.68);
-        T.tri([ax, la, az], [bx, lb, bz], [bx, tb, bz], cT, 0, 0, 0, cB, cB, cT);
-        T.tri([ax, la, az], [bx, tb, bz], [ax, ta, az], cT, 0, 0, 0, cB, cT, cT);
+        const cB = shade(cT, 0.7);
+        const bv = fr ? B : 0;
+        const oa = outOf(ia), ob = outOf(ib);
+        const wn = (o: [number, number], up: number): number[] => {
+          const l = Math.hypot(o[0] || dx, up, o[1] || dz);
+          return [(o[0] || dx) / l, up / l, (o[1] || dz) / l];
+        };
+        const A1 = [ax, ta - bv, az], B1 = [bx, tb - bv, bz], A0 = [ax, la, az], B0 = [bx, lb, bz];
+        T.triN(A0, B0, B1, wn(oa, 0), wn(ob, 0), wn(ob, 0.45), cB, cB, cT);
+        T.triN(A0, B1, A1, wn(oa, 0), wn(ob, 0.45), wn(oa, 0.45), cB, cT, cT);
+        if (fr) {
+          // Bisel: del borde de la pared al borde de la cara superior.
+          const ta2 = topV[ia]!, tb2 = topV[ib]!;
+          T.triN(A1, B1, tb2.p, wn(oa, 0.45), wn(ob, 0.45), tb2.n, cT, cT, topCol);
+          T.triN(A1, tb2.p, ta2.p, wn(oa, 0.45), tb2.n, ta2.n, cT, topCol, topCol);
+        }
         // Ventanas y detalle en fachadas de casa orientadas al sur.
         if (sp === 'woodWall' && dz === 1 && !geo.isBlock(nx, ny)) {
           const gy = (la + lb) / 2;
           if (hash2(x, y, 8) > 0.35) {
-            const wx = x + 0.5, wy = gy + 0.5, ww = 0.26;
-            T.quad([wx - ww, wy - 0.17, y + 1.012], [wx + ww, wy - 0.17, y + 1.012], [wx + ww, wy + 0.17, y + 1.012], [wx - ww, wy + 0.17, y + 1.012], [1.25, 0.95, 0.5], [2, 2, 2, 2]);
-            T.box(wx, wy - 0.2, y + 1.03, 0.62, 0.04, 0.08, col('#5a3d24'));
+            const wx = x + 0.5, wy = gy + 0.5, ww = 0.24;
+            const wf = T.count;
+            T.rbox(wx, wy - 0.17, y + 1.0, ww * 2, 0.34, 0.05, [1.25, 0.95, 0.5], { r: 0.1, lo: 1, hi: 1 });
+            for (let q = wf * 10 + 9; q < T.v.length; q += 10) T.v[q] = 2;
+            T.rbox(wx, wy - 0.22, y + 1.02, 0.64, 0.05, 0.1, col('#6a4a2c'), { r: 0.02 });
             lights.push({ x: wx, y: wy, z: y + 1.4, r: 1, g: 0.72, b: 0.35, rad: 2.2 });
           }
         }
@@ -432,4 +518,52 @@ export function chunksInRadius(w: number, h: number, x: number, z: number, r: nu
       if ((qx - x) ** 2 + (qz - z) ** 2 <= r * r) out.push([cx, cz]);
     }
   return out;
+}
+
+/**
+ * Faldón de terreno fuera de la zona: bandas planas con el color del borde que se funden con la
+ * niebla, para que el mapa no acabe de golpe en el vacío (no se genera en recintos cerrados).
+ */
+export function buildSkirt(geo: Geo, ext = 90): Float32Array {
+  const M = new MeshBuilder();
+  const W = geo.w, H = geo.h;
+  const colAt = (x: number, y: number): RGB => {
+    const sx = Math.min(W - 1, Math.max(0, x)), sy = Math.min(H - 1, Math.max(0, y));
+    const d = t3(geo.spriteAt(sx, sy));
+    return shade(col(d.c === 'ground' ? d.col : geo.snowy ? SN : G), 0.92);
+  };
+  const up = [0, 1, 0];
+  const quad = (a: number[], b: number[], c2: number[], d: number[], ca: RGB, cb: RGB, cc: RGB, cd: RGB): void => {
+    M.triN(a, b, c2, up, up, up, ca, cb, cc);
+    M.triN(a, c2, d, up, up, up, ca, cc, cd);
+  };
+  const side = (nx: number, nz: number, along: 'x' | 'z'): void => {
+    const n = along === 'x' ? W : H;
+    for (let i = 0; i < n; i++) {
+      const p = (k: number): { x: number; z: number; h: number } => {
+        const a = k;
+        if (along === 'x') return nz < 0 ? { x: a, z: 0, h: geo.vert(a, 0) } : { x: a, z: H, h: geo.vert(a, H) };
+        return nx < 0 ? { x: 0, z: a, h: geo.vert(0, a) } : { x: W, z: a, h: geo.vert(W, a) };
+      };
+      const a = p(i), b = p(i + 1);
+      const c0 = along === 'x' ? colAt(i, nz < 0 ? 0 : H - 1) : colAt(nx < 0 ? 0 : W - 1, i);
+      const far = (q: { x: number; z: number }, d: number): number[] => [q.x + nx * d, 0, q.z + nz * d];
+      const A = [a.x, a.h, a.z], B = [b.x, b.h, b.z];
+      const A1 = far(a, 6), B1 = far(b, 6), A2 = far(a, ext), B2 = far(b, ext);
+      const m2 = shade(c0, 0.96);
+      quad(A, B, B1, A1, c0, c0, m2, m2);
+      quad(A1, B1, B2, A2, m2, m2, m2, m2);
+    }
+  };
+  side(0, -1, 'x'); side(0, 1, 'x'); side(-1, 0, 'z'); side(1, 0, 'z');
+  // Esquinas.
+  const corner = (cx: number, cz: number, sx: number, sz: number): void => {
+    const c0 = shade(colAt(cx === 0 ? 0 : W - 1, cz === 0 ? 0 : H - 1), 0.96);
+    const hh = geo.vert(cx, cz);
+    quad([cx, hh, cz], [cx + sx * 6, 0, cz], [cx + sx * 6, 0, cz + sz * 6], [cx, 0, cz + sz * 6], c0, c0, c0, c0);
+    quad([cx + sx * 6, 0, cz], [cx + sx * ext, 0, cz], [cx + sx * ext, 0, cz + sz * ext], [cx + sx * 6, 0, cz + sz * ext], c0, c0, c0, c0);
+    quad([cx, 0, cz + sz * 6], [cx + sx * 6, 0, cz + sz * 6], [cx + sx * 6, 0, cz + sz * ext], [cx, 0, cz + sz * ext], c0, c0, c0, c0);
+  };
+  corner(0, 0, -1, -1); corner(W, 0, 1, -1); corner(0, H, -1, 1); corner(W, H, 1, 1);
+  return M.toArray();
 }

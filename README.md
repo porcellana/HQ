@@ -1,7 +1,7 @@
 # Ecos del Abismo
 
 RPG de mazmorreo por turnos con reglas inspiradas en D&D 5e (d20, CA, salvaciones,
-críticos y pifias), vista cenital 2D en pixel art y controles táctiles. Pensado para
+críticos y pifias), mundo y batallas **100 % en 3D suave** (WebGL2, modelos redondeados generados por código) y controles táctiles. Pensado para
 Android en vertical (se juega con una mano) y probable en el navegador como PWA.
 
 > La carpeta `heroquest/` es un prototipo anterior independiente; el juego nuevo no la usa.
@@ -39,14 +39,19 @@ v0.2 se centra en el estilo Baldur's Gate / D&D en tres fases:
 | — | **v0.4.0**: combate turno a turno (paso a paso, barra de turnos, cartel de acción, menú de acciones, Defender), seguimiento de misiones estilo WoW, mascotas fáciles de encontrar y como recompensa | ✅ |
 | C | **Expediciones roguelike**: elegir camino entre salas (combate, tesoro, evento, tienda), recompensas a elegir y mejoras que se conservan aunque mueras | ⏳ |
 
-### Gráficos 3D (v0.10)
+### Gráficos 3D suaves (v0.10 → v0.11)
 
-Mezcla del prototipo «Brumavela» (WebGL puro) con la jugabilidad de Ecos del Abismo. La lógica sigue siendo por casillas; el 3D es sólo presentación (`src/gfx/world3d/`, detrás de la interfaz `gfx/mapView.ts` que comparten el renderizador 2D y el 3D).
+Todo se dibuja en 3D con WebGL2 puro (`src/gfx/world3d/`); la lógica sigue siendo por casillas. **No hay renderizador 2D ni respaldo 2D**: sin WebGL 2 se muestra un mensaje claro. Un lienzo 2D transparente encima (el de entrada) sólo pinta nombres, números flotantes y trazos vectoriales de batalla.
 
-- `terrain.ts` (puro): `Geo` (alturas por vértice, montañas por profundidad, tejados con cumbrera) y `buildChunk` (mallas por chunks de 16×16 + instancias por modelo + luces). `models.ts`: catálogo low-poly y rigs animados. `style.ts`: niebla/cielo/partículas por bioma y noche. `quality.ts`: calidades y `FpsGuard`. `renderer3d.ts`: WebGL2 (instancing, agua, partículas en GPU, sombras blob, «ver a través» con dither). `battle3d.ts`: diorama 3D del bioma tras los sprites de batalla.
-- Decisiones (sin preguntar): sombras = AO horneado en los vértices + sombras blob bajo las criaturas (sin shadow map, para ir fluido en móviles medios); batalla = sprites 2D sobre fondo 3D (se mantiene todo el sistema de efectos); WebGL2 obligatorio (si no hay, 2D clásico automático); calidad Media por defecto y bajada automática si los fps caen; el 2D sigue completo como respaldo y para el mapa del mundo/zona.
-- Cámara: arrastre = girar, pellizco = zoom, joystick/teclas relativos a la cámara (`remapDir`). Un lienzo 2D encima (el de entrada) pinta etiquetas, números y la guía de misión.
-- Nuevo contenido de datos: clases `barbaro`, `explorador`, `druida`, `bardo` (con talentos y equipo propios en `data/items/clases_brumavela.ts`; reutilizan la plantilla de sprite 2D de la clase más parecida).
+- **Geometría redondeada** (`mesh.ts`): primitivas con normales por vértice —`ball` (elipsoide con ruido para follaje y rocas), `rbox` (caja biselada con normales exactas), `lathe` (sólidos de revolución), `limb` (cápsulas), `ribbon` (hojas/hierba) y `smooth`—. `models.ts`: árboles, rocas, casas, props y rigs (humanoides por clase con sombrero y arma, cuadrúpedos, arañas, serpientes, voladores, medusas, escarabajos, brotes) sin aristas. `terrain.ts`: relieve con interpolación curva y normales del terreno, muros y tejados con bisel y esquinas redondeadas por normales, tejas en franjas y faldón de terreno fuera del mapa.
+- **Iluminación y cielo** (`shaders.ts`, `style.ts`): luz envolvente con rampa suave, contraluz, hemisférica, niebla por bioma/hora, **cielo con degradado, sol, nubes y estrellas**, agua con espuma, hierba que se mece, halos de luz aditivos (bloom ligero) y MSAA. Sombras blandas bajo las criaturas (blob) + AO horneado en vértices; sin shadow map (fluidez en móviles medios). El héroe oculto tras un árbol o tejado se ve como **silueta translúcida** (no hay recortes a trozos).
+- **Animación** (`anim.ts`, pura): idle, caminar, atacar (melee, lanzar, arco o bestia), recibir golpe, morir, celebrar y defender; `rigMatrices` convierte la pose en una matriz por pieza. La comparten el mapa, la batalla y los retratos.
+- **Señalización diegética** (`signals.ts`): ni haz de luz ni flechas ni ❗/💬 planos. Cristales giratorios sobre los PNJ (dorado: misión; verde: entrega; azul: tienda; rojo: peligro, con runa en el suelo), chispas en cofres y vetas, anillos de runas en salidas y destinos y, para la misión seguida, un **cristal violeta con runa en el destino y un espíritu (luciérnaga) que flota por delante siguiendo el camino**. Se activa o desactiva en Ajustes («Espíritu guía de misión»). El nombre de zona al entrar es una pastilla pequeña integrada en la interfaz.
+- **Retratos 3D** (`studio.ts`): un contexto WebGL fuera de pantalla renderiza héroes, PNJ, mascotas y criaturas (con silueta para lo no visto) en lienzos cacheados para menús, ficha, diálogos, mascotas y lista de turnos. Los iconos de objetos son **vectoriales** (`gfx/items.ts`, degradados y brillos, nada de píxeles); los mapas de la interfaz usan una imagen suave de la zona (`gfx/mapImage.ts`).
+- **Batalla 3D** (`battle3d.ts`, `ui/battleScene.ts`): diorama del bioma con cielo, grupo a la derecha y enemigos a la izquierda como modelos animados, sombras, aura de estado y anillo de turno/objetivo, cámara suave (respira y sigue ligeramente al que actúa, sin zoom brusco), proyectiles 3D (esferas de energía y flechas con estela), **partículas luminosas 3D** (`fx3d.ts`, pura: chispas, brasas, esquirlas, curación, mejoras, explosiones elementales, onda de choque, críticos) con trazos vectoriales de tajo/estocada encima, hit-stop corto, números flotantes con estilo y **desintegración 3D** (ruido con borde brillante en el shader). La lógica de `src/game/battle` no cambia.
+- **Calidad** Baja/Media/Alta (`quality.ts`; Media por defecto, baja sola si los fps caen con `FpsGuard`). Resolución interna, radio de dibujado, densidad de decorado, luces y partículas dependen de ella; instancing para el decorado.
+- Decisiones (sin preguntar): sombras = blob + AO horneado; WebGL2 obligatorio; bloom = halos aditivos (sin postproceso a pantalla completa, ahorra batería); los trazos de ataque (arcos de tajo, estocadas, ondas, estrellas) siguen siendo vectoriales 2D sobre la escena 3D por ser suaves y baratos.
+- Nuevo contenido de datos: clases `barbaro`, `explorador`, `druida`, `bardo` (con talentos y equipo propios en `data/items/clases_brumavela.ts`; con modelo 3D propio: casco con cuernos, sombrero con pluma, corona de hojas y gorra con pluma).
 - Mundo: ríos (con puentes) y costas (con muelles) en zonas salvajes generadas con bioma de agua; `Game.travelEvent` (eventos al viajar) y `Game.contextAction` (botón Interactuar).
 - Dev: `window.__dev.newGame(clase, zona?)` para pruebas visuales con Playwright (`--use-gl=swiftshader --enable-unsafe-swiftshader`).
 
@@ -157,12 +162,13 @@ Otros comandos:
 - **Zoom del mapa**: pellizca con dos dedos o usa los botones **+ −** bajo el minimapa
   (**⟲** vuelve al normal). En PC: rueda del ratón o teclas `+` `−` `0`.
 - **Esperar**: pasa un turno sin moverte.
+- **Interfaz «Pergamino y cristal» (v0.11)**: paneles de cristal redondeados con transparencias, iconos sobre fichas, animaciones de entrada, **hojas inferiores deslizables** (Mochila, Ficha, Misiones, Mascotas, Tienda, Ajustes: arrastra el asa hacia abajo o toca fuera para cerrar), barra inferior compacta de una línea y menú de batalla con selector de objetivo (nombre y nivel sobre cada enemigo elegible). Estilos en `src/ui/styles.css` (tokens en `:root`).
 - **Menú**: pausa, guardar, ajustes y salir. En Android, el botón *Atrás* abre/cierra la pausa.
 - **Batalla por turnos estilo Final Fantasy (v0.7.0)**: cuando un enemigo te ve (aparece un
   «!» sobre él) o lo embistes con el joystick, se entra en una **escena aparte** (transición
   breve). Tu grupo —jugador, compañero y mascota— a la **derecha** y los enemigos a la
-  **izquierda**, con sprites ampliados que respiran; el fondo (cielo/pared y suelo con
-  perspectiva, pixel art por código) depende de la zona (pradera, bosque, montaña, cueva,
+  **izquierda**, como modelos 3D animados; el escenario 3D (cielo, árboles, muros, suelo,
+  luz de la hora) depende de la zona (pradera, bosque, montaña, cueva,
   cripta, galerías, puerto, aldea, interior).
   - **Turnos por iniciativa**: 10 + 2×mod(DES) + bonos (talento *Pies ligeros*, trasfondo
     *Cazador*); aliados y mascota según su perfil; enemigos 6 + 5×`speed` + nivel/4 (−4 si
@@ -315,8 +321,9 @@ src/
     rules/progression.ts            Curva de XP y niveles
     save/                           Guardado versionado + migraciones + almacenes
     world/zone.ts                   Mapa ASCII → rejilla de tiles
-  gfx/                              Pixel art generado por código y renderizado
-    palette.ts  tiles.ts  sprites.ts  renderer.ts
+  gfx/                              Gráficos 3D por código (WebGL2) y utilidades de aspecto
+    world3d/                        mesh, models, anim, terrain, shaders, renderer3d, battle3d, fx3d, signals, studio
+    look.ts  viewconst.ts  items.ts (iconos vectoriales)  mapImage.ts  battleFx.ts
   ui/                               Interfaz DOM: HUD, minimapa, joystick, menús, diálogos
   data/                             *** TODO EL CONTENIDO *** (ver abajo)
     schema.ts                       Tipos de todo el contenido
@@ -392,7 +399,7 @@ Cada clase es un archivo en `src/data/classes/` (mira `guerrero.ts`). Campos cla
 - `hitDie`: dado de golpe (PV = dado + CON al nivel 1, luego dado/2+1+CON por nivel).
 - `resource`: nombre, abreviatura y crecimiento del recurso (maná, vigor…).
 - `armorBonus`, `weapon`, `critRange`, `startingGold`, `traits`.
-- `look.overlay`: plantilla de sprite de `src/gfx/sprites.ts` (`OVERLAYS`) y colores.
+- `look.overlay`: plantilla de clase del modelo 3D (`KNOWN_OVERLAYS` en `src/gfx/look.ts`: guerrero, picaro, mago, clerigo, barbaro, explorador, druida, bardo) y colores.
 - `skills`: habilidades con `unlockLevel`, `cost`, `cooldown`, `range` y `effects`
   (`attack`, `spell`, `heal`, `buff`, `stealth`, `cleanse`; ver `schema.ts`).
 
@@ -521,7 +528,7 @@ Crea o edita un archivo en `src/data/enemies/` (cada archivo exporta una lista):
 - `resist` / `vulnerable` / `immune`: tipos de daño y estados.
 - `look.shape`: `goblin`, `esqueleto`, `lobo`, `rata`, `arana` o `humanoide` (con
   `overlay`: `guerrero`, `picaro`, `mago`, `clerigo`); `crown: true` para jefes. Las
-  formas están en `src/gfx/monsters.ts` como pixel art en texto.
+  formas son modelos 3D de `src/gfx/world3d/models.ts` (`BEAST_SHAPES`).
 - `phases` (jefes): al bajar de `hpBelow` (0..1) muestra `message`, puede invocar
   (`summon`), curarse (`heal`) o enfurecerse (`toHitBonus`, `damageBonus`).
 
@@ -572,8 +579,8 @@ menú DOM), con fondos en `src/gfx/battleBg.ts` y bioma en `src/game/battle/biom
   continuamente), botones **+** y **−** bajo el minimapa (**⟲** aparece para volver al nivel
   por defecto), rueda del ratón y teclas `+`, `−` y `0` en PC. Se guarda en Ajustes
   (`zoomStep`: 0 = por defecto, +1 más cerca, −1 más lejos).
-- **Niveles enteros** (el pixel art sigue nítido) calculados con el ancho real del canvas
-  (`src/engine/zoom.ts`): de ~8 casillas de ancho (muy cerca) a ~30 (muy lejos), con el actual
+- **Niveles enteros** calculados con el ancho real del canvas
+  (`src/engine/zoom.ts`; el 3D usa `quality.ts → camDistance`): de ~8 casillas de ancho (muy cerca) a ~30 (muy lejos), con el actual
   (~12) como por defecto. En un móvil típico hay 5-6 niveles; en pantallas diminutas, menos
   (no existen más enteros útiles). Entre niveles el cambio se anima y se fija el entero al
   terminar.
@@ -860,10 +867,8 @@ Ideas pendientes para próximas versiones:
 
 **v0.1:**
 
-- **Canvas 2D puro + DOM en lugar de Phaser.** El mapa se pre-renderiza una vez
-  por zona en un canvas oculto y cada fotograma sólo se copia la parte visible: va
-  fluido en móviles modestos y el bundle pesa ~20 KB comprimido. Los menús y el HUD
-  son HTML/CSS: textos grandes, accesibles y fáciles de maquetar.
+- **WebGL2 puro + DOM en lugar de Phaser (desde v0.11 todo es 3D).** El mapa se dibuja por chunks con instancing; los menús y el HUD
+  son HTML/CSS (hojas inferiores deslizables, cristal y pergamino): textos grandes, accesibles y fáciles de maquetar. Sin motor de terceros.
 - **Todo es por turnos, estilo roguelike.** Cada paso o acción del jugador consume
   un turno; en el Hito 3 los enemigos actuarán después de cada turno del jugador,
   de modo que el combate ocurre en el mismo mapa sin cambiar de pantalla.

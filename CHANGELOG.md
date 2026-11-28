@@ -2,6 +2,17 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.11.0 · 2026-11-28 — Todo en 3D suave, señalización diegética e interfaz nueva
+
+- **Adiós al 2D**: eliminados el renderizador 2D, el respaldo 2D del mapa, los sprites de personajes/criaturas/mascotas, los tiles pixel art y el sistema de partículas 2D. Sin WebGL 2 se muestra un mensaje claro. Menos código y APK más ligero.
+- **Geometría y luz suaves**: primitivas redondeadas con normales por vértice (elipsoides, cajas biseladas, revoluciones, cápsulas, cintas), árboles/rocas/arbustos orgánicos, casas con bisel y esquinas redondeadas, tejados con tejas, relieve de curvas suaves, cielo con degradado, nubes y estrellas, luz envolvente con contraluz, halos de luz, MSAA y faldón de terreno fuera del mapa. El héroe tapado se ve como silueta translúcida.
+- **Modelos animados**: todos los personajes, PNJ, compañeros, mascotas, enemigos y jefes son modelos 3D con idle, caminar, atacar (melee, lanzar, arco, bestia), recibir golpe, morir, celebrar y defender. Cada una de las 8 clases tiene sombrero/casco, capa y arma propios.
+- **Batalla 100 % 3D**: escenario del bioma con cielo, combatientes animados, sombras, auras de estado, anillos de turno/objetivo, cámara suave sin zoom brusco, proyectiles 3D con estela, partículas luminosas por elemento, explosiones, curación, mejoras, críticos, onda de choque, hit-stop, números flotantes con estilo y desintegración 3D con borde brillante.
+- **Señalización diegética**: cristales giratorios sobre PNJ (misión, entrega, tienda, peligro), chispas en cofres y vetas, anillos de runas en salidas y destinos y un espíritu luminoso que guía hacia la misión seguida (opcional en Ajustes). Fuera el haz de luz, la flecha y los ❗/💬 planos; el nombre de zona es una pastilla pequeña.
+- **Interfaz nueva «Pergamino y cristal»**: paneles de cristal, hojas inferiores deslizables para Mochila/Ficha/Misiones/Mascotas/Tienda/Ajustes, barra inferior compacta, menú principal y de batalla renovados, retratos 3D, iconos de objetos vectoriales, animaciones de entrada.
+- **Rendimiento**: calidad Baja/Media/Alta (Media por defecto, baja sola si caen los fps), instancing, retratos cacheados.
+- Ajustes: desaparecen «Gráficos» y «Volumen 3D». Sin cambios de guardado.
+
 ## v0.10.0 · 2026-11-28 — Mundo en 3D («Brumavela» + Ecos del Abismo)
 
 - **Gráficos 3D (WebGL2, sin librerías)** en `src/gfx/world3d/`: las casillas de cada zona (a mano o generadas) se extruyen a terreno con relieve suave, **agua animada con orillas y espuma**, árboles, pinos, palmeras, rocas, montañas por altura, casas con tejado a dos aguas y ventanas, muros, antorchas, faroles, hogueras y cristales (con luz puntual), vegetación que se mece con el viento, AO horneado y sombras suaves bajo las criaturas, niebla y luz por **bioma y hora del día**, partículas ambientales (polen, luciérnagas, nieve, polvo, esporas) y «ver a través» de lo que tapa al jugador.

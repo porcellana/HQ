@@ -9,11 +9,11 @@ const SECTIONS: Array<[string, string[]]> = [
     'Barra de abajo (una línea): ⏳ Esperar, ✨ Habilidad (se despliega con tus habilidades y la poción), 🎒 Mochila, 📜 Ficha, 📖 Misiones y ⚙ Ajustes. En Ajustes también están Guardar partida, esta ayuda y Guardar y salir.',
     'Opcional: joystick virtual en Ajustes (sigue a la cámara).',
     'En 3D: arrastra con un dedo para girar la cámara (o toca ↻), pellizca para acercar o alejar. Toca una criatura, un cofre o una veta para ir hasta ella.',
-    'El botón dorado «Interactuar» aparece cuando tienes cerca a alguien, un cofre, una veta o botín: hablar, abrir, minar o recoger. El haz de luz azul y la flecha te llevan a tu objetivo.',
+    'El botón dorado «Interactuar» aparece cuando tienes cerca a alguien, un cofre, una veta o botín: hablar, abrir, minar o recoger. Un espíritu luminoso vuela por delante y te guía hasta el cristal violeta de tu objetivo.',
     'Ajustes → Gráficos: 3D o 2D clásico, y Calidad Baja/Media/Alta (si el móvil va justo, el juego baja la calidad solo).',
     'Al viajar por zonas salvajes pueden pasar cosas: una bolsa olvidada, un manantial, un frasco… o una emboscada.',
     'El mundo es enorme: al cruzar los bordes de la aldea, el bosque, el paso o el puerto se generan zonas nuevas (praderas, bosques, montañas, nieve, desierto, pantano, costa) con aldeas, pueblos, ciudades, campamentos, ruinas, cuevas y mazmorras. Cada zona nace a tu nivel ±1 y se queda así. En el mapa grande, 🌍 muestra el mundo descubierto.',
-    'Al entrar en una zona, el rótulo muestra qué hay: 🛒 tienda, 💬 gente, ❗ misión, ⚔ peligro, ⛏ minerales.',
+    'Al entrar en una zona, el rótulo muestra qué hay: 🛒 tienda, 💬 gente, ❗ misión, ⚔ peligro, ⛏ minerales (es un aviso discreto de la interfaz).',
     'Zoom del mapa: pellizca con dos dedos, o usa los botones + y − bajo el minimapa (⟲ vuelve al normal). En PC: rueda del ratón o teclas + − 0.',
   ]],
   ['❤️ Barras', [
@@ -48,7 +48,7 @@ const SECTIONS: Array<[string, string[]]> = [
     'Las bombas (🧨) se lanzan a un enemigo en batalla; los pergaminos y elixires dan bonos temporales.',
   ]],
   ['📜 Misiones', [
-    'Los aldeanos con ❗ tienen una misión; con ❓, puedes entregarla.',
+    'Las señales son cristales flotantes: dorado, el PNJ tiene una misión; verde, puedes entregarla; azul, vende cosas; rojo, peligro. Los anillos de runas en el suelo marcan salidas y destinos.',
     'Abajo, sobre la barra, ves una línea con la misión que sigues (qué hacer y dónde). Tócala para abrir el menú de misiones.',
     '📖 Misiones (barra de abajo): para cada misión ves qué te falta (▶), lo que ya llevas (✓ y «Tienes 2 de 5»), a dónde ir con la ruta y la recompensa. Con ❗ en el botón hay una lista para entregar.',
   ]],

@@ -22,7 +22,7 @@ export interface Settings {
   volume: 'bajo' | 'medio' | 'alto';
   /** Ciclo de día y noche en exteriores. */
   dayNight: boolean;
-  /** Guía de misión (flecha tipo GPS hacia el objetivo de la misión seguida). */
+  /** Guía de misión: espíritu luminoso y runas hacia el objetivo de la misión seguida. */
   questGuide: boolean;
   /** Velocidad de batalla (v0.7): normal o rápida (animaciones más cortas). */
   battleSpeed: 'normal' | 'rapida';
@@ -30,10 +30,6 @@ export interface Settings {
   combatFx: 'completos' | 'reducidos' | 'minimos';
   /** Zoom del mapa: 0 = por defecto, +1 un nivel más cerca, −1 más lejos (ver engine/zoom.ts). */
   zoomStep: number;
-  /** Volumen pseudo-3D (alturas, sombras y oclusión ambiental). */
-  volume3d: boolean;
-  /** Gráficos (v0.10): 3D (WebGL) o 2D clásico. */
-  graphics: '3d' | '2d';
   /** Calidad del 3D (resolución, distancia, decorado, luces). */
   quality: 'baja' | 'media' | 'alta';
 }
@@ -52,8 +48,6 @@ export const DEFAULT_SETTINGS: Settings = {
   battleSpeed: 'normal',
   combatFx: 'completos',
   zoomStep: 0,
-  volume3d: true,
-  graphics: '3d',
   quality: 'media',
 };
 
@@ -66,6 +60,7 @@ export function loadSettings(): Settings {
     const parsed = JSON.parse(raw) as Partial<Settings> & { combatSpeed?: string };
     // v0.7: «Velocidad del combate» (paso/lenta/normal) pasa a «Velocidad de batalla».
     delete parsed.combatSpeed;
+    delete (parsed as { graphics?: string }).graphics;
     return { ...DEFAULT_SETTINGS, ...parsed };
   } catch {
     return { ...DEFAULT_SETTINGS };

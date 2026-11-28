@@ -1,7 +1,8 @@
 /** Pantalla final: epílogo y estadísticas de la partida. */
 import { getClass } from '@/data/registry';
 import type { GameState } from '@/game/state';
-import { heroColors, spriteCanvas } from '@/gfx/sprites';
+import { heroColors } from '@/gfx/look';
+import { heroPortrait } from '@/gfx/world3d/studio';
 import { h } from './dom';
 
 export function formatPlayTime(sec: number): string {
@@ -16,7 +17,7 @@ export function victoryScreen(state: GameState, onContinue: () => void, onMenu: 
   const r = state.record;
   const stat = (label: string, value: string) => h('div', { class: 'derived-item' }, [h('small', { text: label }), h('b', { text: value })]);
   return h('div', { class: 'screen victory' }, [
-    spriteCanvas(heroColors(cls.look, p.portrait), 'portrait-canvas'),
+    heroPortrait(heroColors(cls.look, p.portrait), 'portrait-canvas', false, 'cheer'),
     h('h1', { text: '¡VICTORIA!' }),
     h('div', { class: 'subtitle', text: `${p.name}, ${cls.name.toLowerCase()} de nivel ${p.level}, ha derrotado a Velkar el Nigromante.` }),
     h('div', { class: 'panel epilogue' }, [
