@@ -17,6 +17,7 @@ import type { Game } from '@/game/game';
 import { Battle, SPELL_COLORS, type BattleEvent, type BattleResult, type Combatant, type TargetKind } from '@/game/battle/battle';
 import { biomeOf, type Biome } from '@/game/battle/biome';
 import { STATUS_INFO } from '@/game/combat/status';
+import { unitInfo } from '@/game/battle/info';
 import { itemDef } from '@/game/items/items';
 import * as Pets from '@/game/pets/pets';
 import { Battle3D, STAGE_CENTER, type Projectile, type UnitDraw } from '@/gfx/world3d/battle3d';
@@ -98,6 +99,8 @@ interface Unit {
   st: AnimState;
   stT: number;
   stDur: number;
+  /** Familia del enemigo (animaciones propias). */
+  variant?: string;
 }
 
 interface FloatText {
@@ -194,7 +197,9 @@ export class BattleScene {
     const outdoor = z.def.kind === 'town' || z.def.kind === 'wild' || z.def.kind === 'world';
     this.b3 = new Battle3D(gc, this.biome, (z.id.length * 7 + d.game.state.turn) & 255, outdoor ? nightAmount(d.game.state.turn) : 0, QUALITY[d.quality], outdoor ? dayClock(d.game.state.turn) : clockAt(0.3, 0));
     this.glCanvas = gc;
-    this.stage = h('div', { class: 'b-stage' }, [this.glCanvas, this.canvas, this.orderEl, this.msgEl]);
+    this.infoBtn = h('button', { class: 'b-info-btn', text: 'ⓘ', onClick: () => this.toggleInfo(), attrs: { 'aria-label': 'Información de combatientes' } });
+    this.infoEl = h('div', { class: 'b-info' });
+    this.stage = h('div', { class: 'b-stage' }, [this.glCanvas, this.canvas, this.orderEl, this.msgEl, this.infoBtn, this.infoEl]);
     this.partyEl = h('div', { class: 'b-party' });
     const mk = (key: keyof BattleScene['btns'], ico: string, label: string, fn: () => void) => {
       const b = h('button', { class: `b-btn b-${key}`, onClick: fn, attrs: { 'aria-label': label } }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
@@ -213,7 +218,10 @@ export class BattleScene {
     const ui = h('div', { class: 'b-ui' }, [this.partyEl, this.drawerEl, this.menuEl, this.panelEl]);
     this.el = h('div', { class: 'battle' }, [this.stage, ui]);
     d.root.append(this.el);
-    this.canvas.addEventListener('pointerdown', (e) => this.onTap(e));
+    this.canvas.addEventListener('pointerdown', (e) => this.onDown(e));
+    this.canvas.addEventListener('pointerup', (e) => this.onUp(e));
+    this.canvas.addEventListener('pointermove', (e) => this.onMove(e));
+    this.canvas.addEventListener('pointercancel', () => this.clearPress());
     this.setEnabled(false);
     this.buildParty();
     this.measure();
@@ -281,6 +289,7 @@ export class BattleScene {
       phase: Math.random() * 6, flash: 0, shake: 0, alpha: entering ? 0 : 1, dissolve: 0,
       hpShown: b.hp(c), maxHp: b.maxHp(c), hpTarget: b.hp(c), dead: false, name: c.name, enter: entering ? 0 : 1, hpGhost: b.hp(c), squash: 0,
       st: 'idle', stT: 0, stDur: 1,
+      ...(c.enemy ? { variant: c.enemy.def.pet ? 'bestia' : c.enemy.def.family } : {}),
     };
     this.units.set(c.id, u);
     return u;
@@ -289,6 +298,8 @@ export class BattleScene {
   private buildUnits(): void {
     for (const c of this.d.battle.combatants) this.addUnit(c);
     this.layout(true);
+    // Los jefes irrumpen en escena: emergen del suelo y rugen.
+    for (const u of this.units.values()) if (u.c.boss) this.setAnim(u, 'enter', 1.5);
   }
 
   /** Coloca a cada unidad en su casilla de formación (grupo a la derecha, enemigos a la izquierda). */
@@ -425,7 +436,7 @@ export class BattleScene {
       const toward = u.c.side === 'party' ? -1 : 1;
       units.push({
         rig: u.rig, x: wxo, y: u.lift / ppu, z: u.wz + u.oy / dpx, yaw: toward * (Math.PI / 2 - 0.5), scale: u.scale,
-        anim: { state: ps.state, k: ps.k, time: this.time, walkT: this.time * 1.5, walk: 0, seed: u.phase },
+        anim: { state: ps.state, k: ps.k, time: this.time, walkT: this.time * 1.5, walk: 0, seed: u.phase, ...(u.variant ? { variant: u.variant } : {}), ...(u.big ? { boss: true } : {}) },
         flash: u.flash, squash: u.squash, dissolve: u.dissolve, shadow: u.alpha * Math.max(0.3, 1 - u.lift / 120), aura: status ? STATUS_INFO[status.id].color : undefined, ring,
         dissolveCol: u.big ? '#c070ff' : '#ffcf70',
       });
@@ -859,7 +870,7 @@ export class BattleScene {
       case 'phase': {
         const u = U(ev.id);
         this.say(`«${ev.text}»`, 2.2);
-        if (u) this.float(u, '‼', '#ff6040', 30);
+        if (u) { this.float(u, '‼', '#ff6040', 30); this.setAnim(u, 'phase', 1); }
         this.shake(3, 0.3);
         this.d.sfx('critico_grave');
         await this.wait(0.9);
@@ -1053,6 +1064,7 @@ export class BattleScene {
       const xp = g.battleXp(res);
       lines.push(h('h3', { text: 'Victoria' }));
       lines.push(...lootSummary(res, xp));
+      if (res.escortDied) lines.push(h('p', { class: 'warn', text: '💀 Tu protegido ha caído: la escolta ha fracasado.' }));
       const best = ['legendario', 'epico', 'raro'].find((r) => res.items.some((i) => i.rarity === r));
       this.d.sfx(best === 'legendario' ? 'loot_legendario' : best === 'epico' ? 'loot_epico' : best === 'raro' ? 'loot_raro' : res.items.length ? 'loot_comun' : 'moneda');
     } else lines.push(h('h3', { text: 'Has caído...' }), h('p', { text: 'Despertarás en un lugar seguro.' }));
@@ -1120,6 +1132,104 @@ export class BattleScene {
     this.targeting = null;
     this.partyEl.classList.remove('picking');
     this.msgEl.classList.remove('show');
+  }
+
+  // ---- información de combatientes: mantener pulsado o con el icono ⓘ
+  private infoBtn!: HTMLElement;
+  private infoEl!: HTMLElement;
+  private infoMode = false;
+  private infoTimer = 0;
+  private press: { x: number; y: number; timer: number; long: boolean } | null = null;
+
+  private toggleInfo(): void {
+    this.infoMode = !this.infoMode;
+    this.infoBtn.classList.toggle('on', this.infoMode);
+    if (!this.infoMode) this.hideInfo();
+    else this.say('Toca a un combatiente para ver su información', 2.2);
+  }
+
+  /** Unidad bajo el dedo (opcionalmente sólo entre las `only`). */
+  private unitAt(x: number, y: number, only?: Set<string>): Unit | null {
+    let best: Unit | null = null;
+    let bd = Infinity;
+    for (const u of this.units.values()) {
+      if (u.dead || u.alpha <= 0.05 || (only && !only.has(u.id))) continue;
+      const w = 16 * u.k;
+      const dx = Math.abs(x - u.hx);
+      const dy = Math.abs(y - (u.hy - w * 0.5));
+      if (dx < w * 0.65 && dy < w * 0.75) {
+        const d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; best = u; }
+      }
+    }
+    return best;
+  }
+
+  private showInfo(u: Unit): void {
+    const i = unitInfo(this.d.battle, u.c);
+    const row = (label: string, v: string) => h('div', { class: 'ir' }, [h('span', { text: label }), h('b', { text: v })]);
+    const kids: Array<HTMLElement | null> = [
+      h('div', { class: 'it' }, [h('b', { text: i.name }), h('small', { text: i.subtitle })]),
+      h('div', { class: 'ib' }, [h('i', { attrs: { style: `width:${Math.round((100 * i.hp) / Math.max(1, i.maxHp))}%` } })]),
+      row('PV', `${i.hp}/${i.maxHp}`),
+      row('CA', String(i.ac)),
+      i.statuses.length ? row('Estados', i.statuses.map((s) => `${STATUS_INFO[s.id].icon} ${STATUS_INFO[s.id].name} (${s.turns})`).join(' · ')) : null,
+      i.weak.length ? row('Débil a', i.weak.join(', ')) : null,
+      i.resist.length ? row('Resiste', i.resist.join(', ')) : null,
+      i.immune.length ? row('Inmune', i.immune.map((s) => STATUS_INFO[s].name).join(', ')) : null,
+      ...i.notes.map((n) => h('small', { class: 'in', text: n })),
+    ];
+    this.infoEl.replaceChildren(...kids.filter((k): k is HTMLElement => !!k));
+    this.infoEl.classList.add('show');
+    window.clearTimeout(this.infoTimer);
+    this.infoTimer = window.setTimeout(() => this.hideInfo(), 4500);
+  }
+
+  private hideInfo(): void {
+    this.infoEl.classList.remove('show');
+    window.clearTimeout(this.infoTimer);
+  }
+
+  private clearPress(): void {
+    if (this.press) window.clearTimeout(this.press.timer);
+    this.press = null;
+  }
+
+  private onDown(e: PointerEvent): void {
+    const r = this.canvas.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    this.clearPress();
+    const u = this.unitAt(x, y);
+    const press = { x, y, long: false, timer: 0 };
+    if (u) {
+      press.timer = window.setTimeout(() => {
+        press.long = true;
+        this.showInfo(u);
+        this.d.sfx('ui');
+      }, 450);
+    }
+    this.press = press;
+  }
+
+  private onMove(e: PointerEvent): void {
+    if (!this.press) return;
+    const r = this.canvas.getBoundingClientRect();
+    if (Math.hypot(e.clientX - r.left - this.press.x, e.clientY - r.top - this.press.y) > 12) window.clearTimeout(this.press.timer);
+  }
+
+  private onUp(e: PointerEvent): void {
+    const p = this.press;
+    this.clearPress();
+    if (!p || p.long) return;
+    const r = this.canvas.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    if (this.infoMode) {
+      const u = this.unitAt(x, y);
+      if (u) this.showInfo(u); else this.hideInfo();
+      return;
+    }
+    this.hideInfo();
+    this.onTap(e);
   }
 
   private onTap(e: PointerEvent): void {
@@ -1290,6 +1400,8 @@ export class BattleScene {
     this.ro?.disconnect();
     this.b3.destroy();
     window.clearTimeout(this.msgTimer);
+    window.clearTimeout(this.infoTimer);
+    this.clearPress();
     this.el.remove();
   }
 }

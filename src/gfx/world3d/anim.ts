@@ -6,7 +6,10 @@
 import { ident, mul, rotX, rotZ, translate, type Mat4 } from './mat';
 import type { PartAnim, Rig } from './models';
 
-export type AnimState = 'idle' | 'walk' | 'attack' | 'cast' | 'hurt' | 'die' | 'cheer' | 'defend';
+export type AnimState = 'idle' | 'walk' | 'attack' | 'cast' | 'hurt' | 'die' | 'cheer' | 'defend' | 'enter' | 'phase';
+
+/** Familias con animación propia (ataque, reposo y muerte) y el jefe (entrada y cambio de fase). */
+export type AnimVariant = 'goblinoide' | 'no-muerto' | 'bestia' | 'araña' | 'orco' | 'humano';
 
 export interface AnimInput {
   state: AnimState;
@@ -18,6 +21,10 @@ export interface AnimInput {
   /** 0..1: cuánto camina (amplitud de zancada). */
   walk: number;
   seed: number;
+  /** Familia del enemigo: cambia cómo descansa, ataca y muere. */
+  variant?: AnimVariant | string;
+  /** Jefe: más peso en sus poses. */
+  boss?: boolean;
 }
 
 export interface BodyPose { dy: number; dz: number; rx: number; rz: number; sy: number }
@@ -130,8 +137,140 @@ export function rigPose(rig: Rig, a: AnimInput): Pose {
     }
     default: break;
   }
+  if (a.variant) variantPose(pose, rig, a, t, k);
+  if (a.state === 'enter' || a.state === 'phase') bossPose(pose, rig, a, k);
   pose.legPhase = a.walkT;
   return pose;
+}
+
+/** Entrada del jefe (emerge y ruge) y rugido de cambio de fase (se encoge, se yergue y tiembla). */
+function bossPose(pose: Pose, rig: Rig, a: AnimInput, k: number): void {
+  const restR = rig.restR ?? 0, restL = rig.restL ?? 0;
+  if (a.state === 'enter') {
+    const rise = sm(clamp01(k / 0.55));
+    pose.body.dy = -0.55 * (1 - rise) + Math.sin(clamp01((k - 0.55) / 0.45) * Math.PI) * 0.1;
+    pose.body.sy = 0.7 + 0.3 * rise;
+    pose.body.rx = keys(k, [[0, 0.5], [0.55, -0.1], [0.75, -0.4], [1, 0]]);
+    pose.head.rx = keys(k, [[0, 0.4], [0.6, -0.1], [0.78, -0.5], [1, 0]]);
+    pose.arms.l.rx = keys(k, [[0, restL], [0.6, restL], [0.78, -2.5], [1, restL]]);
+    pose.arms.r.rx = keys(k, [[0, restR], [0.6, restR], [0.78, -2.5], [1, restR]]);
+    pose.wings.l.rz += rise * 0.6; pose.wings.r.rz -= rise * 0.6;
+  } else {
+    const e = Math.sin(clamp01(k) * Math.PI);
+    pose.body.rx = -0.35 * e; pose.body.rz = Math.sin(k * 46) * 0.05 * e; pose.body.dy = 0.05 * e;
+    pose.head.rx = -0.5 * e;
+    pose.arms.l.rx = restL - 2.4 * e; pose.arms.r.rx = restR - 2.4 * e;
+    pose.arms.l.rz = -0.5 * e; pose.arms.r.rz = 0.5 * e;
+    pose.tail.rx = 0.8 * e; pose.wings.l.rz += 0.7 * e; pose.wings.r.rz -= 0.7 * e;
+  }
+}
+
+/** Retoques por familia sobre la pose base: cada una descansa, ataca y muere a su manera. */
+function variantPose(pose: Pose, rig: Rig, a: AnimInput, t: number, k: number): void {
+  const restR = rig.restR ?? 0, restL = rig.restL ?? 0;
+  const v = a.variant;
+  const idle = a.state === 'idle' || a.state === 'defend';
+  if (idle && a.walk < 0.2 && a.state === 'idle') {
+    switch (v) {
+      case 'goblinoide':
+        pose.body.dy += Math.abs(Math.sin(t * 5.3)) * 0.035;
+        pose.head.rz += Math.sin(t * 7.1) * 0.12; pose.head.rx += Math.sin(t * 4.3) * 0.08;
+        pose.arms.r.rx += Math.sin(t * 6.2) * 0.25;
+        break;
+      case 'no-muerto':
+        pose.body.rz += Math.sin(t * 1.1) * 0.05; pose.body.rx += 0.08;
+        pose.head.rz += Math.sin(t * 0.7) * 0.15; pose.head.rx += 0.1;
+        pose.arms.l.rx = restL - 0.25 + Math.sin(t * 1.4) * 0.06; pose.arms.r.rx = restR - 0.2 + Math.sin(t * 1.2) * 0.06;
+        pose.body.dy += Math.sin(t * 40) * 0.003;
+        break;
+      case 'bestia':
+        pose.body.sy += Math.sin(t * 3.2) * 0.02; pose.head.rx += Math.sin(t * 1.7) * 0.16 + 0.05;
+        pose.tail.rx += Math.sin(t * 5) * 0.3; pose.legs.a.rx += Math.sin(t * 0.9) * 0.1;
+        break;
+      case 'araña':
+        pose.legs.a.rx += Math.sin(t * 5.5) * 0.28; pose.legs.b.rx += Math.sin(t * 5.5 + 1.7) * 0.28;
+        pose.body.dy += Math.abs(Math.sin(t * 2.7)) * 0.02;
+        break;
+      case 'orco':
+        pose.body.sy += Math.sin(t * 1.6) * 0.03; pose.body.rx += 0.06;
+        pose.arms.l.rz -= 0.18; pose.arms.r.rz += 0.18; pose.head.rx += Math.sin(t * 0.8) * 0.06;
+        break;
+      default: break;
+    }
+  }
+  if (a.state === 'attack' || a.state === 'cast') {
+    const beast = rig.style === 'beast';
+    switch (v) {
+      case 'goblinoide':
+        // Dos puñaladas rápidas y un saltito.
+        if (!beast) {
+          pose.arms.r.rx = keys(k, [[0, restR], [0.15, -1.7], [0.28, -0.4], [0.45, -1.7], [0.58, -0.3], [1, restR]]);
+          pose.body.dz = keys(k, [[0, 0], [0.28, 0.12], [0.45, -0.02], [0.58, 0.14], [1, 0]]);
+        }
+        pose.body.dy += Math.sin(k * Math.PI * 2) * 0.05 + Math.sin(k * Math.PI) * 0.06;
+        break;
+      case 'no-muerto':
+        // Tajo lento y rígido: se yergue, cae como un peso muerto.
+        if (!beast) {
+          pose.arms.r.rx = keys(k, [[0, restR], [0.5, -2.9], [0.62, -0.2], [1, restR]]);
+          pose.arms.l.rx = keys(k, [[0, restL], [0.5, -2.2], [0.62, -0.3], [1, restL]]);
+          pose.body.rx = keys(k, [[0, 0], [0.5, -0.12], [0.62, 0.42], [1, 0]]);
+        }
+        pose.head.rx += Math.sin(k * Math.PI) * 0.2;
+        break;
+      case 'bestia': {
+        // Salto y zarpazo: se agazapa, salta sobre el objetivo y cae.
+        const j = Math.sin(clamp01((k - 0.2) / 0.6) * Math.PI);
+        pose.body.dy += j * 0.42; pose.body.rx = keys(k, [[0, 0], [0.2, 0.3], [0.5, -0.45], [0.8, 0.5], [1, 0]]);
+        pose.legs.a.rx = keys(k, [[0, 0], [0.2, 0.6], [0.5, -0.8], [1, 0]]); pose.legs.b.rx = keys(k, [[0, 0], [0.2, -0.6], [0.5, 0.8], [1, 0]]);
+        break;
+      }
+      case 'araña':
+        // Se alza sobre las patas traseras y clava los colmillos.
+        pose.body.rx = keys(k, [[0, 0], [0.32, -0.75], [0.55, 0.35], [1, 0]]);
+        pose.body.dy += Math.sin(k * Math.PI) * 0.12;
+        pose.legs.a.rx = keys(k, [[0, 0], [0.32, -1.1], [0.55, 0.3], [1, 0]]); pose.legs.b.rx = keys(k, [[0, 0], [0.32, -0.9], [0.55, 0.2], [1, 0]]);
+        pose.head.rx = keys(k, [[0, 0], [0.32, -0.3], [0.55, 0.4], [1, 0]]);
+        break;
+      case 'orco':
+        // Mazazo a dos manos desde muy arriba: largo y pesado.
+        if (!beast) {
+          pose.arms.r.rx = keys(k, [[0, restR], [0.4, -3.15], [0.55, -0.1], [0.8, -0.1], [1, restR]]);
+          pose.arms.l.rx = keys(k, [[0, restL], [0.4, -3.0], [0.55, -0.2], [0.8, -0.2], [1, restL]]);
+          pose.body.rx = keys(k, [[0, 0], [0.4, -0.38], [0.55, 0.55], [0.8, 0.4], [1, 0]]);
+          pose.body.dz = keys(k, [[0, 0], [0.4, -0.1], [0.55, 0.22], [1, 0]]);
+        }
+        break;
+      default: break;
+    }
+  }
+  if (a.state === 'die') {
+    const e = sm(clamp01(k));
+    switch (v) {
+      case 'goblinoide':
+        pose.body.rz = 3.0 * e; pose.body.dy = Math.abs(Math.sin(k * 9)) * 0.1 * (1 - k) - 0.05 * e; pose.arms.l.rx = restL - 2.4 * e; pose.arms.r.rx = restR - 2.2 * e;
+        break;
+      case 'no-muerto':
+        // Se desmorona: baja, se aplasta, la cabeza cae.
+        pose.body.sy = 1 - 0.6 * e; pose.body.dy = -0.18 * e; pose.body.rz = 0.25 * e; pose.head.rx = 0.9 * e; pose.head.rz = 0.5 * e;
+        pose.arms.l.rx = restL + 0.5 * e; pose.arms.r.rx = restR + 0.3 * e; pose.legs.l.rx = 0.6 * e; pose.legs.r.rx = -0.6 * e;
+        break;
+      case 'bestia':
+        pose.body.rz = 1.55 * e; pose.body.dy = -0.04 * e; pose.legs.a.rx = Math.sin(k * 30) * 0.5 * (1 - k); pose.legs.b.rx = Math.sin(k * 30 + 2) * 0.5 * (1 - k);
+        pose.head.rx = -0.3 * e;
+        break;
+      case 'araña':
+        // Se vuelca patas arriba y se encoge.
+        pose.body.rz = 3.14 * e; pose.body.dy = -0.1 * e; pose.legs.a.rx = -1.3 * e; pose.legs.b.rx = -1.1 * e; pose.body.sy = 1 - 0.1 * e;
+        break;
+      case 'orco':
+        // De rodillas y de bruces.
+        pose.body.rx = keys(k, [[0, 0], [0.45, 0.5], [1, 1.35]]); pose.body.dy = -0.12 * e; pose.body.rz = 0;
+        pose.legs.l.rx = 0.9 * e; pose.legs.r.rx = 0.9 * e; pose.arms.l.rx = restL + 0.3 * e; pose.arms.r.rx = restR + 0.3 * e;
+        break;
+      default: break;
+    }
+  }
 }
 
 /** Matriz de cada pieza del rig para una pose (base = posición/giro/escala del personaje). */
