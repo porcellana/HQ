@@ -15,7 +15,7 @@
 
 import { PET_NATURES } from '@/data/config/pet_natures';
 
-export const CURRENT_SAVE_VERSION = 11;
+export const CURRENT_SAVE_VERSION = 12;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
@@ -99,6 +99,8 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     world['explored'] ??= {};
     return { ...s, world };
   },
+  /** v11 → v12 (v0.14): escolta en curso (ninguna). Las casas con interior sólo existen en asentamientos nuevos. */
+  11: (s) => ({ ...s, escort: null }),
 };
 
 export class SaveMigrationError extends Error {}

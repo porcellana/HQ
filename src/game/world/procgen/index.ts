@@ -9,7 +9,10 @@ import type { NpcDef, QuestDef, ShopDef, ZoneDef } from '@/data/schema';
 import { hashString } from '@/engine/rng';
 import { generateCell } from './generate';
 import { cellId, parseZoneId } from './plan';
-import { makeQuests } from './quests';
+import { cellsAround, escortLook, makeQuests } from './quests';
+import WG from '@/data/worldgen/nombres';
+import { Rng } from '@/engine/rng';
+import { isSettlement, placeAt } from './plan';
 
 export interface GenWorld {
   zones: Record<string, ZoneDef>;
@@ -80,9 +83,43 @@ export function assignQuests(id: string, playerLevel: number): QuestDef[] {
   const place = zone.generated.place;
   const count = place === 'ciudad' ? 4 : place === 'pueblo' ? 3 : place === 'aldea' ? 2 : 1;
   const quests = makeQuests({ seed: active.seed, zone, giver: giverId, count, ensure: (zid) => ensureZone(zid, playerLevel) });
+  // v0.14: el vecino con un favor (en su casa) reparte las misiones pares.
+  const neighbor = `${id}:vecino`;
+  if (NPCS.has(neighbor)) quests.forEach((q, i) => { if (i % 2 === 1) q.giver = neighbor; });
   for (const q of quests) active.gen.quests[q.id] = q;
   registerGenerated({ quests });
   return quests;
+}
+
+/**
+ * Escolta pedida por un viajero (evento al viajar): misión nueva hasta el asentamiento más cercano
+ * a `from`, con su alcalde como destinatario. Queda registrada y guardada con la partida.
+ */
+export function createEscortQuest(seed: number, from: string, turn: number, level: number, playerLevel: number): QuestDef | null {
+  if (!active) return null;
+  const base = from.replace(/\.[dh]\d*$/, '');
+  const dest = cellsAround(seed, base, 6).find((c) => {
+    const p = parseZoneId(c.id);
+    return !!p && !p.sub && p.house === undefined && isSettlement(placeAt(seed, p.cx, p.cy));
+  });
+  if (!dest) return null;
+  const z = ensureZone(dest.id, playerLevel);
+  const mayor = z ? NPCS.get(`${z.id}:alcalde`) : undefined;
+  if (!z || !mayor) return null;
+  const rng = new Rng(hashString(`${seed}:esc:${from}:${turn}`));
+  const name = rng.pick(WG.firstNames);
+  const id = `ge:${from}:${turn}`;
+  const q: QuestDef = {
+    id, name: `Escolta a ${name}`, kind: 'secundaria', giver: mayor.id, turnIn: mayor.id,
+    description: `${name}, a quien encontraste herido en el camino, debe llegar sano y salvo a ${z.name}.`,
+    completeText: 'Gracias por traerle de una pieza. Toma, es lo mínimo.',
+    objectives: [{ type: 'escort', zone: z.id, name, look: escortLook(rng), label: `Escoltar a ${name} hasta ${z.name}` }],
+    rewards: { xp: Math.round(40 * Math.pow(level, 1.15)), gold: Math.round(18 + 7 * level), items: [{ item: 'pocion_curacion', qty: 1 + Math.floor(level / 5) }] },
+    zoneHint: z.id,
+  };
+  active.gen.quests[id] = q;
+  registerGenerated({ quests: [q] });
+  return q;
 }
 
 /** Zonas generadas hasta ahora (para el mapa del mundo). */

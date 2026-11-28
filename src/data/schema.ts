@@ -653,9 +653,10 @@ export interface DialogOption {
  * nodo, sólo la primera vez.
  */
 export type DialogEffect =
-  | { type: 'gold'; amount: number }
+  /** `perLevel`: la cantidad se multiplica por el nivel del evento (eventos al viajar). */
+  | { type: 'gold'; amount: number; perLevel?: boolean }
   | { type: 'item'; item: string; qty?: number }
-  | { type: 'xp'; amount: number }
+  | { type: 'xp'; amount: number; perLevel?: boolean }
   | { type: 'flag'; flag: string; value?: boolean | number | string }
   /** Descuento permanente (porcentaje 0..50) en una tienda. */
   | { type: 'discount'; shop: string; pct: number }
@@ -670,7 +671,17 @@ export type DialogEffect =
   /** Curación completa. */
   | { type: 'heal' }
   /** Acepta una misión. */
-  | { type: 'quest'; quest: string };
+  | { type: 'quest'; quest: string }
+  /** Pierdes este % de tu vida máxima (nunca baja de 1). */
+  | { type: 'hurt'; pct: number }
+  /** Recuperas este % de vida y de recurso. */
+  | { type: 'restore'; pct: number }
+  /** Sale un grupo de la zona y te ataca (cierra el diálogo). */
+  | { type: 'ambush' }
+  /** Aparece botín (de la tabla de cofres del bioma, al nivel del evento) junto a ti. `rolls` tiradas extra. */
+  | { type: 'treasure'; rolls?: number }
+  /** El PNJ del evento te pide escolta hasta el asentamiento más cercano (crea la misión y la acepta). */
+  | { type: 'escort' };
 
 export interface DialogNode {
   /** Texto del PNJ. Si es una lista, se elige uno al azar (rumores). */
@@ -751,7 +762,9 @@ export type QuestObjective =
   /** Hablar con un PNJ. */
   | { type: 'talk'; npc: string; label: string }
   /** Vincular criaturas salvajes con Runas de vínculo (de una especie concreta o cualquiera). */
-  | { type: 'bind'; species?: string; count: number; label: string };
+  | { type: 'bind'; species?: string; count: number; label: string }
+  /** Escolta (v0.14): el PNJ te sigue hasta `zone`; si cae en batalla, la misión falla. */
+  | { type: 'escort'; zone: string; name: string; look: NpcLook; label: string };
 
 export interface QuestDef {
   id: string;
@@ -1068,4 +1081,30 @@ export interface MusicProfile {
   drums?: number;
   /** Ambiente que acompaña a la pieza. */
   amb?: AmbienceDef;
+}
+
+
+// ===========================================================================
+// EVENTOS AL VIAJAR (v0.14)
+// ===========================================================================
+
+/**
+ * Suceso aleatorio al llegar a una zona salvaje: un pequeño diálogo con elecciones y tiradas.
+ * El motor lo convierte en un PNJ temporal (`dialog` sigue las reglas de los diálogos de PNJ)
+ * y escala las cantidades (`perLevel`) y las CD con el nivel de la zona.
+ */
+export interface TravelEventDef {
+  id: string;
+  name: string;
+  icon: string;
+  /** Peso relativo al elegir. */
+  weight: number;
+  /** Sólo en estos biomas (por defecto, en todos). */
+  biomes?: string[];
+  /** Nivel mínimo de la zona. */
+  minLevel?: number;
+  /** El visitante (aparece junto a ti en el diálogo). */
+  npc: { name: string; title?: string; look: NpcLook };
+  /** Nodos del diálogo; empieza en "inicio". Las CD se suman con la mitad del nivel de la zona. */
+  dialog: Record<string, DialogNode>;
 }

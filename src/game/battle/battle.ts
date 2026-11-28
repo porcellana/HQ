@@ -33,7 +33,7 @@ import { skillMods, talentEffects } from '../talents';
 import { getClass, getBackground } from '@/data/registry';
 
 export type Side = 'party' | 'foe';
-export type CombatantKind = 'player' | 'ally' | 'pet' | 'enemy';
+export type CombatantKind = 'player' | 'ally' | 'pet' | 'escort' | 'enemy';
 export type BattleOutcome = 'victory' | 'defeat' | 'fled';
 /** A quién va dirigida una habilidad u objeto. */
 export type TargetKind = 'enemy' | 'allEnemies' | 'ally' | 'self';
@@ -100,6 +100,8 @@ export interface BattleResult {
   boundActivePet: boolean;
   /** Rondas jugadas. */
   rounds: number;
+  /** El PNJ al que escoltabas cayó en esta batalla. */
+  escortDied?: boolean;
 }
 
 export interface BattleOptions {
@@ -139,7 +141,7 @@ export function allyStatsFor(def: CompanionDef | null, level: number): { maxHp: 
 }
 
 /** Peso al elegir objetivo: el jugador es el más probable. */
-const TARGET_WEIGHT: Record<CombatantKind, number> = { player: 3, ally: 2, pet: 1, enemy: 1 };
+const TARGET_WEIGHT: Record<CombatantKind, number> = { player: 3, ally: 2, pet: 1, escort: 2, enemy: 1 };
 /** Máximo de enemigos a la vez (las invocaciones no se acumulan sin fin). */
 const MAX_FOES = 6;
 
@@ -178,6 +180,8 @@ export class Battle {
     this.add({ id: 'player', kind: 'player', side: 'party', name: p.name });
     const cd = this.companionDef;
     if (cd && !this.state.party.down && this.state.party.hp > 0) this.add({ id: 'ally', kind: 'ally', side: 'party', name: cd.name });
+    const esc = this.state.escort;
+    if (esc && esc.hp > 0) this.add({ id: 'escort', kind: 'escort', side: 'party', name: esc.name });
     const pi = this.petInstance;
     if (pi && !pi.down && pi.hp > 0) this.add({ id: 'pet', kind: 'pet', side: 'party', name: Pets.petName(pi) });
     for (const e of opt.enemies) {
@@ -219,6 +223,7 @@ export class Battle {
       case 'player': return this.state.player.hp;
       case 'ally': return this.state.party.down ? 0 : this.state.party.hp;
       case 'pet': return this.petInstance && !this.petInstance.down ? this.petInstance.hp : 0;
+      case 'escort': return Math.max(0, this.state.escort?.hp ?? 0);
       default: return Math.max(0, c.enemy!.hp);
     }
   }
@@ -227,6 +232,7 @@ export class Battle {
       case 'player': return this.state.player.maxHp;
       case 'ally': return allyStatsFor(this.companionDef, this.state.player.level).maxHp;
       case 'pet': return this.petStatsNow(c).hp;
+      case 'escort': return this.state.escort?.maxHp ?? 1;
       default: return c.enemy!.maxHp;
     }
   }
@@ -246,6 +252,9 @@ export class Battle {
           this.petInstance.hp = hp;
           if (hp <= 0) this.petInstance.down = true;
         }
+        break;
+      case 'escort':
+        if (this.state.escort) this.state.escort.hp = hp;
         break;
       default: c.enemy!.hp = hp;
     }
@@ -284,6 +293,7 @@ export class Battle {
       case 'player': return this.derived.ac + buff + (this.petPassive?.id === 'vigia' ? this.petPassive.power : 0);
       case 'ally': return allyStatsFor(this.companionDef, this.state.player.level).ac + buff;
       case 'pet': return 10 + Math.floor(this.petStatsNow(c).def / 2) + buff;
+      case 'escort': return 10 + Math.floor((this.state.escort?.level ?? 1) / 3) + buff;
       default: return c.enemy!.def.ac + buff;
     }
   }
@@ -301,6 +311,7 @@ export class Battle {
       }
       case 'ally': v = (this.companionDef?.role === 'ranged' ? 12 : 10) + Math.floor(this.state.player.level / 4); break;
       case 'pet': v = 8 + Math.floor(this.petStatsNow(c).spd / 2); break;
+      case 'escort': v = 7; break;
       default: {
         const d = c.enemy!.def;
         v = 6 + d.speed * 5 + Math.floor(d.level / 4) + (d.slow ? -4 : 0);
@@ -523,6 +534,11 @@ export class Battle {
     }
     if (t.kind === 'pet') {
       this.emit({ t: 'info', text: `${t.name} está debilitada.`, kind: 'warn' });
+      return;
+    }
+    if (t.kind === 'escort') {
+      this.result.escortDied = true;
+      this.emit({ t: 'info', text: `¡${t.name} ha caído!`, kind: 'warn' });
       return;
     }
     const e = t.enemy!;

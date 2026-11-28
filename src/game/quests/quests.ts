@@ -13,6 +13,8 @@ export interface QuestProgress {
   progress: number[];
   completions: number;
   lastCompletedTurn?: number;
+  /** Misión fallida (escolta cuyo protegido cayó): no se puede volver a coger. */
+  failed?: boolean;
 }
 
 export type QuestStatus = 'bloqueada' | 'disponible' | 'activa' | 'lista' | 'completada';
@@ -126,6 +128,18 @@ export function onBind(h: QuestHolder, speciesId: string): string[] {
   return bump(h, (o) => o.type === 'bind' && (!o.species || o.species === speciesId));
 }
 
+/** Llegas a `zoneId` con tu protegido vivo: cuenta el objetivo de escolta. */
+export function onEscortArrive(h: QuestHolder, zoneId: string): string[] {
+  return bump(h, (o) => o.type === 'escort' && o.zone === zoneId);
+}
+
+/** La escolta fracasa (el protegido cae): la misión queda fallida y no puede repetirse. */
+export function failQuest(h: QuestHolder, id: string): void {
+  const st = h.quests[id];
+  if (!st || st.status !== 'activa') return;
+  h.quests[id] = { status: 'completada', progress: st.progress, completions: st.completions, failed: true };
+}
+
 export function onTalk(h: QuestHolder, npcId: string): string[] {
   return bump(h, (o) => o.type === 'talk' && o.npc === npcId);
 }
@@ -218,11 +232,13 @@ export function shortObjective(h: QuestHolder, q: QuestDef, i: number): string {
       return getZoneDef(o.zone)?.name ?? o.zone;
     case 'bind':
       return `Vincular ${o.species ? (PET_SPECIES.get(o.species)?.name ?? o.species) : 'criatura'}${count}`;
+    case 'escort':
+      return `Escoltar a ${o.name}`;
   }
 }
 
 /** Icono de cada tipo de objetivo (seguimiento de misiones). */
-export const OBJECTIVE_ICON: Record<QuestObjective['type'], string> = { kill: '⚔', collect: '✋', talk: '💬', visit: '📍', bind: '🔮' };
+export const OBJECTIVE_ICON: Record<QuestObjective['type'], string> = { kill: '⚔', collect: '✋', talk: '💬', visit: '📍', bind: '🔮', escort: '🛡' };
 
 export function trackedQuest(h: QuestHolder): { quest: QuestDef; name: string; text: string; short: string; ready: boolean } | null {
   const q = trackedQuestDef(h);

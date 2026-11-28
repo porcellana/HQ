@@ -6,7 +6,7 @@
  * para que las partidas antiguas sigan funcionando.
  */
 import { START_ZONE_ID, getBackground, getClass, getZoneDef } from '@/data/registry';
-import type { StatBlock } from '@/data/schema';
+import type { NpcLook, StatBlock } from '@/data/schema';
 import { emptyPets, type PetsState } from './pets/pets';
 import { addItem, equip, type Equipment } from './items/inventory';
 import { createItem, type ItemInstance } from './items/items';
@@ -84,8 +84,23 @@ export interface GameState {
   party: PartyState;
   /** Mascotas: la que te acompaña, el establo y el bestiario. */
   pets: PetsState;
+  /** Escolta en curso (v0.14): el PNJ que te sigue y su vida. */
+  escort: EscortState | null;
   playTimeSec: number;
   createdAt: string;
+}
+
+/** PNJ al que escoltas: te sigue por el mapa, sale en las batallas y la misión falla si cae. */
+export interface EscortState {
+  /** Misión de escolta a la que pertenece. */
+  quest: string;
+  name: string;
+  look: NpcLook;
+  /** Zona de destino. */
+  dest: string;
+  hp: number;
+  maxHp: number;
+  level: number;
 }
 
 export interface GameRecord {
@@ -169,6 +184,7 @@ export function createNewGame(opts: NewGameOptions): GameState {
     record: emptyRecord(),
     party: emptyParty(),
     pets: emptyPets(),
+    escort: null,
     playTimeSec: 0,
     createdAt: new Date().toISOString(),
   };

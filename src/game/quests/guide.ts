@@ -43,6 +43,8 @@ export function questStep(h: QuestHolder, q: QuestDef): QuestStep | null {
       return { kind: 'recoger', item: o.item };
     case 'bind':
       return { kind: 'cazar', wild: o.species ?? true };
+    case 'escort':
+      return { kind: 'ir', zone: o.zone };
   }
 }
 

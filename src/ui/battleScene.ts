@@ -259,6 +259,10 @@ export class BattleScene {
       if (!l) return { rig: hero(this.d.heroColors), key: 'player' };
       return { rig: humanoidRig({ skin: l.skin ?? '#d9a67a', hair: l.hair ?? '#3a2418', cloth: l.cloth, clothDark: l.clothDark, pants: l.pants, hat: l.hat, overlay: l.overlay }), key: `ally:${g.companionDef?.id}` };
     }
+    if (c.kind === 'escort' && g.state.escort) {
+      const l = g.state.escort.look;
+      return { rig: humanoidRig({ skin: l.skin ?? '#d9a67a', hair: l.hair ?? '#3a2418', cloth: l.cloth, clothDark: l.clothDark, pants: l.pants, hat: l.hat, overlay: l.overlay }), key: `escort:${g.state.escort.name}` };
+    }
     if (c.kind === 'pet') {
       const sp = g.petInstance ? PET_SPECIES.get(g.petInstance.species) : undefined;
       return sp ? { rig: beastRig(sp.look.shape, sp.look), key: `pet:${sp.id}` } : { rig: hero(this.d.heroColors), key: 'player' };
@@ -293,7 +297,7 @@ export class BattleScene {
     const party = [...this.units.values()].filter((u) => u.c.side === 'party');
     const foes = [...this.units.values()].filter((u) => u.c.side === 'foe' && !u.dead);
     // Grupo: columna diagonal (el jugador al frente).
-    const order = (u: Unit) => (u.c.kind === 'ally' ? 0 : u.c.kind === 'player' ? 1 : 2);
+    const order = (u: Unit) => (u.c.kind === 'ally' ? 0 : u.c.kind === 'player' ? 1 : u.c.kind === 'escort' ? 3 : 2);
     party.sort((a, b) => order(a) - order(b));
     const np = party.length;
     party.forEach((u, i) => {

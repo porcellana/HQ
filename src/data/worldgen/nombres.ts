@@ -39,6 +39,9 @@ export interface WorldgenText {
     deliverDesc: string[];
     bossName: string[];
     bossDesc: string[];
+    /** Escolta: {npc} = protegido, {zone} = destino. */
+    escortName: string[];
+    escortDesc: string[];
     complete: string[];
   };
 }
@@ -99,6 +102,8 @@ const w: WorldgenText = {
     deliverDesc: ['Lleva mis saludos y este paquete a {npc}, en {zone}. Es de confianza.', 'Necesito que {npc}, de {zone}, reciba mi mensaje cuanto antes.'],
     bossName: ['El horror de {zone}', 'Acabar con {enemy}', 'La sombra bajo {zone}'],
     bossDesc: ['{enemy} acecha en {zone}. Mientras viva, no dormiremos tranquilos.', 'Algo terrible mora en {zone}: {enemy}. Derrótalo.'],
+    escortName: ['Escolta a {npc}', 'Un viaje seguro hasta {zone}', 'Compañía en el camino'],
+    escortDesc: ['{npc} debe llegar sano y salvo a {zone}, pero los caminos ya no son seguros. Acompáñale y no dejes que le pase nada.', 'Necesito que lleves a {npc} hasta {zone}. Camina despacio y tropieza con todo, pero es de fiar.'],
     complete: ['Sabía que podía contar contigo. Toma tu recompensa.', 'Excelente trabajo. La gente de por aquí te lo agradecerá.', 'Cumpliste. Es poco, pero es de corazón.'],
   },
 };

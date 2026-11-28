@@ -8,8 +8,8 @@
  * `finishBattle` aplica el resultado (XP, mapa, muerte).
  */
 import { stepSfxFor } from '@/data/music';
-import { COMPANIONS, NPCS, SHOPS, ORES, TRAPS, getClass, getEnemy, getItem, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
-import type { CompanionDef, CompanionEvent, DamageType, DialogNode, NpcDef, QuestDef, SkillDef, SkillKey, ZoneFeature } from '@/data/schema';
+import { BIOMES, COMPANIONS, NPCS, QUESTS, TRAVEL_EVENTS, SHOPS, ORES, TRAPS, getClass, getEnemy, getItem, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
+import type { CompanionDef, CompanionEvent, DamageType, DialogNode, NpcDef, QuestDef, QuestObjective, SkillDef, SkillKey, ZoneFeature } from '@/data/schema';
 import { Emitter } from '@/engine/events';
 import { Battle, allyStatsFor, type BattleResult } from './battle/battle';
 import { findPath, type Point } from '@/engine/pathfinding';
@@ -30,13 +30,14 @@ import { addItem, countItem, equip, removeQty, unequip } from './items/inventory
 import { displayName, itemDef, rarityOf, type ItemInstance } from './items/items';
 const rarityColor = (i: number): string => ['#d8d4cc', '#5ad05a', '#4a90f0', '#b060f0', '#ff9a20'][i] ?? '#fff';
 import { rollLoot } from './items/loot';
+import { TRAVEL_EVENT_CHANCE, instantiateEvent, pickEvent } from './world/travelEvents';
 import { createItem } from './items/items';
 import * as Quests from './quests/quests';
 import * as Shop from './economy/shop';
 import { encounterXpBonus } from './economy/curve';
 import type { EquipSlot } from '@/data/schema';
 import { buildZone, type Zone, type ZoneExit } from './world/zone';
-import { activateGenWorld, assignQuests, emptyGen, ensureZone, genZoneDef } from './world/procgen';
+import { activateGenWorld, assignQuests, createEscortQuest, emptyGen, ensureZone, genZoneDef } from './world/procgen';
 import { computeVisible, decodeExplored, encodeExplored, fogApplies, visionRadius } from './fog';
 import { nightAmount } from '@/gfx/viewconst';
 import { dungeonZoneDef, emptyWorld, featureKey, parseDungeonZone, progressOf } from './world/dungeons';
@@ -234,6 +235,8 @@ export class Game {
   ally: Ally | null = null;
   /** Mascota activa en el mapa. */
   pet: PetUnit | null = null;
+  /** PNJ al que escoltas (sus datos están en state.escort). */
+  escort: PetUnit | null = null;
   fx: Fx[] = [];
   heldDir: { dx: number; dy: number } | null = null;
   stepDuration = 0.14;
@@ -272,11 +275,13 @@ export class Game {
       rx: p.x, ry: p.y, facing: 'right', stepT: -1, from: { x: p.x, y: p.y }, to: { x: p.x, y: p.y },
       path: [], target: null, bumpT: 0, bumpDx: 0, bumpDy: 0, flashT: 0,
     };
+    state.escort ??= null;
     state.party ??= emptyParty();
     state.pets ??= Pets.emptyPets();
     this.populateZone();
     this.spawnAlly();
     this.spawnPet();
+    this.spawnEscort();
     this.markExplored();
   }
 
@@ -488,6 +493,7 @@ export class Game {
     v.flashT = Math.max(0, v.flashT - dt * 4);
     if (this.ally) advanceWalker(this.ally, dt);
     if (this.pet) advanceWalker(this.pet, dt);
+    if (this.escort) advanceWalker(this.escort, dt);
     for (const e of this.enemies) {
       advanceWalker(e, dt);
       e.bumpT = Math.max(0, e.bumpT - dt * bumpRate);
@@ -532,6 +538,11 @@ export class Game {
     if (pu) {
       pu.x = pos.x;
       pu.y = pos.y;
+    }
+    const eu = this.escortAt(next.x, next.y);
+    if (eu) {
+      eu.x = pos.x;
+      eu.y = pos.y;
     }
     v.from = pos;
     v.to = { x: next.x, y: next.y };
@@ -652,6 +663,8 @@ export class Game {
     this.allyRecover();
     if (this.ally) this.follow(this.ally);
     if (this.pet) this.follow(this.pet);
+    if (this.escort) this.follow(this.escort);
+    if (this.state.escort && this.state.turn % 6 === 0) this.state.escort.hp = Math.min(this.state.escort.maxHp, this.state.escort.hp + 1);
     for (const e of [...this.enemies]) {
       if (this.battle || this.pendingBattle) break;
       this.enemyMapTurn(e);
@@ -689,7 +702,7 @@ export class Game {
     for (let i = 0; i < (dp > 5 ? 2 : 1); i++) {
       const path = findPath(
         this.zone.width, this.zone.height, u, p,
-        (x, y) => this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(x === p.x && y === p.y) && !this.zone.exitAt(x, y) && !(this.ally !== u && this.allyAt(x, y)) && !(this.pet !== u && this.petAt(x, y)),
+        (x, y) => this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(x === p.x && y === p.y) && !this.zone.exitAt(x, y) && !(this.ally !== u && this.allyAt(x, y)) && !(this.pet !== u && this.petAt(x, y)) && !(this.escort !== u && this.escortAt(x, y)),
         { allowGoalBlocked: true, maxNodes: 800 },
       );
       const next = path?.[0];
@@ -801,6 +814,8 @@ export class Game {
       party.hp = Math.max(1, Math.round(this.allyStats().maxHp * 0.3));
     }
     if (res.boundActivePet) this.spawnPet();
+    if (this.state.escort && (res.escortDied || this.state.escort.hp <= 0)) this.escortFailed('ha caído en el combate');
+    else if (this.state.escort && res.outcome === 'defeat') this.escortFailed('se ha quedado sin protección');
     if (res.outcome === 'fled') {
       this.fled = true;
       this.immunity = FLEE_IMMUNITY;
@@ -891,6 +906,7 @@ export class Game {
     this.populateZone();
     this.spawnAlly();
     this.spawnPet();
+    this.spawnEscort();
     this.markExplored();
     const dz = this.zone.def.dungeon;
     if (dz) {
@@ -909,12 +925,46 @@ export class Game {
       if (fresh.length) this.msg(`${fresh.length === 1 ? 'Hay una misión' : `Hay ${fresh.length} misiones`} disponible${fresh.length === 1 ? '' : 's'} aquí.`, 'info');
     }
     this.events.emit('zoneChanged', { zone: this.zone, firstVisit });
+    this.escortArrive();
     this.travelEvent();
+    this.travelDialog();
     void Quests.onVisit(this.state, this.zone.id);
     this.events.emit('questsChanged', {});
     if (firstVisit && (this.zone.def.kind === 'wild' || this.zone.def.kind === 'dungeon')) {
       this.gainXp(this.zone.def.discoverXp ?? 20 * this.zone.def.level, `descubres ${this.zone.def.name}`);
     }
+  }
+
+  /**
+   * EVENTOS AL VIAJAR (v0.14): un diálogo con elecciones y tiradas (data/events). Ocurre al llegar a una zona
+   * salvaje generada; el nivel de la zona escala las CD y las recompensas. `id` fuerza un evento (pruebas).
+   */
+  travelDialog(id?: string): NpcDef | null {
+    const z = this.zone.def;
+    if (!id && (z.kind !== 'wild' || !z.generated || z.dungeon || z.generated.place === 'campamento' || this.battle || this.pendingBattle)) return null;
+    const rng = new Rng(hashString(`${this.state.seed}:tev:${z.id}:${this.state.turn}`));
+    if (!id && !rng.chance(TRAVEL_EVENT_CHANCE)) return null;
+    const def = id ? TRAVEL_EVENTS.get(id) : pickEvent(rng, z.generated?.biome, z.level);
+    if (!def) return null;
+    const npc = instantiateEvent(def, z.level);
+    this.msg(`${def.icon} ${def.name}`, 'info');
+    this.events.emit('npcTalk', { npc });
+    return npc;
+  }
+
+  /** Un viajero pide escolta: se crea y acepta una misión hasta el asentamiento más cercano. */
+  private startEventEscort(): void {
+    if (this.state.escort) {
+      this.msg('Ya escoltas a alguien: no puedes con otro más.', 'warn');
+      return;
+    }
+    const q = createEscortQuest(this.state.seed, this.zone.id, this.state.turn, Math.max(1, this.zone.def.level), this.state.player.level);
+    if (!q) {
+      this.msg('No hay ningún asentamiento a su alcance. Se despide con gratitud.', 'info');
+      return;
+    }
+    const err = this.acceptQuest(q.id);
+    if (err) this.msg(err, 'warn');
   }
 
   /**
@@ -1051,7 +1101,7 @@ export class Game {
 
   freeForEnemy(x: number, y: number): boolean {
     const p = this.playerPos;
-    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(p.x === x && p.y === y) && !this.allyAt(x, y) && !this.petAt(x, y);
+    return this.zone.isWalkable(x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y) && !(p.x === x && p.y === y) && !this.allyAt(x, y) && !this.petAt(x, y) && !this.escortAt(x, y);
   }
 
   private freeSpotNear(c: Point, r: number): Point | null {
@@ -1460,13 +1510,72 @@ export class Game {
   }
 
   acceptQuest(id: string): string | null {
+    const esc = QUESTS.get(id)?.objectives.find((o): o is Extract<QuestObjective, { type: 'escort' }> => o.type === 'escort');
+    if (esc && this.state.escort) return `Ya estás escoltando a ${this.state.escort.name}.`;
     const err = Quests.accept(this.state, id);
     if (!err) {
+      if (esc) this.startEscort(id, esc);
       // Los objetivos de "visitar" la zona donde ya estás cuentan al momento.
       void Quests.onVisit(this.state, this.zone.id);
       this.events.emit('questsChanged', {});
     }
     return err;
+  }
+
+  // ============================================================== escolta (v0.14)
+  /** Empieza a escoltar: el protegido aparece a tu lado y te sigue. */
+  startEscort(questId: string, o: Extract<QuestObjective, { type: 'escort' }>): void {
+    const level = Math.max(1, this.state.player.level);
+    const maxHp = 12 + 7 * level;
+    this.state.escort = { quest: questId, name: o.name, look: o.look, dest: o.zone, hp: maxHp, maxHp, level };
+    this.spawnEscort();
+    this.msg(`${o.name} se une a tu grupo. Llévale hasta ${getZoneDef(o.zone)?.name ?? 'su destino'}.`, 'info');
+  }
+
+  escortAt(x: number, y: number): PetUnit | null {
+    return this.escort && this.escort.x === x && this.escort.y === y ? this.escort : null;
+  }
+
+  private spawnEscort(): void {
+    this.escort = null;
+    const es = this.state.escort;
+    if (!es) return;
+    const p = this.playerPos;
+    for (let r = 1; r <= 3; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const x = p.x + dx;
+          const y = p.y + dy;
+          if ((dx === 0 && dy === 0) || !this.zone.isWalkable(x, y) || this.enemyAt(x, y) || this.npcAt(x, y) || this.zone.exitAt(x, y) || this.allyAt(x, y) || this.petAt(x, y)) continue;
+          this.escort = { x, y, rx: x, ry: y, facing: 'right', bumpT: 0, bumpDx: 0, bumpDy: 0, flashT: 0 };
+          return;
+        }
+      }
+    }
+  }
+
+  /** Al llegar a la zona de destino con el protegido vivo, cuenta el objetivo y se despide. */
+  private escortArrive(): void {
+    const es = this.state.escort;
+    if (!es || es.dest !== this.zone.id) return;
+    const msgs = Quests.onEscortArrive(this.state, this.zone.id);
+    for (const m of msgs) this.msg(m, 'good');
+    this.msg(`${es.name} ha llegado a salvo y te da las gracias. Cobra tu recompensa.`, 'good');
+    this.state.escort = null;
+    this.escort = null;
+    this.sfx('mision');
+    this.events.emit('questsChanged', {});
+  }
+
+  /** El protegido cae (en batalla o al caer tú): la misión falla. */
+  private escortFailed(why: string): void {
+    const es = this.state.escort;
+    if (!es) return;
+    Quests.failQuest(this.state, es.quest);
+    this.state.escort = null;
+    this.escort = null;
+    this.msg(`💀 ${es.name} ${why}. Misión de escolta fallida.`, 'warn');
+    this.events.emit('questsChanged', {});
   }
 
   /** Entrega una misión y aplica sus recompensas. */
@@ -2063,6 +2172,42 @@ export class Game {
           break;
         case 'quest':
           this.acceptQuest(ef.quest);
+          break;
+        case 'hurt': {
+          const dmg = Math.max(1, Math.round((p.maxHp * ef.pct) / 100));
+          const real = Math.min(dmg, Math.max(0, p.hp - 1));
+          p.hp -= real;
+          if (real > 0) this.floatText(this.playerPos.x, this.playerPos.y, `-${real}`, '#ff6050');
+          this.msg(`Pierdes ${real} PV.`, 'warn');
+          break;
+        }
+        case 'restore': {
+          const hp0 = p.hp;
+          p.hp = Math.min(p.maxHp, p.hp + Math.round((p.maxHp * ef.pct) / 100));
+          p.mp = Math.min(p.maxMp, p.mp + Math.round((p.maxMp * ef.pct) / 100));
+          if (p.hp > hp0) this.floatText(this.playerPos.x, this.playerPos.y, `+${p.hp - hp0}`, '#60e070');
+          this.msg('Recuperas fuerzas.', 'good');
+          break;
+        }
+        case 'ambush': {
+          const g = this.spawnGroup();
+          for (const e of g) e.alerted = true;
+          if (g.length) { this.msg('⚠ ¡Emboscada!', 'warn'); close = true; }
+          break;
+        }
+        case 'treasure': {
+          const gz = this.zone.def;
+          const table = (gz.generated && BIOMES.get(gz.generated.biome)?.chestLoot) || 'cofre';
+          const spot = this.freeSpotNear(this.playerPos, 2) ?? this.playerPos;
+          for (let i = 0; i < (ef.rolls ?? 1); i++) {
+            const loot = rollLoot(this.rng, table, Math.max(1, gz.level), { playerLevel: p.level, classId: p.classId, luck: 1 });
+            this.dropLoot(spot.x, spot.y, loot.items, loot.gold);
+          }
+          this.msg('💎 Hay un botín a tus pies.', 'good');
+          break;
+        }
+        case 'escort':
+          this.startEventEscort();
           break;
       }
     }

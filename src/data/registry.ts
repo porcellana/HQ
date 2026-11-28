@@ -6,7 +6,7 @@
  * un archivo nuevo en la carpeta correspondiente con un `export default`
  * (un objeto o una lista de objetos). El motor sólo consulta este registro.
  */
-import type { ItemSetDef, BiomeDef, DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef, PetMoveDef, PetSpeciesDef, PetType, PetTypeDef } from './schema';
+import type { ItemSetDef, BiomeDef, DungeonDef, OreDef, TrapDef, ClassDef, EnemyDef, ItemDef, LootTableDef, NpcDef, QuestDef, Rarity, RarityDef, ShopDef, TileDef, ZoneDef, BackgroundDef, TalentDef, CompanionDef, TravelEventDef, PetMoveDef, PetSpeciesDef, PetType, PetTypeDef } from './schema';
 import { PET_NATURES } from './config/pet_natures';
 import { FAMILY_TYPE, PET_TYPES } from './config/pet_types';
 import rarityList from './config/rarities';
@@ -166,6 +166,11 @@ export const TALENTS: ReadonlyMap<string, TalentDef> = collect<TalentDef>(
 export const COMPANIONS: ReadonlyMap<string, CompanionDef> = collect<CompanionDef>(
   import.meta.glob('./companions/*.{ts,json}', { eager: true }),
   'compañero',
+);
+/** Eventos aleatorios al viajar (v0.14). */
+export const TRAVEL_EVENTS: ReadonlyMap<string, TravelEventDef> = collect<TravelEventDef>(
+  import.meta.glob('./events/*.{ts,json}', { eager: true }),
+  'evento',
 );
 export const DEFAULT_BACKGROUND = 'aventurero';
 export function getBackground(id: string | undefined): BackgroundDef | undefined {

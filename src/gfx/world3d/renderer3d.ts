@@ -1018,6 +1018,19 @@ export class Renderer3D {
       reg(e, 0.9, 2);
       out.push(e);
     }
+    const eu = game.escort, es = game.state.escort;
+    if (eu && es) {
+      const l = es.look;
+      const r = this.rig(`x:${es.name}:${l.cloth}`, () => humanoidRig({ skin: l.skin ?? '#d9a67a', hair: l.hair ?? '#3a2418', cloth: l.cloth, clothDark: l.clothDark, pants: l.pants, hat: l.hat, overlay: l.overlay }));
+      const an = this.animOf(eu, eu.rx + 0.5, eu.ry + 0.5, dt, face);
+      const bump = lungeOffset(eu.bumpT) / 16 * 2.2;
+      const e: Ent = { gx: eu.rx + 0.5 + eu.bumpDx * bump, gz: eu.ry + 0.5 + eu.bumpDy * bump, gy: gy(eu.rx + 0.5, eu.ry + 0.5), yaw: an.yaw, scale: 1, rig: r, mesh: null, walk: an.sp > 0.3 ? 1 : 0, flash: eu.flashT, alpha: 1, hover: 0, tile: { x: eu.x, y: eu.y }, kind: 'ally', label: es.name };
+      e.bar = { v: es.hp / Math.max(1, es.maxHp), col: '#e8c85a' };
+      this.setState(e, eu.bumpT, eu.flashT);
+      (e as Ent & { anim?: Anim }).anim = an;
+      reg(e, 0.9, 2);
+      out.push(e);
+    }
     const pu = game.pet, pi = game.petInstance;
     if (pu && pi) {
       const sp = PET_SPECIES.get(pi.species);

@@ -290,12 +290,13 @@ describe('mundo procedural: niveles, guardado y misiones', () => {
             if (ob.type === 'kill') for (let i = 0; i < ob.count; i++) Quests.onKill(s, { id: ob.enemy!, family: 'bestia' } as never);
             if (ob.type === 'visit') Quests.onVisit(s, ob.zone);
             if (ob.type === 'talk') Quests.onTalk(s, ob.npc);
+            if (ob.type === 'escort') { expect(gen.zones[ob.zone], 'destino de escolta').toBeDefined(); Quests.onEscortArrive(s, ob.zone); }
             if (ob.type === 'collect') s.player.inventory.push({ uid: 'u1', id: ob.item, qty: ob.count, rarity: 'comun', level: 1, affixes: [] } as never);
           }
           expect(Quests.questStatus(s, q.id), q.id).toBe('lista');
-          const res = Quests.turnIn(s, q.id, q.giver);
+          const res = Quests.turnIn(s, q.id, q.turnIn ?? q.giver);
           expect('quest' in res, q.id).toBe(true);
-          expect(NPCS.get(q.giver)!.zone).toBe(id);
+          expect(NPCS.get(q.giver)!.zone.split('.')[0]).toBe(id);
           tested++;
         }
       }

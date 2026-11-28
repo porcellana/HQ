@@ -55,9 +55,9 @@ export function journalScreen(game: Game, onClose: () => void, initialOpen: stri
       return ta - tb || KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
     });
     const done = Object.entries(s.quests)
-      .filter(([, q]) => q.completions > 0 && q.status !== 'activa')
-      .map(([id, st]) => ({ q: QUESTS.get(id), n: st.completions }))
-      .filter((x): x is { q: QuestDef; n: number } => !!x.q);
+      .filter(([, q]) => (q.completions > 0 || q.failed) && q.status !== 'activa')
+      .map(([id, st]) => ({ q: QUESTS.get(id), n: st.completions, failed: !!st.failed }))
+      .filter((x): x is { q: QuestDef; n: number; failed: boolean } => !!x.q);
     // Misiones nuevas que ya se pueden coger y cuyo PNJ conoces (has pisado su zona).
     const fresh = [...QUESTS.values()].filter((q) => {
       if (Quests.questStatus(s, q.id) !== 'disponible') return false;
@@ -89,7 +89,7 @@ export function journalScreen(game: Game, onClose: () => void, initialOpen: stri
     } else {
       for (const d of done) {
         body.push(h('div', { class: 'qj-done' }, [
-          h('b', { text: `✓ ${d.q.name}${d.n > 1 ? ` ×${d.n}` : ''}` }),
+          h('b', { text: `${d.failed ? '✗' : '✓'} ${d.q.name}${d.n > 1 ? ` ×${d.n}` : ''}${d.failed ? ' (fallida)' : ''}` }),
           h('small', { class: `tag ${d.q.kind}`, text: KIND_LABEL[d.q.kind] }),
         ]));
       }

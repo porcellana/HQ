@@ -2,10 +2,10 @@
  * MISIONES GENERADAS: ligadas a zonas reales del mundo procedural.
  * Cada misión apunta a una zona cercana que se genera (y fija su nivel) al crearla.
  * Tipos: matar, recolectar, visitar, entregar (hablar con un PNJ lejano) y jefe de mazmorra.
- * No hay misiones de escolta: el motor no tiene PNJ que sigan al jugador.
+ * Escolta (v0.14): llevar a un PNJ que te sigue hasta un asentamiento; se cobra allí, con su alcalde.
  */
 import { LOOT_TABLES, NPCS, ORES, getEnemy, getItem } from '@/data/registry';
-import type { QuestDef, QuestObjective, ZoneDef } from '@/data/schema';
+import type { NpcLook, QuestDef, QuestObjective, ZoneDef } from '@/data/schema';
 import WG from '@/data/worldgen/nombres';
 import { Rng, hashString } from '@/engine/rng';
 import { cellId, hasUnderground, isSettlement, parseZoneId, placeAt, plannedNeighbors, subId } from './plan';
@@ -42,7 +42,7 @@ export function cellsAround(seed: number, from: string, max: number): Array<{ id
 
 const fill = (t: string, v: Record<string, string | number>): string => t.replace(/\{(\w+)\}/g, (_, k: string) => String(v[k] ?? ''));
 
-type Kind = 'kill' | 'collect' | 'visit' | 'deliver' | 'boss';
+type Kind = 'kill' | 'collect' | 'visit' | 'deliver' | 'boss' | 'escort';
 
 export function makeQuests(ctx: QuestCtx): QuestDef[] {
   const { seed, zone } = ctx;
@@ -53,7 +53,7 @@ export function makeQuests(ctx: QuestCtx): QuestDef[] {
     const p = parseZoneId(id);
     return p && !p.sub ? { p, place: placeAt(seed, p.cx, p.cy) } : null;
   };
-  const kinds: Kind[] = ['kill', 'collect', 'visit', 'deliver', 'boss'];
+  const kinds: Kind[] = ['kill', 'collect', 'visit', 'deliver', 'boss', 'escort'];
   for (let i = kinds.length - 1; i > 0; i--) { const j = rng.int(0, i); [kinds[i], kinds[j]] = [kinds[j]!, kinds[i]!]; }
   const out: QuestDef[] = [];
   const reward = (mult: number, items: QuestDef['rewards']['items']): QuestDef['rewards'] => ({
@@ -63,7 +63,7 @@ export function makeQuests(ctx: QuestCtx): QuestDef[] {
 
   const outdoorNear = (maxDist: number) => around.filter((a) => a.dist <= maxDist).map((a) => placeOf(a.id)).filter((x): x is NonNullable<typeof x> => !!x && !isSettlement(x.place));
 
-  const build = (kind: Kind): { name: string; desc: string; objectives: QuestObjective[]; hint: string; mult: number; items?: QuestDef['rewards']['items'] } | null => {
+  const build = (kind: Kind): { name: string; desc: string; objectives: QuestObjective[]; hint: string; mult: number; turnIn?: string; items?: QuestDef['rewards']['items'] } | null => {
     if (kind === 'kill') {
       const c = outdoorNear(2);
       if (!c.length) return null;
@@ -126,6 +126,18 @@ export function makeQuests(ctx: QuestCtx): QuestDef[] {
       return { name: cap(fill(rng.pick(WG.quest.deliverName), v)), desc: fill(rng.pick(WG.quest.deliverDesc), v), hint: z.id, mult: 0.8,
         objectives: [{ type: 'talk', npc: npc.id, label: `Hablar con ${npc.name}` }] };
     }
+    if (kind === 'escort') {
+      const dests = around.filter((a) => a.dist <= 4).map((a) => placeOf(a.id)).filter((x): x is NonNullable<typeof x> => !!x && isSettlement(x.place));
+      if (!dests.length) return null;
+      const t = rng.pick(dests);
+      const z = ctx.ensure(cellId(t.p.cx, t.p.cy));
+      const mayor = z ? NPCS.get(`${z.id}:alcalde`) : undefined;
+      if (!z || !mayor) return null;
+      const name = rng.pick(WG.firstNames);
+      const v = { npc: name, zone: zoneNm(z) };
+      return { name: cap(fill(rng.pick(WG.quest.escortName), v)), desc: fill(rng.pick(WG.quest.escortDesc), v), hint: z.id, mult: 1.25, turnIn: mayor.id,
+        objectives: [{ type: 'escort', zone: z.id, name, look: escortLook(rng), label: `Escoltar a ${name} hasta ${zoneNm(z)}` }] };
+    }
     // boss
     const t = around.filter((a) => a.dist <= 5).map((a) => placeOf(a.id)).find((x) => !!x && x.place === 'mazmorra');
     if (!t) return null;
@@ -146,11 +158,18 @@ export function makeQuests(ctx: QuestCtx): QuestDef[] {
     out.push({
       id: `gq:${zone.id}:${i}`, name: b.name, kind: 'secundaria', giver: ctx.giver, description: b.desc,
       completeText: rng.pick(WG.quest.complete), objectives: b.objectives,
+      ...(b.turnIn ? { turnIn: b.turnIn } : {}),
       rewards: reward(b.mult, b.items ?? [{ item: 'pocion_curacion', qty: 1 + Math.floor(level / 4) }]),
       minLevel: Math.max(1, level - 3), zoneHint: b.hint,
     });
   }
   return out;
+}
+
+/** Aspecto de un PNJ protegido (determinista por el Rng dado). */
+export function escortLook(rng: Rng): NpcLook {
+  const cloth = rng.pick([['#6a5a8a', '#3a2f52'], ['#8a6a3a', '#523f22'], ['#4a7a6a', '#2a463c'], ['#8a4a4a', '#522a2a']] as const);
+  return { cloth: cloth[0], clothDark: cloth[1], pants: '#2a2a3a', hair: rng.pick(['#3a2418', '#a8642c', '#c8c0c8', '#d8b050']), skin: rng.pick(['#d9a67a', '#c08a60', '#f0c8a0', '#8a5a3a']) };
 }
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
