@@ -1,7 +1,7 @@
 {
   "name": "ecos-del-abismo",
   "private": true,
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "RPG de mazmorreo por turnos inspirado en D&D 5e para móvil (Android/PWA).",
   "type": "module",
   "scripts": {

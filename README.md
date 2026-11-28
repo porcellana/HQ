@@ -573,6 +573,12 @@ menú DOM), con fondos en `src/gfx/battleBg.ts` y bioma en `src/game/battle/biom
 - **Sonido** en capas, generado por código: silbido al atacar, un impacto distinto por tipo de
   daño, crítico grave, «ding» al curar y acorde ascendente en la victoria.
 
+### Cámara con dos dedos y niebla de exploración (v0.12.1)
+
+- **Gestos** (`src/engine/gestures.ts`, puro y con tests; `Input` solo los reenvía): pellizco = zoom continuo (rango de ±2 pasos, 2 pasos por octava de pellizco); torcer = girar (el mundo gira siguiendo los dedos; `Invertir giro` lo cambia); arrastrar con dos dedos = inclinar (pitch 0,5–1,32). Cada gesto se desbloquea tras un pequeño recorrido (evita giros al pellizcar), y el giro tiene inercia ligera. Un dedo = tocar/caminar, nunca gira. Doble toque con dos dedos o ⟲ = recentrar (⟲ solo aparece si la cámara no es la de por defecto). El joystick y las teclas se reasignan con `remapDir` según el giro.
+- **Decisiones**: sensibilidad Baja/Media/Alta = ×0,6/×1/×1,6 sobre giro e inclinación (el zoom va siempre 1:1). Los botones +/− redondean al nivel entero más cercano; el zoom continuo se guarda en Ajustes.
+- **Niebla** (`src/game/fog.ts` puro + `Game.markExplored/isVisible/isExplored` + shader en `shaders.ts`): hay niebla en zonas `wild`, `world` y `dungeon` (aldeas e interiores se ven enteros salvo `fog: true`). Radio: 8 (6 en mazmorras, con luz propia), +2 explorador, +1 pícaro, −38 % de noche, −30 % con oscuridad. Línea de visión (Bresenham) en mazmorras y zonas con `darkness ≥ 0,5`. El renderizador sube una textura RGB8 de 1 texel por casilla (R explorado, G visible, B visible antes) solo cuando cambia la visión y la mezcla en el shader durante 0,55 s; el borde se rompe con ruido para parecer nube. Enemigos y PNJ solo se dibujan si están a la vista; botín y cofres, si están explorados. Lo explorado se guarda en `state.world.explored` (1 bit por casilla, base64; save v11). Desactivable en Ajustes → «Niebla de exploración». En calidad Baja no se dibujan las láminas flotantes de bruma.
+
 ### Zoom del mapa (v0.5)
 
 - **Cómo se usa**: pellizco con dos dedos (cambia de nivel al superar un umbral, no

@@ -25,6 +25,8 @@ v0.11.0: **TODO 3D, sin 2D ni respaldo** (sin WebGL2: mensaje). `src/gfx/world3d
 
 v0.12.0: **música y ambiente procedurales** (WebAudio, sin ficheros): `src/audio/compose.ts` (puro, testeable), `engine.ts` (planificador, fundido cruzado, ambiente), `director.ts` (qué suena), `sfx.ts` (efectos sobre el bus del motor); datos en `src/data/music` (`PROFILES`, `musicIdFor`, `stepSfxFor`). Ajustes `music`/`ambient`/`volume`/`sound`.
 
+v0.12.1: **cámara con dos dedos** (`engine/gestures.ts` pura: pellizco=zoom continuo, torcer=girar con inercia, arrastrar=inclinar; un dedo no gira; ⟲/doble toque recentra; Ajustes invertir giro/sensibilidad) y **niebla de exploración** (`game/fog.ts` + `Game.isVisible/isExplored/fogMaps`, textura de visibilidad 1 texel/casilla en `renderer3d.syncFog` + bruma en shaders; `world.explored` guardado, save v11; minimapa y mapa grande la respetan; ajuste «Niebla»). Aviso: puede haber otro agente editando el mismo árbol (audio v0.12.0): commitear solo lo propio.
+
 ## Pendiente (en este orden)
 0. 3D: casas con interior y techo recortable, sombras con shadow map en calidad Alta, bloom a pantalla completa opcional, cuevas con rocas redondeadas de verdad (hoy muros en bloque biselado), más animaciones por enemigo/jefe, retratos con pose por clase, ciclo día/noche visible en batalla.
 1. Interiores de casas en el mundo procedural, misiones de escolta y eventos al viajar.

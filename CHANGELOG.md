@@ -2,6 +2,11 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.12.1 · 2026-11-28 — Cámara con dos dedos y niebla de exploración
+
+- **Cámara (como los mapas móviles)**: pellizco = zoom continuo; torcer con dos dedos = girar (el mundo sigue a los dedos, con inercia ligera); arrastrar con dos dedos arriba/abajo = inclinar (con límites). Un dedo solo toca para caminar/interactuar, ya no gira. Doble toque con dos dedos o el botón ⟲ recentran. El joystick sigue la cámara. Ajustes: «Cámara: invertir giro», «Cámara: sensibilidad» (Baja/Media/Alta) y «Recentrar cámara». Lógica pura en `src/engine/gestures.ts` con tests.
+- **Niebla de exploración 3D**: lo desconocido se cubre de bruma oscura y volumétrica (ruido animado + dos láminas flotantes) con bordes suaves que se despejan al acercarte; lo explorado queda atenuado (se ve el terreno, no los enemigos/PNJ lejanos). Radio de visión según clase, hora y zona, con línea de visión en mazmorras y cuevas. Una textura de visibilidad de 1 texel por casilla se sube solo cuando cambia (nada por casilla en cada fotograma). Minimapa y mapa grande muestran solo lo explorado. Se guarda (save v11, `world.explored`). Ajustes: «Niebla de exploración» Sí/No. Aldeas e interiores no tienen niebla.
+
 ## v0.12.0 · 2026-11-28 — Música y ambiente procedurales
 
 - **Música generada por código** (WebAudio, sin ficheros: el APK no engorda): una pieza distinta por bioma y lugar (campiña, bosque, montaña, nieve, costa, desierto, ciénaga, aldea, ciudad, puerto, campamento, ruinas, interior, cueva, cripta y sala de jefe), con fundido cruzado al cambiar de zona, variaciones por semilla de partida y más lenta/grave de noche.
