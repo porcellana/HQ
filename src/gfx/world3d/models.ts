@@ -35,11 +35,14 @@ function trunk(m: MeshBuilder, h: number, r0: number, r1: number, col: RGB, sway
   m.lathe(0, 0, [[0, -0.03], [r0 * 1.7, 0], [r0 * 1.2, 0.07 * h], [r0, 0.25 * h], [(r0 + r1) / 2, 0.6 * h], [r1, h], [r1 * 0.5, h + 0.02]], col, { seg: 8, sway });
 }
 
+/** Mientras es true, los modelos con LOD se construyen con menos segmentos (variantes «@lo»). */
+let LOWDETAIL = false;
+
 function leafy(seed: number, col: RGB, scale: number): MeshBuilder {
   const m = new MeshBuilder();
   const s = scale;
   trunk(m, 0.8 * s, 0.1, 0.06, BARK);
-  const o = { seg: 9, ring: 6, wob: 0.07, lo: 0.7, hi: 1.14 };
+  const o = { seg: LOWDETAIL ? 6 : 9, ring: LOWDETAIL ? 4 : 6, wob: 0.07, lo: 0.7, hi: 1.14 };
   m.ball(0, 0.78 * s, 0, 0.58 * s, 0.46 * s, 0.55 * s, shade(col, 0.95), { ...o, seed });
   m.ball(0.34 * s, 0.98 * s, 0.1 * s, 0.4 * s, 0.34 * s, 0.4 * s, shade(col, 1.1), { ...o, seed: seed + 3 });
   m.ball(-0.3 * s, 1.0 * s, -0.12 * s, 0.4 * s, 0.34 * s, 0.38 * s, shade(col, 1.02), { ...o, seed: seed + 5 });
@@ -53,7 +56,7 @@ function conifer(tiers: number, col: RGB, snow: boolean): MeshBuilder {
   for (let i = 0; i < tiers; i++) {
     const y = 0.26 + i * 0.34, r = 0.72 - i * (0.5 / tiers), h = 0.62;
     const prof: Array<[number, number]> = [[0, y + 0.02], [r * 0.5, y - 0.02], [r * 0.92, y + 0.05], [r, y + 0.13], [r * 0.78, y + 0.3 * h / 0.62], [r * 0.45, y + 0.5 * h / 0.62], [r * 0.15, y + h * 0.9], [0.015, y + h]];
-    m.lathe(0, 0, prof, shade(col, 0.82 + i * 0.1), { seg: 10, lo: 0.7, hi: 1.12 });
+    m.lathe(0, 0, prof, shade(col, 0.82 + i * 0.1), { seg: LOWDETAIL ? 6 : 10, lo: 0.7, hi: 1.12 });
     if (snow) m.lathe(0, 0, prof.map(([rr, yy]) => [rr * 0.74, yy + 0.07] as [number, number]).slice(2), c('#f6f9ff'), { seg: 10, lo: 0.95, hi: 1.1 });
   }
   return swayByHeight(m, 0.2, 0.28 + tiers * 0.34 + 0.5, 0.9);
@@ -260,6 +263,33 @@ function props(): Record<string, () => MeshBuilder> {
       m.lathe(0, 0, [[0.06, 0.38], [0.09, 0.46], [0.05, 0.58], [0, 0.66]], c('#ffb040'), { seg: 7, sway: 0.3, lo: 1, hi: 1.1 });
       return emissive(m, n);
     },
+    brazier: () => {
+      const m = new MeshBuilder();
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * 6.283 + 0.4;
+        m.limb(Math.cos(a) * 0.2, 0, Math.sin(a) * 0.2, Math.cos(a) * 0.09, 0.5, Math.sin(a) * 0.09, 0.032, 0.026, IRON, { seg: 6 });
+      }
+      m.lathe(0, 0, [[0.05, 0.46], [0.25, 0.5], [0.3, 0.62], [0.27, 0.64], [0.2, 0.56], [0, 0.54]], c('#3b3c46'), { seg: 10, lo: 0.8, hi: 1.1 });
+      m.ball(0, 0.58, 0, 0.2, 0.07, 0.2, c('#5a2a18'), { seg: 8, ring: 4 });
+      const n = m.count;
+      m.lathe(0, 0, [[0.2, 0.6], [0.24, 0.74], [0.16, 0.98], [0.06, 1.18], [0, 1.28]], c('#ff8a2a'), { seg: 7, sway: 0.4, lo: 1, hi: 1.1 });
+      m.lathe(0, 0, [[0.11, 0.62], [0.13, 0.78], [0.07, 0.96], [0, 1.04]], c('#ffd75a'), { seg: 7, sway: 0.4, lo: 1, hi: 1.1 });
+      return emissive(m, n);
+    },
+    stalag: () => {
+      const m = new MeshBuilder();
+      m.lathe(0, 0, [[0, -0.02], [0.17, 0], [0.15, 0.1], [0.1, 0.3], [0.06, 0.5], [0.025, 0.66], [0, 0.72]], c('#7a6c5c'), { seg: 7, lo: 0.75, hi: 1.12 });
+      m.lathe(0.17, 0.06, [[0, -0.02], [0.09, 0], [0.07, 0.12], [0.03, 0.24], [0, 0.3]], c('#6c5f51'), { seg: 6, lo: 0.8, hi: 1.1 });
+      return m;
+    },
+    stalag2: () => {
+      const m = new MeshBuilder();
+      m.lathe(0, 0, [[0, -0.02], [0.2, 0], [0.12, 0.12], [0.08, 0.3], [0.03, 0.42], [0, 0.46]], c('#807262'), { seg: 7, lo: 0.75, hi: 1.12 });
+      m.lathe(-0.16, 0.05, [[0, -0.02], [0.1, 0], [0.06, 0.16], [0.02, 0.34], [0, 0.4]], c('#6c5f51'), { seg: 6, lo: 0.8, hi: 1.1 });
+      m.lathe(0.1, -0.14, [[0, -0.02], [0.07, 0], [0.04, 0.12], [0, 0.22]], c('#8a7c6a'), { seg: 6, lo: 0.8, hi: 1.1 });
+      return m;
+    },
+    stalac: () => new MeshBuilder().lathe(0, 0, [[0, 0.04], [0.11, 0.0], [0.1, -0.06], [0.06, -0.2], [0.03, -0.34], [0, -0.44]], c('#8a7c6a'), { seg: 7, lo: 0.8, hi: 1.12 }),
     chimney: () => new MeshBuilder().rbox(0, 0, 0, 0.3, 0.55, 0.3, c('#8a7a70'), { r: 0.05 }).rbox(0, 0.52, 0, 0.38, 0.08, 0.38, c('#6a5a54'), { r: 0.04 }),
   };
 }
@@ -270,9 +300,15 @@ const cacheStatic = new Map<string, Float32Array>();
 export function staticModel(id: string): Float32Array | null {
   let a = cacheStatic.get(id);
   if (!a) {
-    const f = PROPS[id];
+    const lo = id.endsWith('@lo');
+    const f = PROPS[lo ? id.slice(0, -3) : id];
     if (!f) return null;
-    a = f().toArray();
+    LOWDETAIL = lo;
+    try {
+      a = f().toArray();
+    } finally {
+      LOWDETAIL = false;
+    }
     cacheStatic.set(id, a);
   }
   return a;

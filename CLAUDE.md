@@ -27,7 +27,9 @@ v0.12.0: **música y ambiente procedurales** (WebAudio, sin ficheros): `src/audi
 
 v0.12.1: **cámara con dos dedos** (`engine/gestures.ts` pura: pellizco=zoom continuo, torcer=girar con inercia, arrastrar=inclinar; un dedo no gira; ⟲/doble toque recentra; Ajustes invertir giro/sensibilidad) y **niebla de exploración** (`game/fog.ts` + `Game.isVisible/isExplored/fogMaps`, textura de visibilidad 1 texel/casilla en `renderer3d.syncFog` + bruma en shaders; `world.explored` guardado, save v11; minimapa y mapa grande la respetan; ajuste «Niebla»). Aviso: puede haber otro agente editando el mismo árbol (audio v0.12.0): commitear solo lo propio.
 
+v0.13.0: gráficos. `cull.ts` (frustum + LOD), `quality.ts` (`AdaptiveQuality` con histéresis; `QualityCfg.shadows/bloom/decorDist/instDist`), `daycycle.ts` (`dayClock`, sol/luna, amanecer/ocaso, ventanas, luciérnagas, `flicker`), `shadow.ts` (matriz de luz ajustada a texeles, sombra blob alargada); `renderer3d.ts`: sombras con shadow map PCF en Alta, bloom (FBO MSAA + blur 1/4), contador de fps (`stats`, ajustes `showFps`/`bloom`); `terrain.ts`: roca orgánica en cuevas/mazmorras (`rockSkin`, `Geo.rockH`), luces con tipo `k`. OJO: todo programa con `WORLD_FS` debe llamar a `initWorldSamplers` (sampler2DShadow necesita textura con comparación en la unidad 2). Dev: `__dev.newGame(clase, zona, x, y)`. Tests: `tests/gfx_v013.test.ts`.
+
 ## Pendiente (en este orden)
-0. 3D: casas con interior y techo recortable, sombras con shadow map en calidad Alta, bloom a pantalla completa opcional, cuevas con rocas redondeadas de verdad (hoy muros en bloque biselado), más animaciones por enemigo/jefe, retratos con pose por clase, ciclo día/noche visible en batalla.
+0. 3D: casas con interior y techo recortable, sombras en la batalla (hoy blob alargado), más animaciones por enemigo/jefe, retratos con pose por clase, braseros/llamas con forma de llama (hoy lóbulo emisivo), clima (lluvia/tormenta) heredado en batalla.
 1. Interiores de casas en el mundo procedural, misiones de escolta y eventos al viajar.
 2. Conectar `ui/lootSummary.ts` en el panel de victoria; selección de objetivo con información al mantener pulsado.

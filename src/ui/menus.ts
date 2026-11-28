@@ -123,6 +123,8 @@ export function settingsScreen(
       row('Efectos', 'volume', SFX_LEVELS),
       row('Ambiente', 'ambient', LEVELS),
       row('Niebla de exploración', 'fog', onOff),
+      row('Resplandor (calidad alta)', 'bloom', onOff),
+      row('Contador de fps', 'showFps', onOff),
       row('Cámara: invertir giro', 'cameraInvert', onOff),
       row('Cámara: sensibilidad', 'cameraSens', [
         { value: 'baja', label: 'Baja' },

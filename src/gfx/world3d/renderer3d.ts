@@ -15,20 +15,29 @@ import type { Game } from '@/game/game';
 import { itemDef, rarityOf } from '@/game/items/items';
 import type { Zone } from '@/game/world/zone';
 import { DEFAULT_HERO_COLORS, type HumanoidColors } from '../look';
-import { PLAYER_SIGHT, lungeOffset, nightAmount, DAY_LENGTH_TURNS, type RenderOptions } from '../viewconst';
+import { PLAYER_SIGHT, lungeOffset, type RenderOptions } from '../viewconst';
 import { hexRgb } from './mesh';
 import { beastRig, chestModel, humanoidRig, lootModel, oreModel, staticModel, type Rig } from './models';
 import { rigMatrices, rigPose, type AnimState } from './anim';
 import { crystalMotion, gemModel, npcHasShop, npcSignal, pathAhead, runeRingModel, SIGNAL_COLOR, type SignalKind } from './signals';
-import { makeProg, SpriteBatch, type Prog } from './glutil';
+import { initWorldSamplers, makeProg, SpriteBatch, type Prog } from './glutil';
 import { applyTwoFinger, decayVelocity, Momentum, PITCH_MAX, PITCH_MIN, ZOOM_STEP_MAX, ZOOM_STEP_MIN, type TwoFingerDelta } from '@/engine/gestures';
-import { camDistance, FpsGuard, lowerQuality, QUALITY, remapDir, type Quality } from './quality';
-import { BLOB_FS, BLOB_VS, MAX_LIGHTS, MIST_FS, MIST_VS, PART_FS, PART_VS, SKY_FS, SKY_VS, WATER_FS, WATER_VS, WORLD_FS, WORLD_VS } from './shaders';
-import { envFor, zoneStyle, type Env, type ZoneStyle } from './style';
+import { AdaptiveQuality, camDistance, QUALITY, remapDir, type AdaptStep, type Quality } from './quality';
+import { boxVisible, frustumPlanes, instVisible, lodModelId } from './cull';
+import { clockAt, dayClock, flicker } from './daycycle';
+import { blobMatrix, lightMatrix } from './shadow';
+import { BLOB_FS, BLOB_VS, BLUR_FS, BRIGHT_FS, COMPOSE_FS, MAX_LIGHTS, MIST_FS, MIST_VS, PART_FS, PART_VS, POST_VS, SHADOW_FS, SKY_FS, SKY_VS, WATER_FS, WATER_VS, WORLD_FS, WORLD_VS } from './shaders';
+import { envFor, zoneStyle, type Env, type ParticleKind, type ZoneStyle } from './style';
 import { buildChunk, buildSkirt, chunksInRadius, CHUNK, Geo, type ChunkData, type Light } from './terrain';
 import { ident, invert, lookAt, mul, perspective, project, trs, unprojectRay, type Mat4 } from './mat';
 
 interface Gpu { buf: WebGLBuffer; n: number }
+/** Luz dinámica de un fotograma (se reutilizan los objetos). */
+interface LightRec { x: number; y: number; z: number; r: number; g: number; b: number; rad: number; d: number; k?: 'fire' | 'crystal' | 'window' }
+
+/** Estadísticas de rendimiento (contador de fps opcional). */
+export interface RenderStats { fps: number; calls: number; tris: number; chunks: number; total: number; scale: number; quality: Quality; shadows: boolean; bloom: boolean; heapMb: number }
+
 interface ChunkGpu { terrain: Gpu | null; water: Gpu | null; inst: WebGLBuffer | null; groups: Array<{ id: string; first: number; count: number }>; lights: Light[]; cx: number; cz: number }
 interface Ent {
   gx: number; gz: number; gy: number; yaw: number; scale: number; rig: Rig | null; mesh: Gpu | null; walk: number; flash: number; alpha: number;
@@ -47,7 +56,7 @@ export class Renderer3D {
   heroColors: HumanoidColors = DEFAULT_HERO_COLORS;
   pixelRatio = 1;
   private gl: WebGL2RenderingContext;
-  private progs!: { world: Prog; water: Prog; blob: Prog; part: Prog; sky: Prog; mist: Prog };
+  private progs!: { world: Prog; water: Prog; blob: Prog; part: Prog; sky: Prog; mist: Prog; shadow: Prog; bright: Prog; blur: Prog; compose: Prog };
   private spr!: SpriteBatch;
   private guide: { path: Point[]; key: string; t: number; pos: { x: number; z: number } | null } = { path: [], key: '', t: 0, pos: null };
   private quality: Quality = 'media';
@@ -78,11 +87,31 @@ export class Renderer3D {
   private partBuf!: WebGLBuffer;
   private partCount = 0;
   private lost = false;
-  private guard = new FpsGuard();
+  private adapt = new AdaptiveQuality('media');
+  private userQ: Quality = 'media';
+  private scaleMul = 1;
+  private planes = new Float32Array(24);
+  private visCache: { zone: string; x: number; z: number; r: number; list: Array<[number, number]> } | null = null;
+  private lightPool: LightRec[] = Array.from({ length: 64 }, () => ({ x: 0, y: 0, z: 0, r: 0, g: 0, b: 0, rad: 1, d: 0 }));
+  private lightList: LightRec[] = [];
+  private lpos = new Float32Array(MAX_LIGHTS * 4);
+  private lcol = new Float32Array(MAX_LIGHTS * 3);
+  private sh: { fbo: WebGLFramebuffer; tex: WebGLTexture; res: number } | null = null;
+  private shLight: Mat4 = ident();
+  private blobM = new Float32Array(16);
+  private post: { w: number; h: number; msFbo: WebGLFramebuffer; msColor: WebGLRenderbuffer; msDepth: WebGLRenderbuffer; sceneFbo: WebGLFramebuffer; sceneTex: WebGLTexture; t: Array<{ tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number }> } | null = null;
+  /** Bloom a pantalla completa (sólo en calidad alta). */
+  bloom = true;
+  /** Con las estadísticas activas se cuentan llamadas de dibujo y triángulos. */
+  private statsOn = false;
+  private counters = { calls: 0, tris: 0 };
+  private statSnap: RenderStats = { fps: 0, calls: 0, tris: 0, chunks: 0, total: 0, scale: 1, quality: 'media', shadows: false, bloom: false, heapMb: 0 };
+  private fpsAcc = { t: 0, n: 0 };
+  private drawnChunks = 0;
   private builds = 0;
   /** Lo llama el renderizador si pierde el contexto GL o hay que bajar calidad. */
   onContextLost: (() => void) | null = null;
-  onAutoQuality: ((q: Quality) => void) | null = null;
+  onAutoQuality: ((q: Quality, dir: 'baja' | 'sube') => void) | null = null;
   autoQuality = true;
   private lastCss = { w: 0, h: 0 };
   /** Textura de visibilidad de la niebla (1 texel por casilla: R explorado, G visible, B visible antes). */
@@ -93,6 +122,8 @@ export class Renderer3D {
     if (!gl) throw new Error('WebGL2 no disponible');
     this.gl = gl;
     this.quality = quality;
+    this.userQ = quality;
+    this.adapt = new AdaptiveQuality(quality);
     glCanvas.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
       this.lost = true;
@@ -121,13 +152,18 @@ export class Renderer3D {
     const mk = (vs: string, fs: string, uniforms: string[]): Prog => makeProg(gl, vs, fs, uniforms);
     const lightU = ['uL', 'uLC', 'uNL'];
     this.progs = {
-      world: mk(WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uDis', 'uDisY', 'uDisCol', ...FOGU, ...lightU]),
+      world: mk(WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uDis', 'uDisY', 'uDisCol', 'uWin', 'uSh', 'uShVP', 'uShP', ...FOGU, ...lightU]),
       water: mk(WATER_VS, WATER_FS, ['uVP', 'uTime', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uSky', 'uAmbTop', ...FOGU, ...lightU]),
       blob: mk(BLOB_VS, BLOB_FS, ['uVP', 'uModel', 'uAlpha']),
       part: mk(PART_VS, PART_FS, ['uVP', 'uCenter', 'uTime', 'uVel', 'uSize', 'uScale', 'uGround', 'uBox', 'uBoxH', 'uColor']),
       mist: mk(MIST_VS, MIST_FS, ['uVP', 'uCenter', 'uSize', 'uFogCol', 'uLayer', ...FOGU]),
-      sky: mk(SKY_VS, SKY_FS, ['uInv', 'uEye', 'uTop', 'uHor', 'uFog', 'uSunDir', 'uSunCol', 'uTime', 'uStars', 'uFlat']),
+      sky: mk(SKY_VS, SKY_FS, ['uInv', 'uEye', 'uTop', 'uHor', 'uFog', 'uSunDir', 'uSunCol', 'uTime', 'uStars', 'uFlat', 'uMoon', 'uWarm']),
+      shadow: mk(WORLD_VS, SHADOW_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uFlash']),
+      bright: mk(POST_VS, BRIGHT_FS, ['uTex', 'uTh']),
+      blur: mk(POST_VS, BLUR_FS, ['uTex', 'uDir']),
+      compose: mk(POST_VS, COMPOSE_FS, ['uScene', 'uBloom', 'uK']),
     };
+    initWorldSamplers(gl, this.progs.world);
     this.spr = new SpriteBatch(gl, 1400);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -191,12 +227,66 @@ export class Renderer3D {
   }
 
   // -------------------------------------------------------------- tamaño/zoom
+  /** Calidad elegida por el jugador: es el tope al que la adaptativa puede volver a subir. */
   setQuality(q: Quality): void {
-    if (q === this.quality) return;
+    if (q === this.userQ) return;
+    this.userQ = q;
     this.quality = q;
+    this.scaleMul = 1;
+    this.adapt.setUser(q);
     this.dropChunks();
-    this.guard.reset();
     this.resize();
+  }
+  private applyAdapt(st: AdaptStep): void {
+    if (st.scaleMul !== undefined) this.scaleMul = st.scaleMul;
+    if (st.level && st.level !== this.quality) {
+      const down = QUALITY[st.level].radius < QUALITY[this.quality].radius;
+      this.quality = st.level;
+      this.dropChunks();
+      this.onAutoQuality?.(st.level, down ? 'baja' : 'sube');
+    }
+    this.resize();
+  }
+  /** Estadísticas del último segundo (para el contador de fps). */
+  get stats(): RenderStats {
+    return this.statSnap;
+  }
+  setStats(on: boolean): void {
+    if (on === this.statsOn) return;
+    this.statsOn = on;
+    const gl = this.gl as WebGL2RenderingContext & { __orig?: { a: WebGL2RenderingContext['drawArrays']; i: WebGL2RenderingContext['drawArraysInstanced'] } };
+    if (on) {
+      const a = gl.drawArrays.bind(gl), i = gl.drawArraysInstanced.bind(gl);
+      gl.__orig = { a: gl.drawArrays, i: gl.drawArraysInstanced };
+      const c = this.counters;
+      gl.drawArrays = (mode: number, first: number, count: number): void => {
+        c.calls++;
+        if (mode === gl.TRIANGLES) c.tris += count / 3;
+        a(mode, first, count);
+      };
+      gl.drawArraysInstanced = (mode: number, first: number, count: number, n: number): void => {
+        c.calls++;
+        if (mode === gl.TRIANGLES) c.tris += (count / 3) * n;
+        i(mode, first, count, n);
+      };
+    } else if (gl.__orig) {
+      gl.drawArrays = gl.__orig.a;
+      gl.drawArraysInstanced = gl.__orig.i;
+    }
+  }
+  private frameStats(dt: number): void {
+    if (!this.statsOn) return;
+    const f = this.fpsAcc;
+    f.t += dt;
+    f.n++;
+    if (f.t >= 0.5) {
+      const mem = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
+      this.statSnap = { fps: f.n / f.t, calls: this.counters.calls / f.n, tris: this.counters.tris / f.n, chunks: this.drawnChunks, total: this.cur?.chunks.size ?? 0, scale: this.scaleMul * QUALITY[this.quality].scale, quality: this.quality, shadows: !!this.sh && QUALITY[this.quality].shadows, bloom: !!this.post, heapMb: mem ? mem.usedJSHeapSize / 1048576 : 0 };
+      this.counters.calls = 0;
+      this.counters.tris = 0;
+      f.t = 0;
+      f.n = 0;
+    }
   }
   get qualityLevel(): Quality {
     return this.quality;
@@ -224,7 +314,7 @@ export class Renderer3D {
       this.overlay.height = oh;
     }
     const q = QUALITY[this.quality];
-    const s = Math.min(dpr, 2) * q.scale;
+    const s = Math.min(dpr, 2) * q.scale * this.scaleMul;
     const gw = Math.max(2, Math.round(cssW * s)), gh = Math.max(2, Math.round(cssH * s));
     if (this.glCanvas.width !== gw || this.glCanvas.height !== gh) {
       this.glCanvas.width = gw;
@@ -358,9 +448,10 @@ export class Renderer3D {
     const gl = this.gl;
     this.time += dt;
     this.lastDt = dt;
-    if (this.autoQuality && this.guard.push(dt) && this.quality !== 'baja') {
-      this.setQuality(lowerQuality(this.quality));
-      this.onAutoQuality?.(this.quality);
+    this.frameStats(dt);
+    if (this.autoQuality) {
+      const st = this.adapt.push(dt);
+      if (st) this.applyAdapt(st);
     }
     if (this.overlay.clientWidth !== this.lastCss.w || this.overlay.clientHeight !== this.lastCss.h) this.resize();
     const zone = game.zone;
@@ -370,10 +461,11 @@ export class Renderer3D {
     const q = QUALITY[this.quality];
     const fogOn = this.syncFog(game, dt);
 
-    // Entorno: hora del día, noche y oscuridad de la zona.
+    // Entorno: hora del día (sol, luna, amanecer y ocaso), noche y oscuridad de la zona.
     const outdoor = zone.def.kind === 'town' || zone.def.kind === 'wild' || zone.def.kind === 'world';
-    const night = opts.dayNight && outdoor ? nightAmount(game.state.turn) : 0;
-    const env = envFor(style, night, zone.def.darkness ?? 0, (game.state.turn % DAY_LENGTH_TURNS) / (DAY_LENGTH_TURNS * 0.6));
+    const clock = opts.dayNight && outdoor ? dayClock(game.state.turn) : clockAt(0.3, 0);
+    const night = clock.night;
+    const env = envFor(style, night, zone.def.darkness ?? 0, 0, clock);
 
     // Cámara: sigue al jugador, gira y se acerca con suavidad.
     const v = game.view;
@@ -411,28 +503,37 @@ export class Renderer3D {
     const shift = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, ndcY * 0.9, 0, 1]);
     this.vp = mul(mul(shift, proj), lookAt(this.eye, tgt));
     this.invVp = invert(this.vp);
+    frustumPlanes(this.vp, this.planes);
 
-    // Chunks visibles (se construyen de forma escalonada).
+    // Chunks cercanos (lista en caché mientras la cámara no se mueve mucho), con recorte por frustum.
     const radius = q.radius * (dist > 18 ? 1.25 : 1);
-    const vis = chunksInRadius(geo.w, geo.h, this.cam.x, this.cam.z, radius);
+    let vc = this.visCache;
+    if (!vc || vc.zone !== zone.id || vc.r !== radius || Math.hypot(vc.x - this.cam.x, vc.z - this.cam.z) > 2.5) {
+      const list = chunksInRadius(geo.w, geo.h, this.cam.x, this.cam.z, radius + 3);
+      list.sort((a, b) => Math.hypot((a[0] + 0.5) * CHUNK - this.cam.x, (a[1] + 0.5) * CHUNK - this.cam.z) - Math.hypot((b[0] + 0.5) * CHUNK - this.cam.x, (b[1] + 0.5) * CHUNK - this.cam.z));
+      this.visCache = vc = { zone: zone.id, x: this.cam.x, z: this.cam.z, r: radius, list };
+    }
     this.builds = 0;
     const first = cur.chunks.size === 0;
     const visible: ChunkGpu[] = [];
-    vis.sort((a, b) => Math.hypot((a[0] + 0.5) * CHUNK - this.cam.x, (a[1] + 0.5) * CHUNK - this.cam.z) - Math.hypot((b[0] + 0.5) * CHUNK - this.cam.x, (b[1] + 0.5) * CHUNK - this.cam.z));
+    const built: ChunkGpu[] = [];
     const nx = Math.ceil(geo.w / CHUNK);
-    for (const [cx, cz] of vis) {
+    for (const [cx, cz] of vc.list) {
+      const inView = boxVisible(this.planes, cx * CHUNK, -1.5, cz * CHUNK, (cx + 1) * CHUNK, 6, (cz + 1) * CHUNK);
       const key = cz * nx + cx;
       let c = cur.chunks.get(key);
       if (!c) {
-        if (!first && this.builds >= 2) continue;
+        if (!first && this.builds >= (inView ? 2 : 1)) continue;
         this.builds++;
         c = this.chunkGpu(buildChunk(geo, cx, cz, { density: q.density }));
         cur.chunks.set(key, c);
       }
-      visible.push(c);
+      built.push(c);
+      if (inView) visible.push(c);
     }
+    this.drawnChunks = visible.length;
     // Libera chunks lejanos para no acumular memoria.
-    if (cur.chunks.size > vis.length + 10) {
+    if (cur.chunks.size > vc.list.length + 10) {
       for (const [key, c] of cur.chunks) {
         if (Math.hypot((c.cx + 0.5) * CHUNK - this.cam.x, (c.cz + 0.5) * CHUNK - this.cam.z) > radius + CHUNK * 2.2) {
           this.freeChunk(c);
@@ -440,38 +541,67 @@ export class Renderer3D {
         }
       }
     }
+    const ents = this.collect(game, geo);
 
-    // ---- fotograma GL
+    // Luces cercanas: la lámpara del héroe, faroles, antorchas (parpadean), cristales (pulsan), ventanas (sólo de noche).
+    const lightAmt = Math.max(night * 0.85, enclosed ? 1 : (zone.def.darkness ?? 0) * 1.4);
+    this.lightList.length = 0;
+    let pool = 0;
+    const addL = (x: number, y: number, z: number, r: number, g: number, b: number, rad: number, d: number, kind?: LightRec['k']): void => {
+      if (pool >= this.lightPool.length) return;
+      const o = this.lightPool[pool++]!;
+      o.x = x; o.y = y; o.z = z; o.r = r; o.g = g; o.b = b; o.rad = rad; o.d = d;
+      if (kind) o.k = kind; else delete o.k;
+      this.lightList.push(o);
+    };
+    if (lightAmt > 0.05) {
+      const fl = 1 + (flicker(this.time, 3) - 1) * 0.35;
+      const ha = enclosed ? 0.85 : 1;
+      addL(px, py + 1.4, pz, 1 * lightAmt * fl * ha, 0.78 * lightAmt * fl * ha, 0.5 * lightAmt * fl * ha, enclosed ? 9.5 : 8, -1);
+    }
+    const gk = 0.3 + 0.7 * Math.max(night, enclosed ? 1 : 0, (zone.def.darkness ?? 0));
+    for (const c of built) for (const l of c.lights) {
+      const d = Math.hypot(l.x - px, l.z - pz);
+      if (d >= 16) continue;
+      let m = gk, rad = l.rad;
+      if (l.k === 'fire') { const f = flicker(this.time, l.x * 7.1 + l.z * 3.3); m *= f; rad *= 0.92 + (f - 1) * 0.5; }
+      else if (l.k === 'crystal') m *= 0.8 + 0.2 * Math.sin(this.time * 1.6 + l.x * 2 + l.z);
+      else if (l.k === 'window') { m = env.windows * 1.1; if (m < 0.04) continue; }
+      addL(l.x, l.y, l.z, l.r * m, l.g * m, l.b * m, rad, d, l.k);
+    }
+    for (const f of game.fx) if (f.kind === 'burst' && f.t >= 0) {
+      const a = 1 - f.t / f.life;
+      const col = hexRgb(f.color);
+      addL(f.x + 0.5, geo.heightAt(f.x + 0.5, f.y + 0.5) + 0.8, f.y + 0.5, col[0] * a * 1.4, col[1] * a * 1.4, col[2] * a * 1.4, 4.5, -0.5);
+    }
+    const L = this.lightList;
+    L.sort((a, b) => a.d - b.d);
+    const nl = Math.min(L.length, q.lights, MAX_LIGHTS);
+    const lpos = this.lpos, lcol = this.lcol;
+    lpos.fill(0);
+    lcol.fill(0);
+    for (let i = 0; i < nl; i++) {
+      const l = L[i]!;
+      lpos[i * 4] = l.x; lpos[i * 4 + 1] = l.y; lpos[i * 4 + 2] = l.z; lpos[i * 4 + 3] = l.rad;
+      lcol[i * 3] = l.r; lcol[i * 3 + 1] = l.g; lcol[i * 3 + 2] = l.b;
+    }
+
+    // ---- sombras (mapa de sombras con PCF en calidad alta)
+    const shadowOn = q.shadows && !enclosed && env.shadowStrength > 0.05 && this.ensureShadow(q.shadowRes);
+    const shHalf = Math.min(22, Math.max(13, dist * 0.8));
+    if (shadowOn) this.shadowPass(built, ents, env, px, py, pz, shHalf, q);
+
+    // ---- fotograma GL (a un objetivo multimuestreado si hay bloom)
+    const wantBloom = q.bloom && this.bloom;
+    const post = wantBloom ? this.ensurePost(this.glCanvas.width, this.glCanvas.height) : null;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, post ? post.msFbo : null);
     gl.viewport(0, 0, this.glCanvas.width, this.glCanvas.height);
     gl.clearColor(env.fog[0], env.fog[1], env.fog[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.disable(gl.BLEND);
     gl.depthMask(true);
-    this.drawSky(env, style);
+    this.drawSky(env, style, clock.warm * (1 - night * 0.6));
     const fogDen = Math.max(env.fogDensity * 0.6, 1.9 / radius);
-
-    // Luces cercanas: la antorcha del jugador + faroles/hogueras/cristales.
-    const lightAmt = Math.max(night * 0.85, enclosed ? 1 : (zone.def.darkness ?? 0) * 1.4);
-    const L: Array<{ x: number; y: number; z: number; r: number; g: number; b: number; rad: number; d: number }> = [];
-    if (lightAmt > 0.05) L.push({ x: px, y: py + 1.4, z: pz, r: 1 * lightAmt, g: 0.78 * lightAmt, b: 0.5 * lightAmt, rad: 8, d: -1 });
-    const gk = 0.3 + 0.7 * Math.max(night, enclosed ? 1 : 0, (zone.def.darkness ?? 0));
-    for (const c of visible) for (const l of c.lights) {
-      const d = Math.hypot(l.x - px, l.z - pz);
-      if (d < 16) L.push({ ...l, r: l.r * gk, g: l.g * gk, b: l.b * gk, d });
-    }
-    for (const f of game.fx) if (f.kind === 'burst' && f.t >= 0) {
-      const a = 1 - f.t / f.life;
-      const col = hexRgb(f.color);
-      L.push({ x: f.x + 0.5, y: geo.heightAt(f.x + 0.5, f.y + 0.5) + 0.8, z: f.y + 0.5, r: col[0] * a * 1.4, g: col[1] * a * 1.4, b: col[2] * a * 1.4, rad: 4.5, d: -0.5 });
-    }
-    L.sort((a, b) => a.d - b.d);
-    const nl = Math.min(L.length, q.lights, MAX_LIGHTS);
-    const lpos = new Float32Array(MAX_LIGHTS * 4), lcol = new Float32Array(MAX_LIGHTS * 3);
-    for (let i = 0; i < nl; i++) {
-      const l = L[i]!;
-      lpos.set([l.x, l.y, l.z, l.rad], i * 4);
-      lcol.set([l.r, l.g, l.b], i * 3);
-    }
 
     const P = this.progs.world;
     gl.useProgram(P.p);
@@ -486,15 +616,23 @@ export class Renderer3D {
     gl.uniform3fv(P.u.uSunCol!, env.sunCol);
     gl.uniform3fv(P.u.uAmbTop!, env.ambTop);
     gl.uniform3fv(P.u.uAmbBot!, env.ambBottom);
+    gl.uniform1f(P.u.uWin!, env.windows);
     gl.uniform4f(P.u.uFlash!, 0, 0, 0, 0);
     gl.uniform4fv(P.u.uL!, lpos);
     gl.uniform3fv(P.u.uLC!, lcol);
     gl.uniform1i(P.u.uNL!, nl);
+    if (shadowOn && this.sh) {
+      gl.uniformMatrix4fv(P.u.uShVP!, false, this.shLight);
+      gl.uniform4f(P.u.uShP!, env.shadowStrength * 0.85, 1 / this.sh.res, 0.0007, 0);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, this.sh.tex);
+      gl.activeTexture(gl.TEXTURE0);
+    } else gl.uniform4f(P.u.uShP!, 0, 0, 0, 0);
     const I = ident();
     gl.uniformMatrix4fv(P.u.uModel!, false, I);
     this.fogUniforms(P, fogOn);
 
-    // Terreno e instancias.
+    // Terreno e instancias (con detalle por distancia).
     if (cur.skirt) {
       this.noInstance();
       this.bindMesh(cur.skirt);
@@ -507,26 +645,12 @@ export class Renderer3D {
         gl.drawArrays(gl.TRIANGLES, 0, c.terrain.n);
       }
     }
-    for (const c of visible) {
-      if (!c.inst) continue;
-      for (const g of c.groups) {
-        const data = staticModel(g.id);
-        if (!data) continue;
-        this.bindMesh(this.partMesh(data));
-        gl.bindBuffer(gl.ARRAY_BUFFER, c.inst);
-        gl.enableVertexAttribArray(4);
-        gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 32, g.first * 32);
-        gl.enableVertexAttribArray(5);
-        gl.vertexAttribPointer(5, 4, gl.FLOAT, false, 32, g.first * 32 + 16);
-        gl.drawArraysInstanced(gl.TRIANGLES, 0, data.length / 10, g.count);
-      }
-    }
+    const lod = { decorDist: q.decorDist * (dist > 18 ? 1.3 : 1), instDist: q.instDist * (dist > 18 ? 1.3 : 1) };
+    for (const c of visible) this.drawInst(c, Math.hypot((c.cx + 0.5) * CHUNK - this.cam.x, (c.cz + 0.5) * CHUNK - this.cam.z) - CHUNK * 0.5, lod);
     this.noInstance();
 
-    // Entidades.
-    const ents = this.collect(game, geo);
-    // Sombras blandas bajo las criaturas.
-    this.drawShadows(ents);
+    // Sombras blandas bajo las criaturas (si no hay mapa de sombras) y entidades.
+    this.drawShadows(ents, env, shadowOn);
     gl.useProgram(P.p);
     this.drawXray(ents[0], P);
     for (const e of ents) this.drawEnt(e, P);
@@ -536,18 +660,211 @@ export class Renderer3D {
     // Agua (translúcida) y partículas.
     this.drawWater(visible, env, fogDen, dist * 0.8, lpos, lcol, nl, fogOn);
     if (fogOn && this.quality !== 'baja') this.drawMist(env, Math.min(radius, 44));
-    this.drawParticles(style, env, px, py, pz, q.particles);
-    // Halos de luz (brillo suave de antorchas, faroles y fuego) y destellos de señalización.
-    const hs = hexRgb('#ffffff');
-    void hs;
+    this.drawParticles(style, env, px, py, pz, q.particles, style.particles);
+    if (enclosed) this.drawParticles(style, env, px, py, pz, this.quality === 'baja' ? 14 : 34, 'bruma');
+    else if (env.fireflies > 0.05) this.drawParticles(style, env, px, py, pz, Math.round(q.particles * 0.5 * env.fireflies), 'luciernagas');
+    // Halos de luz (parpadean), chispas de las llamas y destellos de señalización.
     for (let i = 0; i < nl; i++) {
       const l = L[i]!;
-      if (l.d < 0 && l.rad === 8) continue;
+      if (l.d < 0 && (l.rad === 8 || l.rad === 9.5)) continue;
       this.spr.add(l.x, l.y, l.z, Math.min(2.4, 0.5 + l.rad * 0.18), Math.min(0.5, 0.18 + (l.r + l.g + l.b) * 0.1), Math.min(1, l.r), Math.min(1, l.g), Math.min(1, l.b));
     }
+    if (this.quality !== 'baja') for (const c of visible) for (const l of c.lights) {
+      if (l.k !== 'fire' || Math.hypot(l.x - px, l.z - pz) > 13) continue;
+      for (let j = 0; j < 3; j++) {
+        const ph = (this.time * (0.7 + j * 0.23) + j * 0.37 + l.x * 0.31) % 1;
+        this.spr.add(l.x + Math.sin(this.time * 3 + j * 2.1 + l.z) * 0.07 * (1 + ph), l.y + 0.1 + ph * 0.8, l.z + Math.cos(this.time * 2.6 + j * 1.7) * 0.07 * (1 + ph), 0.075 * (1 - ph * 0.6), 0.9 * (1 - ph), 1, 0.62 + 0.3 * (1 - ph), 0.2);
+      }
+    }
     this.spr.flush(this.vp, this.glCanvas.height * 1.218);
+    if (post) this.finishPost(post, env, enclosed);
 
     this.drawOverlay(game, ents);
+  }
+
+  // ------------------------------------------------------------- instancias y sombras
+  private drawInst(c: ChunkGpu, dist: number, lod: { decorDist: number; instDist: number }): void {
+    if (!c.inst) return;
+    const gl = this.gl;
+    for (const g of c.groups) {
+      if (!instVisible(g.id, dist, lod)) continue;
+      const data = staticModel(lodModelId(g.id, dist, lod.instDist * 0.5));
+      if (!data) continue;
+      this.bindMesh(this.partMesh(data));
+      gl.bindBuffer(gl.ARRAY_BUFFER, c.inst);
+      gl.enableVertexAttribArray(4);
+      gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 32, g.first * 32);
+      gl.enableVertexAttribArray(5);
+      gl.vertexAttribPointer(5, 4, gl.FLOAT, false, 32, g.first * 32 + 16);
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, data.length / 10, g.count);
+    }
+  }
+
+  /** Crea (o ajusta) el mapa de sombras. Devuelve false si el dispositivo no lo admite. */
+  private ensureShadow(res: number): boolean {
+    const gl = this.gl;
+    if (this.sh && this.sh.res === res) return true;
+    if (this.sh) {
+      gl.deleteTexture(this.sh.tex);
+      gl.deleteFramebuffer(this.sh.fbo);
+      this.sh = null;
+    }
+    try {
+      const tex = gl.createTexture()!;
+      // En la unidad 2 (la de uSh): una textura con comparación en la unidad 0 rompería los sampler2D normales.
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, res, res);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+      const fbo = gl.createFramebuffer()!;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, tex, 0);
+      gl.drawBuffers([gl.NONE]);
+      gl.readBuffer(gl.NONE);
+      const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.activeTexture(gl.TEXTURE0);
+      if (!ok) { gl.deleteTexture(tex); gl.deleteFramebuffer(fbo); return false; }
+      this.sh = { fbo, tex, res };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Dibuja terreno, árboles, casas y criaturas cercanos en el mapa de profundidad de la luz. */
+  private shadowPass(built: ChunkGpu[], ents: Ent[], env: Env, px: number, py: number, pz: number, half: number, q: { shadowRes: number }): void {
+    const gl = this.gl, sh = this.sh!;
+    const lm = lightMatrix([px, py, pz], env.sunDir, half, q.shadowRes);
+    this.shLight = lm.vp;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, sh.fbo);
+    gl.viewport(0, 0, sh.res, sh.res);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.colorMask(false, false, false, false);
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(2.5, 4);
+    const P = this.progs.shadow;
+    gl.useProgram(P.p);
+    gl.uniformMatrix4fv(P.u.uVP!, false, lm.vp);
+    gl.uniformMatrix4fv(P.u.uModel!, false, ident());
+    gl.uniform1f(P.u.uTime!, this.time);
+    gl.uniform1f(P.u.uWind!, 0);
+    const reach = half * 1.35 + 8;
+    const lod = { decorDist: -1, instDist: half * 1.6 };
+    this.noInstance();
+    for (const c of built) {
+      const cxm = (c.cx + 0.5) * CHUNK, czm = (c.cz + 0.5) * CHUNK;
+      if (Math.abs(cxm - px) > reach || Math.abs(czm - pz) > reach) continue;
+      if (c.terrain) {
+        this.noInstance();
+        this.bindMesh(c.terrain);
+        gl.drawArrays(gl.TRIANGLES, 0, c.terrain.n);
+      }
+      this.drawInst(c, Math.hypot(cxm - px, czm - pz) - CHUNK * 0.5, lod);
+    }
+    this.noInstance();
+    for (const e of ents) if (e.kind !== 'loot' && e.alpha > 0.5) this.drawEnt(e, P);
+    gl.uniformMatrix4fv(P.u.uModel!, false, ident());
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.colorMask(true, true, true, true);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  // ------------------------------------------------------------------ bloom
+  private ensurePost(w: number, h: number): NonNullable<Renderer3D['post']> | null {
+    const gl = this.gl;
+    if (this.post && this.post.w === w && this.post.h === h) return this.post;
+    this.freePost();
+    try {
+      const samples = Math.min(4, (gl.getParameter(gl.MAX_SAMPLES) as number) || 0);
+      const msColor = gl.createRenderbuffer()!;
+      gl.bindRenderbuffer(gl.RENDERBUFFER, msColor);
+      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, w, h);
+      const msDepth = gl.createRenderbuffer()!;
+      gl.bindRenderbuffer(gl.RENDERBUFFER, msDepth);
+      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, w, h);
+      const msFbo = gl.createFramebuffer()!;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, msFbo);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, msColor);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, msDepth);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('fbo');
+      const mkTex = (tw: number, th: number): { tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number } => {
+        const tex = gl.createTexture()!;
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, tw, th);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const fbo = gl.createFramebuffer()!;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        return { tex, fbo, w: tw, h: th };
+      };
+      const scene = mkTex(w, h);
+      const hw = Math.max(2, w >> 1), hh = Math.max(2, h >> 1), qw = Math.max(2, w >> 2), qh = Math.max(2, h >> 2);
+      this.post = { w, h, msFbo, msColor, msDepth, sceneFbo: scene.fbo, sceneTex: scene.tex, t: [mkTex(hw, hh), mkTex(qw, qh), mkTex(qw, qh)] };
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return this.post;
+    } catch {
+      this.bloom = false;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return null;
+    }
+  }
+  private freePost(): void {
+    const p = this.post;
+    if (!p) return;
+    const gl = this.gl;
+    gl.deleteFramebuffer(p.msFbo);
+    gl.deleteRenderbuffer(p.msColor);
+    gl.deleteRenderbuffer(p.msDepth);
+    gl.deleteFramebuffer(p.sceneFbo);
+    gl.deleteTexture(p.sceneTex);
+    for (const t of p.t) { gl.deleteFramebuffer(t.fbo); gl.deleteTexture(t.tex); }
+    this.post = null;
+  }
+  /** Resuelve el multimuestreo y compone escena + resplandor (umbral, desenfoque separable a baja resolución). */
+  private finishPost(post: NonNullable<Renderer3D['post']>, env: Env, enclosed: boolean): void {
+    const gl = this.gl;
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, post.msFbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, post.sceneFbo);
+    gl.blitFramebuffer(0, 0, post.w, post.h, 0, 0, post.w, post.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    for (let i = 0; i < 6; i++) gl.disableVertexAttribArray(i);
+    const pass = (prog: Prog, target: { fbo: WebGLFramebuffer; w: number; h: number } | null, tex: WebGLTexture, set: () => void): void => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
+      gl.viewport(0, 0, target ? target.w : post.w, target ? target.h : post.h);
+      gl.useProgram(prog.p);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      set();
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+    const [a, b, c] = post.t as [typeof post.t[0], typeof post.t[0], typeof post.t[0]];
+    const th = enclosed ? 0.72 : 0.9 - env.night * 0.2;
+    pass(this.progs.bright, a, post.sceneTex, () => { gl.uniform1i(this.progs.bright.u.uTex!, 0); gl.uniform2f(this.progs.bright.u.uTh!, th, 0.3); });
+    const blur = (src: typeof a, dst: typeof a, dx: number, dy: number): void => pass(this.progs.blur, dst, src.tex, () => { gl.uniform1i(this.progs.blur.u.uTex!, 0); gl.uniform2f(this.progs.blur.u.uDir!, dx / src.w, dy / src.h); });
+    blur(a, b, 1, 0);
+    blur(b, c, 0, 1);
+    blur(c, b, 1.6, 0);
+    blur(b, c, 0, 1.6);
+    const str = 0.4 + env.night * 0.6 + env.warm * 0.2 + (enclosed ? 0.3 : 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, c.tex);
+    gl.activeTexture(gl.TEXTURE0);
+    pass(this.progs.compose, null, post.sceneTex, () => {
+      gl.uniform1i(this.progs.compose.u.uScene!, 0);
+      gl.uniform1i(this.progs.compose.u.uBloom!, 1);
+      gl.uniform2f(this.progs.compose.u.uK!, str, 0.35);
+    });
+    gl.enable(gl.DEPTH_TEST);
   }
 
   // ------------------------------------------------------------------ niebla
@@ -820,7 +1137,8 @@ export class Renderer3D {
     });
   }
 
-  private drawShadows(ents: Ent[]): void {
+  /** Sombras blandas alargadas según la luz del día; con mapa de sombras sólo queda un toque de oclusión. */
+  private drawShadows(ents: Ent[], env: Env, mapped: boolean): void {
     const gl = this.gl;
     const P = this.progs.blob;
     gl.useProgram(P.p);
@@ -830,11 +1148,15 @@ export class Renderer3D {
     gl.uniformMatrix4fv(P.u.uVP!, false, this.vp);
     this.bindMesh(this.blob, false);
     this.noInstance();
+    const str = Math.max(0.25, env.shadowStrength);
     for (const e of ents) {
       const r = e.rig ? e.rig.shadow * e.scale : e.kind === 'loot' ? 0.18 : 0.38;
       const lift = e.kind === 'loot' ? 0.5 : e.rig?.flyer ? 0.4 : 1;
-      gl.uniformMatrix4fv(P.u.uModel!, false, trs(e.gx, e.gy - (e.kind === 'loot' ? 0 : 0) + 0.015, e.gz, 0, r * 1.5));
-      gl.uniform1f(P.u.uAlpha!, 0.55 * e.alpha * lift);
+      const h = e.rig ? e.rig.height * e.scale : 0.4;
+      if (mapped) blobMatrix(e.gx, e.gy + 0.015, e.gz, r * 1.2, 0, [0, 1, 0], this.blobM);
+      else blobMatrix(e.gx, e.gy + 0.015, e.gz, r * 1.5, h * 0.7, env.sunDir, this.blobM);
+      gl.uniformMatrix4fv(P.u.uModel!, false, this.blobM);
+      gl.uniform1f(P.u.uAlpha!, (mapped ? 0.3 : 0.55) * e.alpha * lift * (mapped ? 1 : str));
       gl.drawArrays(gl.TRIANGLES, 0, this.blob.n);
     }
     gl.depthMask(true);
@@ -939,7 +1261,7 @@ export class Renderer3D {
     void px; void py; void pz;
   }
 
-  private drawSky(env: Env, style: ZoneStyle): void {
+  private drawSky(env: Env, style: ZoneStyle, warm: number): void {
     const gl = this.gl, P = this.progs.sky;
     if (!this.invVp) return;
     gl.useProgram(P.p);
@@ -956,6 +1278,8 @@ export class Renderer3D {
     gl.uniform1f(P.u.uTime!, this.time);
     gl.uniform1f(P.u.uStars!, env.stars);
     gl.uniform1f(P.u.uFlat!, style.enclosed ? 1 : 0);
+    gl.uniform4f(P.u.uMoon!, env.moonDir[0], env.moonDir[1], env.moonDir[2], env.moonAmt);
+    gl.uniform4f(P.u.uWarm!, 1, 0.52, 0.3, style.enclosed ? 0 : warm * 0.85);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.enable(gl.DEPTH_TEST);
     gl.depthMask(true);
@@ -991,15 +1315,16 @@ export class Renderer3D {
     gl.disable(gl.BLEND);
   }
 
-  private drawParticles(style: ZoneStyle, env: Env, px: number, py: number, pz: number, count: number): void {
-    if (style.particles === 'ninguna' || count <= 0) return;
+  private drawParticles(style: ZoneStyle, env: Env, px: number, py: number, pz: number, count: number, kind: ParticleKind): void {
+    void style;
+    if (kind === 'ninguna' || count <= 0) return;
     const gl = this.gl;
     const P = this.progs.part;
     gl.useProgram(P.p);
     gl.enable(gl.BLEND);
     gl.depthMask(false);
-    const k = style.particles;
-    const additive = k === 'polen' || k === 'motas' || k === 'esporas' || k === 'brasas';
+    const k = kind;
+    const additive = k === 'polen' || k === 'motas' || k === 'esporas' || k === 'brasas' || k === 'luciernagas';
     gl.blendFunc(gl.SRC_ALPHA, additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
     const night = env.night;
     const cfg = {
@@ -1009,6 +1334,8 @@ export class Renderer3D {
       polvo: { c: [0.9, 0.8, 0.6, 0.35], v: [1.4, 0.05, 0.4], s: 6 },
       esporas: { c: [0.6, 1, 0.55, 0.45 + night * 0.3], v: [0.05, 0.16, 0.05], s: 8 },
       brasas: { c: [1, 0.55, 0.2, 0.8], v: [0.1, 0.6, 0.1], s: 7 },
+      luciernagas: { c: [0.85, 1, 0.35, 1.2 * env.fireflies], v: [0.04, 0.02, 0.05], s: 24 },
+      bruma: { c: [0.55, 0.6, 0.72, 0.1], v: [0.1, 0.0, 0.06], s: 70 },
       ninguna: { c: [0, 0, 0, 0], v: [0, 0, 0], s: 0 },
     }[k];
     gl.uniformMatrix4fv(P.u.uVP!, false, this.vp);
@@ -1017,9 +1344,9 @@ export class Renderer3D {
     gl.uniform3f(P.u.uVel!, cfg.v[0]!, cfg.v[1]!, cfg.v[2]!);
     gl.uniform1f(P.u.uSize!, cfg.s);
     gl.uniform1f(P.u.uScale!, this.glCanvas.height / 540);
-    gl.uniform1f(P.u.uGround!, py - 0.2);
+    gl.uniform1f(P.u.uGround!, py - (k === 'bruma' ? 0.15 : 0.2));
     gl.uniform1f(P.u.uBox!, 22);
-    gl.uniform1f(P.u.uBoxH!, k === 'nieve' ? 8 : 4.5);
+    gl.uniform1f(P.u.uBoxH!, k === 'nieve' ? 8 : k === 'bruma' ? 0.9 : k === 'luciernagas' ? 2.2 : 4.5);
     gl.uniform4f(P.u.uColor!, cfg.c[0]!, cfg.c[1]!, cfg.c[2]!, cfg.c[3]!);
     gl.disableVertexAttribArray(1);
     gl.disableVertexAttribArray(2);

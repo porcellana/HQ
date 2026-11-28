@@ -61,7 +61,8 @@ export const CHUNK = 16;
 export const WATER_Y = -0.12;
 const WATER_H = -0.52;
 
-export interface Light { x: number; y: number; z: number; r: number; g: number; b: number; rad: number }
+/** k: fuego (parpadea y echa chispas), cristal (pulsa), ventana (sólo de noche), lámpara. */
+export interface Light { x: number; y: number; z: number; r: number; g: number; b: number; rad: number; k?: 'fire' | 'crystal' | 'window' }
 export interface ChunkData {
   cx: number; cz: number;
   terrain: Float32Array;
@@ -130,6 +131,7 @@ export class Geo {
     if (k === 'water') return this.spriteAt(x, y) === 'swampWater' ? -0.4 : WATER_H;
     if (k === 'mount') return 0.7 + 0.62 * this.mdepth[y * this.w + x]! + vnoise(x * 0.8, y * 0.8, 7) * 0.5;
     const s = this.spriteAt(x, y);
+    if (s === 'caveFloor') return (vnoise(x * 0.35, y * 0.35, this.g.seed + 9) - 0.45) * 0.34 + (vnoise(x * 0.9, y * 0.9, this.g.seed + 4) - 0.5) * 0.1;
     const flat = s === 'cobble' || s === 'woodFloor' || s === 'carpet' || s === 'stoneFloor' || s === 'dock' || s === 'bridge';
     if (this.amp === 0 || flat) return flat && this.klass(x, y) !== 'deck' ? 0 : 0.01;
     const n = vnoise(x * 0.11, y * 0.11, this.g.seed) * 0.75 + vnoise(x * 0.3, y * 0.3, this.g.seed + 5) * 0.25;
@@ -146,6 +148,44 @@ export class Geo {
     const tx = tx0 * tx0 * (3 - 2 * tx0), tz = tz0 * tz0 * (3 - 2 * tz0);
     const a = this.vert(x0, z0), b = this.vert(x0 + 1, z0), c = this.vert(x0, z0 + 1), d = this.vert(x0 + 1, z0 + 1);
     return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
+  }
+  /** ¿Es una casilla de muro que se dibuja como roca orgánica (cuevas y mazmorras)? */
+  isRock(x: number, y: number): boolean {
+    const cx = Math.min(this.w - 1, Math.max(0, x)), cy = Math.min(this.h - 1, Math.max(0, y));
+    if (this.klass(cx, cy) !== 'wall') return false;
+    const sp = this.spriteAt(cx, cy);
+    return sp === 'caveWall' || (this.g.kind === 'dungeon' && sp !== 'woodWall');
+  }
+  /** Rugosidad de la roca: 1 en cuevas, menos en mazmorras construidas. */
+  get rough(): number {
+    if (this._rough < 0) {
+      let cave = 0;
+      for (const s of this.sp) if (s === 'caveWall') cave++;
+      this._rough = cave > 4 ? 1 : 0.5;
+    }
+    return this._rough;
+  }
+  private _rough = -1;
+  /** Cobertura de roca 0..1 en un punto (interpolada entre centros de casilla con ondulación). */
+  rockAmt(px: number, pz: number): number {
+    const sd = this.g.seed;
+    const wx = px + (vnoise(px * 1.7, pz * 1.7, sd + 31) - 0.5) * 0.6 * this.rough;
+    const wz = pz + (vnoise(px * 1.7 + 9, pz * 1.7 + 4, sd + 32) - 0.5) * 0.6 * this.rough;
+    const fx = wx - 0.5, fz = wz - 0.5;
+    const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
+    const a = this.isRock(x0, z0) ? 1 : 0, b = this.isRock(x0 + 1, z0) ? 1 : 0, c = this.isRock(x0, z0 + 1) ? 1 : 0, d = this.isRock(x0 + 1, z0 + 1) ? 1 : 0;
+    return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
+  }
+  /** Altura de la roca sobre el suelo en un punto (0 en el suelo libre). */
+  rockH(px: number, pz: number): number {
+    const f = this.rockAmt(px, pz);
+    if (f <= 0.001) return 0;
+    const r = this.rough, sd = this.g.seed;
+    const e = 0.07 + 0.1 * r;
+    let u = Math.min(1, Math.max(0, (f - (0.5 - e)) / (2 * e)));
+    u = u * u * (3 - 2 * u);
+    const n = vnoise(px * 1.9, pz * 1.9, sd + 17), n2 = vnoise(px * 5.3, pz * 5.3, sd + 18);
+    return u * (1.25 + 0.35 * r + (n - 0.5) * 0.95 * r + (n2 - 0.5) * 0.22 * r);
   }
   isBlock(x: number, y: number): boolean {
     const k = this.klass(x, y);
@@ -255,7 +295,7 @@ export function buildChunk(geo: Geo, cx: number, cz: number, opts: BuildOpts = {
         const own1 = k === 'ground' ? 0.5 : 0.25;
         const cc = [vcolor(x, y, own, own1), vcolor(x + 1, y, own, own1), vcolor(x + 1, y + 1, own, own1), vcolor(x, y + 1, own, own1)] as [RGB, RGB, RGB, RGB];
         // Subdivisión suave: alturas con interpolación curva y normales del relieve (sin facetas).
-        const SUB = geo.amp > 0 || k === 'mount' ? 3 : 1;
+        const SUB = geo.amp > 0 || k === 'mount' || sp === 'caveFloor' ? 3 : 1;
         const gv: Array<{ p: number[]; n: number[]; c: RGB }> = [];
         const e = 0.18;
         for (let j = 0; j <= SUB; j++)
@@ -321,18 +361,38 @@ export function buildChunk(geo: Geo, cx: number, cz: number, opts: BuildOpts = {
             if ((sp === 'dirt' || sp === 'gravel' || sp === 'mud') && h1 < 0.18 * dens) addInst('pebble', x + h2, gy, y + h3, h1 * 20, 0.6 + h2 * 0.8);
             if (sp === 'snow' && h1 < 0.07 * dens) addInst('pebble', x + h2, gy, y + h3, h1 * 20, 0.7, [0.9, 0.95, 1]);
             if (sp === 'caveFloor' && h1 < 0.05 * dens) addInst('pebble', x + h2, gy, y + h3, h1 * 20, 0.8);
-            if (sp === 'caveFloor' && h2 < 0.012) {
-              addInst('crystal', x + 0.5, gy, y + 0.5, h3 * 6, 0.8 + h1);
-              lights.push({ x: x + 0.5, y: gy + 0.4, z: y + 0.5, r: 0.3, g: 0.8, b: 1, rad: 3.2 });
+            const rockNear = geo.g.kind === 'dungeon' && (geo.isRock(x - 1, y) || geo.isRock(x + 1, y) || geo.isRock(x, y - 1) || geo.isRock(x, y + 1));
+            if (sp === 'caveFloor' && h2 < (rockNear ? 0.045 : 0.012)) {
+              const hue = hash2(x, y, 61);
+              const tint: RGB = hue < 0.6 ? [1, 1, 1] : hue < 0.85 ? [1.05, 0.55, 1.1] : [0.6, 1.05, 0.75];
+              addInst('crystal', x + 0.5, gy, y + 0.5, h3 * 6, 0.8 + h1, tint);
+              lights.push({ x: x + 0.5, y: gy + 0.4, z: y + 0.5, r: 0.3 * tint[0], g: 0.8 * tint[1], b: tint[2], rad: 3.4, k: 'crystal' });
+            }
+            if (geo.g.kind === 'dungeon' && sp !== 'water') {
+              if (rockNear && hash2(x, y, 71) < 0.2) {
+                const ox = geo.isRock(x - 1, y) ? -0.32 : geo.isRock(x + 1, y) ? 0.32 : (hash2(x, y, 72) - 0.5) * 0.6;
+                const oz = geo.isRock(x, y - 1) ? -0.32 : geo.isRock(x, y + 1) ? 0.32 : (hash2(x, y, 73) - 0.5) * 0.6;
+                addInst(hash2(x, y, 74) < 0.5 ? 'stalag' : 'stalag2', x + 0.5 + ox, gy, y + 0.5 + oz, hash2(x, y, 75) * 6.28, 0.7 + hash2(x, y, 76) * 0.8);
+              }
+              // Braseros sueltos junto a las paredes de las salas.
+              if (hash2(x, y, 77) < 0.011 && (rockNear || geo.g.kind === 'dungeon' && hash2(x, y, 78) < 0.4)) {
+                addInst('brazier', x + 0.5, gy, y + 0.5, 0, 1);
+                lights.push({ x: x + 0.5, y: gy + 0.75, z: y + 0.5, r: 1, g: 0.55, b: 0.22, rad: 7.5, k: 'fire' });
+              }
             }
             const nearWater = geo.klass(x - 1, y) === 'water' || geo.klass(x + 1, y) === 'water' || geo.klass(x, y - 1) === 'water' || geo.klass(x, y + 1) === 'water';
             if (nearWater && h1 < 0.55 * dens && outdoor) addInst('reed', x + 0.2 + h2 * 0.6, gy - 0.05, y + 0.2 + h3 * 0.6, h1 * 9, 0.8 + h3 * 0.7);
             if (sp === 'mud' && h2 < 0.06 * dens) addInst('mushroom', x + h1, gy, y + h3, h2 * 9, 0.8 + h1 * 0.5);
           }
         } else if (k === 'water' && hv.every((h) => h < WATER_Y - 0.1) && h1 < 0.08 * dens) addInst('lily', x + 0.5, WATER_Y + 0.01, y + 0.5, h2 * 6, 0.8 + h3 * 0.5);
+        if (k === 'ground' && geo.g.kind !== 'town' && rockTouch(geo, x, y)) rockSkin(geo, x, y, T, inst, lights);
         continue;
       }
 
+      if (geo.isRock(x, y)) {
+        rockSkin(geo, x, y, T, inst, lights);
+        continue;
+      }
       // --- bloques: muros y tejados
       // La roca maciza (sin ningún suelo alrededor) no se dibuja: así los pasillos quedan rodeados de sombra.
       if (k === 'wall' && geo.g.kind !== 'town') {
@@ -444,9 +504,9 @@ export function buildChunk(geo: Geo, cx: number, cz: number, opts: BuildOpts = {
             const wx = x + 0.5, wy = gy + 0.5, ww = 0.24;
             const wf = T.count;
             T.rbox(wx, wy - 0.17, y + 1.0, ww * 2, 0.34, 0.05, [1.25, 0.95, 0.5], { r: 0.1, lo: 1, hi: 1 });
-            for (let q = wf * 10 + 9; q < T.v.length; q += 10) T.v[q] = 2;
+            for (let q = wf * 10 + 9; q < T.v.length; q += 10) T.v[q] = 3;
             T.rbox(wx, wy - 0.22, y + 1.02, 0.64, 0.05, 0.1, col('#6a4a2c'), { r: 0.02 });
-            lights.push({ x: wx, y: wy, z: y + 1.4, r: 1, g: 0.72, b: 0.35, rad: 2.2 });
+            lights.push({ x: wx, y: wy, z: y + 1.4, r: 1, g: 0.72, b: 0.35, rad: 2.6, k: 'window' });
           }
         }
       }
@@ -457,7 +517,7 @@ export function buildChunk(geo: Geo, cx: number, cz: number, opts: BuildOpts = {
             if (geo.klass(x + dx!, y + dz!) === 'ground') {
               const ty = tops[0] - 0.7;
               addInst('torch', x + 0.5 + dx! * 0.5, ty, y + 0.5 + dz! * 0.5, Math.atan2(dx!, dz!), 1);
-              lights.push({ x: x + 0.5 + dx! * 0.7, y: ty + 0.5, z: y + 0.5 + dz! * 0.7, r: 1, g: 0.62, b: 0.25, rad: 5.5 });
+              lights.push({ x: x + 0.5 + dx! * 0.7, y: ty + 0.5, z: y + 0.5 + dz! * 0.7, r: 1, g: 0.62, b: 0.25, rad: 5.5, k: 'fire' });
               break;
             }
           }
@@ -465,6 +525,94 @@ export function buildChunk(geo: Geo, cx: number, cz: number, opts: BuildOpts = {
       }
     }
   return { cx, cz, terrain: T.toArray(), water: Wm.toArray(), inst, lights };
+}
+
+
+/** ¿Hay roca orgánica en alguna casilla vecina (3x3)? */
+function rockTouch(geo: Geo, x: number, y: number): boolean {
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (geo.klass(x + dx, y + dy) !== 'out' && geo.isRock(x + dx, y + dy)) return true;
+  return false;
+}
+
+/**
+ * Roca orgánica de cuevas y mazmorras: una piel suave (4x4 por casilla) cuya altura sale de un campo
+ * de ruido determinista por semilla; redondea el pie de la pared, la corona y deja la roca
+ * maciza sin dibujar. Añade estalactitas, cristales y antorchas sobre ella.
+ */
+function rockSkin(geo: Geo, x: number, y: number, T: MeshBuilder, inst: Map<string, number[]>, lights: Light[]): void {
+  const self = geo.isRock(x, y);
+  if (self) {
+    let open = false;
+    for (let dy = -1; dy <= 1 && !open; dy++) for (let dx = -1; dx <= 1; dx++) if (geo.klass(x + dx, y + dy) !== 'out' && !geo.isRock(x + dx, y + dy)) { open = true; break; }
+    if (!open) return;
+  }
+  const SUB = 4;
+  const sd = geo.g.seed;
+  // Color de la roca según el muro más cercano.
+  let wallSp = 'caveWall';
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (geo.isRock(x + dx, y + dy)) { wallSp = geo.spriteAt(Math.min(geo.w - 1, Math.max(0, x + dx)), Math.min(geo.h - 1, Math.max(0, y + dy))); }
+  const base = col(t3(wallSp).col);
+  const moss = col('#3d5c3a'), wet = shade(base, 0.38);
+  const H = (px: number, pz: number): number => geo.heightAt(px, pz) + geo.rockH(px, pz);
+  const pts: Array<{ p: number[]; n: number[]; c: RGB; h: number }> = [];
+  const e = 0.1;
+  for (let j = 0; j <= SUB; j++)
+    for (let i = 0; i <= SUB; i++) {
+      const px = x + i / SUB, pz = y + j / SUB;
+      const rh = geo.rockH(px, pz);
+      const fy = geo.heightAt(px, pz);
+      const gx = H(px + e, pz) - H(px - e, pz), gz = H(px, pz + e) - H(px, pz - e);
+      const l = Math.hypot(gx, 2 * e, gz);
+      const hh = Math.min(1, rh / 1.5);
+      const blot = 0.82 + 0.34 * vnoise(px * 3.1, pz * 3.1, sd + 41) + 0.14 * (vnoise(px * 9, pz * 9, sd + 42) - 0.5);
+      let c = mix(wet, base, Math.min(1, hh * 1.7));
+      c = mix(c, shade(base, 1.12), Math.max(0, hh - 0.75) * 1.2);
+      if (geo.rough > 0.8 && hh < 0.55 && vnoise(px * 2.3, pz * 2.3, sd + 43) > 0.66) c = mix(c, moss, 0.55 * (1 - hh));
+      c = shade(c, blot * (0.62 + 0.38 * Math.min(1, hh * 2.2)));
+      pts.push({ p: [px, fy + Math.max(rh, 0.004), pz], n: [-gx / l, (2 * e) / l, -gz / l], c, h: rh });
+    }
+  const at = (i: number, j: number): typeof pts[number] => pts[j * (SUB + 1) + i]!;
+  for (let j = 0; j < SUB; j++)
+    for (let i = 0; i < SUB; i++) {
+      const A = at(i, j), B = at(i + 1, j), C = at(i + 1, j + 1), D = at(i, j + 1);
+      if (Math.max(A.h, B.h, C.h, D.h) < 0.012) continue;
+      if (((i + j) & 1) === 0) {
+        T.triN(A.p, D.p, C.p, A.n, D.n, C.n, A.c, D.c, C.c);
+        T.triN(A.p, C.p, B.p, A.n, C.n, B.n, A.c, C.c, B.c);
+      } else {
+        T.triN(A.p, D.p, B.p, A.n, D.n, B.n, A.c, D.c, B.c);
+        T.triN(B.p, D.p, C.p, B.n, D.n, C.n, B.c, D.c, C.c);
+      }
+    }
+  const add = (id: string, px: number, py: number, pz: number, rot: number, sc: number, c: RGB = [1, 1, 1]): void => {
+    let a = inst.get(id);
+    if (!a) inst.set(id, (a = []));
+    a.push(px, py, pz, rot, sc, c[0], c[1], c[2]);
+  };
+  if (!self) return;
+  const open4 = [[0, 1], [0, -1], [1, 0], [-1, 0]] as const;
+  for (const [dx, dz] of open4) {
+    if (geo.klass(x + dx, y + dz) === 'out' || geo.isRock(x + dx, y + dz)) continue;
+    const px = x + 0.5 + dx * 0.5, pz = y + 0.5 + dz * 0.5;
+    const hv = hash2(x + dx, y + dz, 81);
+    // Estalactitas colgando de la corona de la pared.
+    if (hv < 0.3) add('stalac', px + dx * 0.04 + (hash2(x, y, 82) - 0.5) * 0.5 * (dz !== 0 ? 1 : 0), H(px, pz) - 0.02, pz + dz * 0.04 + (hash2(x, y, 83) - 0.5) * 0.5 * (dx !== 0 ? 1 : 0), hv * 20, 0.7 + hash2(x, y, 84) * 0.8);
+    // Cristales brotando de la roca.
+    if (geo.rough > 0.8 && hash2(x + dx, y + dz, 85) < 0.045) {
+      const hue = hash2(x, y, 86);
+      const tint: RGB = hue < 0.6 ? [1, 1, 1] : hue < 0.85 ? [1.05, 0.55, 1.1] : [0.6, 1.05, 0.75];
+      const ph = H(px - dx * 0.2, pz - dz * 0.2);
+      add('crystal', px - dx * 0.2, ph - 0.05, pz - dz * 0.2, hv * 12, 0.9 + hash2(x, y, 87) * 0.7, tint);
+      lights.push({ x: px, y: ph + 0.4, z: pz, r: 0.3 * tint[0], g: 0.8 * tint[1], b: tint[2], rad: 3.6, k: 'crystal' });
+    }
+    // Antorchas clavadas en la pared.
+    if (hash2(x, y, 12) < 0.08 && geo.g.kind !== 'town') {
+      const ty = H(px - dx * 0.1, pz - dz * 0.1) - 0.55;
+      add('torch', px - dx * 0.08, ty, pz - dz * 0.08, Math.atan2(dx, dz), 1);
+      lights.push({ x: px + dx * 0.25, y: ty + 0.7, z: pz + dz * 0.25, r: 1, g: 0.62, b: 0.25, rad: 6.2, k: 'fire' });
+      return;
+    }
+  }
 }
 
 function topAt(tops: [number, number, number, number], tx: number, ty: number, vx: number, vy: number): number {
@@ -495,8 +643,8 @@ function placeObject(geo: Geo, obj: string, x: number, y: number, gy: number, h1
     }
     case 'lamp': add('lamp', cx, gy, cz, 0, 1); lights.push({ x: cx, y: gy + 1.1, z: cz, r: 1, g: 0.75, b: 0.4, rad: 5 }); break;
     case 'streetlamp': add('streetlamp', cx, gy, cz, 0, 1); lights.push({ x: cx, y: gy + 1.7, z: cz, r: 1, g: 0.78, b: 0.45, rad: 6.5 }); break;
-    case 'campfire': add('campfire', cx, gy, cz, 0, 1); lights.push({ x: cx, y: gy + 0.5, z: cz, r: 1, g: 0.55, b: 0.2, rad: 7 }); break;
-    case 'hearth': add('hearth', cx, gy, cz, 0, 1); lights.push({ x: cx, y: gy + 0.5, z: cz + 0.2, r: 1, g: 0.5, b: 0.2, rad: 5.5 }); break;
+    case 'campfire': add('campfire', cx, gy, cz, 0, 1); lights.push({ x: cx, y: gy + 0.5, z: cz, r: 1, g: 0.55, b: 0.2, rad: 7, k: 'fire' }); break;
+    case 'hearth': add('hearth', cx, gy, cz, 0, 1); lights.push({ x: cx, y: gy + 0.5, z: cz + 0.2, r: 1, g: 0.5, b: 0.2, rad: 5.5, k: 'fire' }); break;
     case 'altar': add('altar', cx, gy, cz, 0, 1); lights.push({ x: cx, y: gy + 1, z: cz, r: 1, g: 0.9, b: 0.5, rad: 4.5 }); break;
     case 'barrel': case 'table': case 'bed': add(obj, cx, gy, cz, obj === 'barrel' ? h1 * 6 : 0, 1, tint); break;
     default: add(obj, cx, gy, cz, 0, 1, tint);

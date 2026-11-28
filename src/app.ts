@@ -127,9 +127,9 @@ export class App {
     if (import.meta.env.DEV) {
       // Ayuda de desarrollo para pruebas visuales (no existe en producción).
       (window as unknown as Record<string, unknown>).__dev = {
-        newGame: (classId = 'guerrero', zone?: string) => {
+        newGame: (classId = 'guerrero', zone?: string, x?: number, y?: number) => {
           const st = createNewGame({ name: 'Test', classId, portrait: 3, seed: 1234, stats: { FUE: 15, DES: 13, CON: 14, INT: 10, SAB: 12, CAR: 8 }, background: 'aventurero' });
-          if (zone) st.player.pos = { zone, x: st.player.pos.x, y: st.player.pos.y };
+          if (zone) st.player.pos = { zone, x: x ?? st.player.pos.x, y: y ?? st.player.pos.y };
           this.startGame(st);
         },
       };
@@ -292,10 +292,8 @@ export class App {
         r.onContextLost = () => {
           showDialog(this.ui, 'Gráficos detenidos', 'El sistema ha liberado la memoria gráfica del juego. Pulsa «Recargar» para continuar (tu partida está guardada).', [{ label: 'Recargar', kind: 'primary', action: () => { location.reload(); return false; } }]);
         };
-        r.onAutoQuality = (q) => {
-          this.settings = { ...this.settings, quality: q };
-          saveSettings(this.settings);
-          this.toast(`Rendimiento bajo: calidad gráfica «${q}».`);
+        r.onAutoQuality = (q, dir) => {
+          this.toast(dir === 'baja' ? `Rendimiento bajo: calidad gráfica «${q}».` : `Rendimiento estable: calidad gráfica «${q}».`);
         };
         this.r3d = r;
         return true;
@@ -320,6 +318,9 @@ export class App {
     }
     this.audio.applySettings(this.settings);
     this.renderer.setQuality(this.settings.quality);
+    this.renderer.bloom = this.settings.bloom;
+    this.renderer.setStats(this.settings.showFps);
+    if (!this.settings.showFps) this.fpsEl?.remove();
     this.renderer.setZoomStep(this.settings.zoomStep);
     if (this.game) this.game.fogOn = this.settings.fog;
     // El tamaño de interfaz cambia el layout: recalculamos el canvas.
@@ -645,6 +646,22 @@ export class App {
   /** Los márgenes del HUD cambian (barra de habilidades, objetivo): se revisan a menudo. */
   private insetTimer = 0;
 
+  private fpsEl: HTMLElement | null = null;
+  private fpsT = 0;
+  /** Contador de rendimiento (Ajustes > Contador de fps): fps, llamadas de dibujo, triángulos, resolución y memoria. */
+  private showFps(): void {
+    if (!this.fpsEl || !this.fpsEl.isConnected) {
+      this.fpsEl = document.createElement('div');
+      this.fpsEl.className = 'fps-counter';
+      this.ui.append(this.fpsEl);
+    }
+    const now = performance.now();
+    if (now - this.fpsT < 500) return;
+    this.fpsT = now;
+    const s = this.renderer.stats;
+    this.fpsEl.textContent = `${s.fps.toFixed(0)} fps · ${s.calls.toFixed(0)} dib · ${(s.tris / 1000).toFixed(0)}k tri · ${s.chunks}/${s.total} ch · ${(s.scale * 100).toFixed(0)}% ${s.quality}${s.shadows ? ' S' : ''}${s.bloom ? ' B' : ''}${s.heapMb ? ` · ${s.heapMb.toFixed(0)}MB` : ''}`;
+  }
+
   private tick(dt: number): void {
     const game = this.game;
     if (!game) return;
@@ -667,6 +684,7 @@ export class App {
     // Con la escena de batalla abierta, el mapa no se dibuja (ahorra batería).
     if (this.scene) return;
     this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, questGuide: this.settings.questGuide });
+    if (this.settings.showFps) this.showFps();
     this.hud?.update(game, dt);
     this.hud?.zoom.update(this.renderer.zoomStep, this.renderer.zoomLimits, this.renderer.cameraTouched);
   }

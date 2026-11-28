@@ -71,3 +71,29 @@ export class SpriteBatch {
     this.n = 0;
   }
 }
+
+/**
+ * Textura de profundidad 1x1 con comparación en la unidad 2. Un `sampler2DShadow` necesita siempre
+ * una textura con comparación enlazada (si no, el dibujo falla con "dos texturas de distinto tipo").
+ */
+export function bindDummyShadow(gl: WebGL2RenderingContext): WebGLTexture {
+  const tex = gl.createTexture()!;
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, 1, 1);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+  gl.activeTexture(gl.TEXTURE0);
+  return tex;
+}
+
+/** Deja un programa con WORLD_FS listo: niebla en la unidad 1, sombras apagadas en la 2 (con textura de relleno). */
+export function initWorldSamplers(gl: WebGL2RenderingContext, p: Prog): void {
+  gl.useProgram(p.p);
+  gl.uniform1i(gl.getUniformLocation(p.p, 'uVis'), 1);
+  gl.uniform1i(gl.getUniformLocation(p.p, 'uSh'), 2);
+  gl.uniform4f(gl.getUniformLocation(p.p, 'uShP'), 0, 0, 0, 0);
+  bindDummyShadow(gl);
+}

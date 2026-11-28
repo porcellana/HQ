@@ -12,8 +12,10 @@ import { rigMatrices, rigPose, type AnimInput } from './anim';
 import { envFor, zoneStyle, type Env } from './style';
 import { ident, invert, lookAt, mul, perspective, project, scaleXYZ, trs, unprojectRay, type Mat4 } from './mat';
 import { BLOB_FS, BLOB_VS, MAX_LIGHTS, SKY_FS, SKY_VS, WORLD_FS, WORLD_VS } from './shaders';
-import { makeProg, SpriteBatch, type Prog } from './glutil';
+import { initWorldSamplers, makeProg, SpriteBatch, type Prog } from './glutil';
 import type { QualityCfg } from './quality';
+import { flicker, type DayClock } from './daycycle';
+import { blobMatrix } from './shadow';
 
 export const BATTLE_W = 36;
 export const BATTLE_H = 22;
@@ -164,6 +166,7 @@ export class Battle3D {
   private bufs = new WeakMap<Float32Array, WebGLBuffer>();
   private blobBuf!: { buf: WebGLBuffer; n: number };
   private windy = 1;
+  private blobM = new Float32Array(16);
   private flat: boolean;
   /** Medidas actuales (px CSS) y cámara. */
   w = 1;
@@ -178,7 +181,7 @@ export class Battle3D {
   private lost = false;
   onLost: (() => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement, biome: Biome, seed: number, night: number, q: QualityCfg) {
+  constructor(canvas: HTMLCanvasElement, biome: Biome, seed: number, night: number, q: QualityCfg, clock?: DayClock) {
     this.canvas = canvas;
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance' });
     if (!gl) throw new Error('WebGL2 no disponible');
@@ -188,9 +191,10 @@ export class Battle3D {
       this.lost = true;
       this.onLost?.();
     });
-    this.world = makeProg(gl, WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uDis', 'uDisY', 'uDisCol', 'uL', 'uLC', 'uNL']);
+    this.world = makeProg(gl, WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uDis', 'uDisY', 'uDisCol', 'uWin', 'uSh', 'uShVP', 'uShP', 'uVis', 'uVisP', 'uL', 'uLC', 'uNL']);
+    initWorldSamplers(gl, this.world);
     this.blob = makeProg(gl, BLOB_VS, BLOB_FS, ['uVP', 'uModel', 'uAlpha']);
-    this.sky = makeProg(gl, SKY_VS, SKY_FS, ['uInv', 'uEye', 'uTop', 'uHor', 'uFog', 'uSunDir', 'uSunCol', 'uTime', 'uStars', 'uFlat']);
+    this.sky = makeProg(gl, SKY_VS, SKY_FS, ['uInv', 'uEye', 'uTop', 'uHor', 'uFog', 'uSunDir', 'uSunCol', 'uTime', 'uStars', 'uFlat', 'uMoon', 'uWarm', 'uBias']);
     this.spr = new SpriteBatch(gl, 900);
     gl.enable(gl.DEPTH_TEST);
     gl.vertexAttribDivisor(4, 1);
@@ -199,7 +203,7 @@ export class Battle3D {
     const geo = new Geo(grid);
     const style = zoneStyle(grid);
     const dark = biome === 'cueva' || biome === 'cripta' || biome === 'galerias' ? 0.55 : biome === 'interior' ? 0.15 : 0;
-    this.env = envFor(style, night, dark, 0.35);
+    this.env = envFor(style, night, dark, 0.35, clock);
     this.windy = style.wind;
     this.flat = style.enclosed;
     const nc = Math.ceil(BATTLE_W / CHUNK), nz = Math.ceil(BATTLE_H / CHUNK);
@@ -348,6 +352,10 @@ export class Battle3D {
       gl.uniform1f(S.u.uTime!, this.t);
       gl.uniform1f(S.u.uStars!, env.stars);
       gl.uniform1f(S.u.uFlat!, this.flat ? 1 : 0);
+      // La luna se coloca delante de la cámara para que se vea sobre el escenario.
+      gl.uniform1f(S.u.uBias!, 0.42);
+      gl.uniform4f(S.u.uMoon!, 0.1, 0.34, -0.95, env.moonAmt);
+      gl.uniform4f(S.u.uWarm!, 1, 0.52, 0.3, this.flat ? 0 : env.warm * 0.85);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.enable(gl.DEPTH_TEST);
       gl.depthMask(true);
@@ -368,13 +376,15 @@ export class Battle3D {
     gl.uniform3fv(P.u.uAmbBot!, env.ambBottom);
     gl.uniform4f(P.u.uFlash!, 0, 0, 0, 0);
     gl.uniform1f(P.u.uDis!, 0);
+    gl.uniform1f(P.u.uWin!, env.windows);
     const nl = Math.min(this.lights.length, MAX_LIGHTS);
     const lp = new Float32Array(MAX_LIGHTS * 4), lc = new Float32Array(MAX_LIGHTS * 3);
     const k = 0.5 + Math.max(env.night, 0.5);
     for (let i = 0; i < nl; i++) {
       const l = this.lights[i]!;
-      lp.set([l.x, l.y, l.z, l.rad * (1 + 0.04 * Math.sin(this.t * 9 + i))], i * 4);
-      lc.set([l.r * k, l.g * k, l.b * k], i * 3);
+      const fl = l.k === 'fire' ? flicker(this.t, l.x * 7.1 + l.z * 3.3) : l.k === 'window' ? env.windows * 1.1 : 1;
+      lp.set([l.x, l.y, l.z, l.rad * (l.k === 'fire' ? 0.92 + (fl - 1) * 0.5 : 1 + 0.04 * Math.sin(this.t * 9 + i))], i * 4);
+      lc.set([l.r * k * fl, l.g * k * fl, l.b * k * fl], i * 3);
     }
     gl.uniform4fv(P.u.uL!, lp);
     gl.uniform3fv(P.u.uLC!, lc);
@@ -406,8 +416,9 @@ export class Battle3D {
     for (const u of f.units) {
       if (u.shadow <= 0.01) continue;
       const r = u.rig.shadow * u.scale * 1.6;
-      gl.uniformMatrix4fv(B.u.uModel!, false, trs(u.x, 0.0, u.z, 0, r));
-      gl.uniform1f(B.u.uAlpha!, 0.6 * u.shadow);
+      blobMatrix(u.x, 0.0, u.z, r, u.rig.height * u.scale * 0.6, env.sunDir, this.blobM);
+      gl.uniformMatrix4fv(B.u.uModel!, false, this.blobM);
+      gl.uniform1f(B.u.uAlpha!, 0.6 * u.shadow * Math.max(0.35, env.shadowStrength));
       gl.drawArrays(gl.TRIANGLES, 0, this.blobBuf.n);
     }
     gl.depthMask(true);

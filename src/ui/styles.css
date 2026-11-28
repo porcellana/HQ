@@ -600,3 +600,6 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 @media (prefers-reduced-motion: reduce) {
   .sheet-panel, .modal, .dialog-sheet, .b-panel, .screen, .menu-hero { animation: none; }
 }
+
+/* v0.13: contador de rendimiento */
+.fps-counter { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 2px); left: 4px; z-index: 60; font: 10px/1.2 ui-monospace, monospace; color: #bff0c8; background: rgba(8, 10, 16, 0.6); padding: 2px 6px; border-radius: 6px; pointer-events: none; }

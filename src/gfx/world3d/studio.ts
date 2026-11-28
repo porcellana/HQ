@@ -7,7 +7,7 @@ import { PET_SPECIES } from '@/data/registry';
 import type { PetLook } from '@/data/schema';
 import { DEFAULT_HERO_COLORS, type HumanoidColors } from '../look';
 import { rigMatrices, rigPose } from './anim';
-import { makeProg, type Prog } from './glutil';
+import { initWorldSamplers, makeProg, type Prog } from './glutil';
 import { ident, lookAt, mul, perspective, trs } from './mat';
 import { beastRig, humanoidRig, type Rig } from './models';
 import { WORLD_FS, WORLD_VS } from './shaders';
@@ -27,6 +27,7 @@ class Studio {
     if (!gl) throw new Error('WebGL2 no disponible');
     this.gl = gl;
     this.prog = makeProg(gl, WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uL', 'uLC', 'uNL']);
+    initWorldSamplers(gl, this.prog);
     gl.enable(gl.DEPTH_TEST);
     gl.vertexAttribDivisor(4, 1);
     gl.vertexAttribDivisor(5, 1);

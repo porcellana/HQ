@@ -125,3 +125,8 @@ export function scaleXYZ(x: number, y: number, z: number): Mat4 {
   m[0] = x; m[5] = y; m[10] = z;
   return m;
 }
+
+/** Proyección ortográfica (profundidad 0..1 en NDC -1..1 como la perspectiva de WebGL). */
+export function ortho(l: number, r: number, b: number, t: number, n: number, f: number): Mat4 {
+  return new Float32Array([2 / (r - l), 0, 0, 0, 0, 2 / (t - b), 0, 0, 0, 0, -2 / (f - n), 0, -(r + l) / (r - l), -(t + b) / (t - b), -(f + n) / (f - n), 1]);
+}

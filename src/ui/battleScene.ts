@@ -22,6 +22,7 @@ import * as Pets from '@/game/pets/pets';
 import { Battle3D, STAGE_CENTER, type Projectile, type UnitDraw } from '@/gfx/world3d/battle3d';
 import { QUALITY, type Quality } from '@/gfx/world3d/quality';
 import { nightAmount } from '@/gfx/viewconst';
+import { clockAt, dayClock } from '@/gfx/world3d/daycycle';
 import { Fx3D, buffBurst, critBurst, dissolveDust, explosion, healBurst, impact, shockRing, statusPuff, trailPuff } from '@/gfx/world3d/fx3d';
 import { beastRig, humanoidRig, type Rig } from '@/gfx/world3d/models';
 import type { AnimState } from '@/gfx/world3d/anim';
@@ -191,7 +192,7 @@ export class BattleScene {
     const gc = h('canvas', { class: 'b-gl' });
     const z = d.game.zone;
     const outdoor = z.def.kind === 'town' || z.def.kind === 'wild' || z.def.kind === 'world';
-    this.b3 = new Battle3D(gc, this.biome, (z.id.length * 7 + d.game.state.turn) & 255, outdoor ? nightAmount(d.game.state.turn) : 0, QUALITY[d.quality]);
+    this.b3 = new Battle3D(gc, this.biome, (z.id.length * 7 + d.game.state.turn) & 255, outdoor ? nightAmount(d.game.state.turn) : 0, QUALITY[d.quality], outdoor ? dayClock(d.game.state.turn) : clockAt(0.3, 0));
     this.glCanvas = gc;
     this.stage = h('div', { class: 'b-stage' }, [this.glCanvas, this.canvas, this.orderEl, this.msgEl]);
     this.partyEl = h('div', { class: 'b-party' });

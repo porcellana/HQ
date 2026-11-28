@@ -45,6 +45,10 @@ export interface Settings {
   cameraSens: 'baja' | 'media' | 'alta';
   /** Niebla de exploración en el mapa (v0.11.1). */
   fog: boolean;
+  /** Resplandor (bloom) a pantalla completa; sólo actúa en calidad alta (v0.13). */
+  bloom: boolean;
+  /** Contador de fps y estadísticas de dibujo (oculto por defecto, v0.13). */
+  showFps: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -67,6 +71,8 @@ export const DEFAULT_SETTINGS: Settings = {
   cameraInvert: false,
   cameraSens: 'media',
   fog: true,
+  bloom: true,
+  showFps: false,
 };
 
 const KEY = 'ecos.settings';
