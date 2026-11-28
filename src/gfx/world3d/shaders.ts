@@ -206,8 +206,8 @@ out float vA;
 void main(){ vA = aSway; gl_Position = uVP * (uModel * vec4(aPos, 1.0)); }`;
 export const BLOB_FS = `#version 300 es
 precision mediump float;
-in float vA; uniform float uAlpha; out vec4 o;
-void main(){ o = vec4(0.02, 0.03, 0.05, vA * uAlpha); }`;
+in float vA; uniform float uAlpha; uniform vec3 uTint; out vec4 o;
+void main(){ o = vec4(uTint, vA * uAlpha); }`;
 
 export const PART_VS = `#version 300 es
 precision highp float;

@@ -42,11 +42,11 @@ export function worldOverview(seed: number, visited: readonly string[], coreName
       discovered,
     });
   };
-  for (const id of visited) add(id.replace(/\.d$/, ''), true);
+  for (const id of visited) add(id.replace(/\.[dh]\d*$/, ''), true);
   for (const id of visited) {
-    for (const n of plannedNeighbors(seed, id.replace(/\.d$/, ''))) {
+    for (const n of plannedNeighbors(seed, id.replace(/\.[dh]\d*$/, ''))) {
       const c = cellOf(n);
-      if (c && inWorld(c.cx, c.cy) && !n.endsWith('.d')) add(n, false);
+      if (c && inWorld(c.cx, c.cy) && !/\.[dh]\d*$/.test(n)) add(n, false);
     }
   }
   return [...out.values()];

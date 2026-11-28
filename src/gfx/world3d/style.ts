@@ -15,6 +15,8 @@ export interface ZoneStyle {
   snowy: boolean;
   /** Recinto cerrado (cueva, mazmorra, interior): sin cielo ni sol. */
   enclosed: boolean;
+  /** Interior de una casa: luz cálida de hogar en vez de oscuridad de mazmorra. */
+  cozy: boolean;
   sun: RGB;
   /** Vegetación (bosque, pantano, prado): hay luciérnagas de noche. */
   lush: boolean;
@@ -32,14 +34,14 @@ export function zoneStyle(g: Grid3D): ZoneStyle {
   const forest = f('tree', 'pine') > 0.2;
   let s: ZoneStyle = {
     fog: hexRgb('#b9cfd8'), fogDensity: 0.035, skyTop: hexRgb('#5d9ad6'), skyHorizon: hexRgb('#d3e4ea'),
-    particles: forest ? 'motas' : 'polen', wind: 1, snowy, enclosed, sun: hexRgb('#fff0cf'), lush: !snowy && !desert,
+    particles: forest ? 'motas' : 'polen', wind: 1, snowy, enclosed, cozy: g.kind === 'interior', sun: hexRgb('#fff0cf'), lush: !snowy && !desert,
   };
   if (snowy) s = { ...s, fog: hexRgb('#d6e4f2'), skyTop: hexRgb('#7fa7d4'), skyHorizon: hexRgb('#e6eef8'), particles: 'nieve', fogDensity: 0.04 };
   else if (desert) s = { ...s, fog: hexRgb('#e6d3a8'), skyTop: hexRgb('#6fa4d8'), skyHorizon: hexRgb('#f0dcae'), particles: 'polvo', wind: 1.4, fogDensity: 0.03 };
   else if (swamp) s = { ...s, fog: hexRgb('#7f9a78'), skyTop: hexRgb('#6f8f86'), skyHorizon: hexRgb('#a8bc9c'), particles: 'esporas', fogDensity: 0.06, wind: 0.5 };
   else if (forest) s = { ...s, fog: hexRgb('#a7c0b0'), skyTop: hexRgb('#5a8cc0'), skyHorizon: hexRgb('#c6dccf'), fogDensity: 0.045 };
   if (g.kind === 'town') s = { ...s, particles: 'polen' };
-  if (enclosed) s = { ...s, fog: hexRgb('#0d0b12'), skyTop: hexRgb('#0d0b12'), skyHorizon: hexRgb('#0d0b12'), fogDensity: 0.085, particles: 'polvo', wind: 0, sun: hexRgb('#8f8aa8'), lush: false };
+  if (enclosed) s = { ...s, fog: hexRgb(s.cozy ? '#1c1109' : '#0d0b12'), skyTop: hexRgb('#0d0b12'), skyHorizon: hexRgb('#0d0b12'), fogDensity: s.cozy ? 0.05 : 0.085, particles: 'polvo', wind: 0, sun: hexRgb('#8f8aa8'), lush: false };
   if (g.tint) {
     const t = hexRgb(g.tint.color);
     const a = Math.min(0.6, g.tint.alpha * 1.3);
@@ -77,7 +79,7 @@ const DAWN = hexRgb('#ff9a62'), DUSK_SKY = hexRgb('#5a4a9a'), MOON_COL = hexRgb(
 /** Entorno de luz según el estilo, la noche (0..1), la oscuridad de la zona (0..1) y el reloj del día. */
 export function envFor(st: ZoneStyle, night: number, darkness: number, timeFrac: number, clock?: DayClock): Env {
   const c = clock ?? legacyClock(night, timeFrac);
-  const dark = st.enclosed ? 1 : Math.max(darkness, 0);
+  const dark = st.cozy ? 0.45 : st.enclosed ? 1 : Math.max(darkness, 0);
   const nightCol = hexRgb('#0f1838');
   const dayAmbT = hexRgb('#cfe0f0'), dayAmbB = hexRgb('#7d6a58');
   const nightAmbT = hexRgb('#3a4a82'), nightAmbB = hexRgb('#1a1830');
@@ -102,8 +104,8 @@ export function envFor(st: ZoneStyle, night: number, darkness: number, timeFrac:
   return {
     sunDir: ld.dir,
     sunCol: [sunCol[0] * moonScale, sunCol[1] * moonScale, sunCol[2] * (1 - ld.moon * 0.35)],
-    ambTop: mix(ambTop, hexRgb('#2a2638'), dark * 0.75),
-    ambBottom: mix(ambBottom, hexRgb('#14111a'), dark * 0.75),
+    ambTop: st.cozy ? hexRgb('#b88a62') : mix(ambTop, hexRgb('#2a2638'), dark * 0.75),
+    ambBottom: st.cozy ? hexRgb('#5a3a28') : mix(ambBottom, hexRgb('#14111a'), dark * 0.75),
     fog,
     fogDensity: st.fogDensity * (1 + dark * 0.9 + night * 0.25 + warm * 0.18),
     skyTop,

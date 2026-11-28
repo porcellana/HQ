@@ -10,6 +10,9 @@ import WG from '@/data/worldgen/nombres';
 import type { Point } from '@/engine/pathfinding';
 import { Rng, hashString } from '@/engine/rng';
 import { generateFloor } from '../dungeonGen';
+import { EXIT_RE, DOOR_CHARS } from '../zone';
+import { generateInterior } from './interiors';
+import { HOUSE_RUMORS, RESIDENTS, type HouseRole } from '@/data/worldgen/casas';
 import { Grid, carve, exitCells, isWalk, reach, tch } from './layout';
 import {
   DELTA, DIR_DIGIT, ENTRANCE_DIGIT, biomeAt, cellId, cellLinks, cellName, hasUnderground, inWorld, isSettlement, noise2, placeAt, plannedName, subId,
@@ -207,7 +210,7 @@ export function generateCell(seed: number, cx: number, cy: number, level: number
   let encounters: EncounterTable | undefined;
   const info = { cx, cy, biome: biome.id, place, music: biome.music, battle: biome.battle };
   const sub: ZoneDef[] = [];
-  const npcSpot = (x: number, y: number): boolean => g.inb(x, y) && isWalk(g.get(x, y)) && !/[1-9]/.test(g.get(x, y)) && !used.has(g.k(x, y));
+  const npcSpot = (x: number, y: number): boolean => g.inb(x, y) && isWalk(g.get(x, y)) && !EXIT_RE.test(g.get(x, y)) && !used.has(g.k(x, y));
   const settle = (x: number, y: number): Point | null => {
     for (let r = 0; r < 4; r++) {
       for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (npcSpot(x + dx, y + dy)) { used.add(g.k(x + dx, y + dy)); return { x: x + dx, y: y + dy }; }
@@ -273,32 +276,61 @@ export function generateCell(seed: number, cx: number, cy: number, level: number
     const leaderName = firstName();
     const leaderOpts: DialogOption[] = [];
     addNpc('alcalde', kindWord.leader, leaderName, leaderSpot, npcDialog({ greeting: [...WG.leaderGreetings], quests: true, rumors, extraOptions: leaderOpts }));
-    roles.forEach((role, i) => {
-      const b = blds[i];
-      if (!b) return;
-      const spot = settle(b.front.x, b.front.y);
+    // v0.14: cada edificio tiene su puerta (carácter griego) y un interior entrable con sus residentes.
+    const houses: ZoneDef[] = [];
+    const firstHome = roles.length;
+    let neighborDone = false;
+    blds.forEach((b, i) => {
+      const dch = DOOR_CHARS[i]!;
+      const zid = `${id}.h${i}`;
+      const role: HouseRole = i < roles.length ? (roles[i] as HouseRole) : 'casa';
       const nm = firstName();
-      if (!spot) return;
       const sign = { x: b.door.x - 1, y: b.door.y + 1 };
-      if (g.get(sign.x, sign.y) !== tch('camino') && npcSpot(sign.x, sign.y)) { g.set(sign.x, sign.y, tch('cartel')); used.add(g.k(sign.x, sign.y)); }
+      if (i < roles.length && g.get(sign.x, sign.y) !== tch('camino') && npcSpot(sign.x, sign.y)) { g.set(sign.x, sign.y, tch('cartel')); used.add(g.k(sign.x, sign.y)); }
+      g.set(b.door.x, b.door.y, dch);
+      const home = i >= firstHome;
+      const inside = generateInterior({
+        seed, id: zid, role, level, town: name, ...(home ? { resident: nm } : {}), outside: id, door: dch,
+        chestLoot: biome.chestLoot, gen: info,
+      });
+      houses.push(inside.zone);
+      exits[dch] = { to: zid, arrive: '1', label: inside.zone.name, tile: 'puerta', door: true };
+      const at = inside.resident;
+      const put = (r: string, title: string, dialog: NpcDef['dialog'], overlay?: string): void => {
+        const n: NpcDef = { id: `${id}:${r}`, name: nm, title, zone: zid, x: at.x, y: at.y, look: look(rng, overlay), dialog, ...(rng.chance(0.5) ? { facingLeft: true } : {}) };
+        npcs.push(n);
+      };
       if (role === 'tienda' || role === 'gremio') {
         const s = role === 'tienda' ? sh.general : { ...sh.general, id: `${id}:shop_gremio`, name: `Gremio de ${name}`, stock: [...sh.general.stock, { pool: 'equipo' as const, count: [1, 2] as [number, number] }] };
         shopList.push(s);
-        addNpc(role, role === 'tienda' ? 'Tendero' : 'Gremio de aventureros', nm, spot, npcDialog({ greeting: [...WG.shopGreetings], shop: s.id, quests: false, rumors }));
+        put(role, role === 'tienda' ? 'Tendero' : 'Gremio de aventureros', npcDialog({ greeting: [...WG.shopGreetings], shop: s.id, quests: false, rumors }));
       } else if (role === 'herrero') {
         shopList.push(sh.smith);
-        addNpc(role, 'Herrero', nm, spot, npcDialog({ greeting: [...WG.smithGreetings], shop: sh.smith.id, rumors }), 'guerrero');
+        put(role, 'Herrero', npcDialog({ greeting: [...WG.smithGreetings], shop: sh.smith.id, rumors }), 'guerrero');
       } else if (role === 'alquimista' || role === 'armero' || role === 'magos' || role === 'negro') {
         const sd = role === 'alquimista' ? sh.alchemist : role === 'armero' ? sh.armorer : role === 'magos' ? sh.mage : sh.black;
         shopList.push(sd);
         const title = { alquimista: 'Alquimista', armero: 'Armero', magos: 'Maga de los Arcanos', negro: 'Traficante' }[role];
-        addNpc(role, title, nm, spot, npcDialog({ greeting: [...WG.shopGreetings], shop: sd.id, quests: false, rumors }), role === 'armero' ? 'guerrero' : role === 'magos' ? 'mago' : role === 'negro' ? 'picaro' : undefined);
+        put(role, title, npcDialog({ greeting: [...WG.shopGreetings], shop: sd.id, quests: false, rumors }), role === 'armero' ? 'guerrero' : role === 'magos' ? 'mago' : role === 'negro' ? 'picaro' : undefined);
       } else if (role === 'posada') {
-        addNpc(role, 'Posadero', nm, spot, npcDialog({ greeting: [...WG.innGreetings], inn: 6 + level * 3, rumors }));
+        put(role, 'Posadero', npcDialog({ greeting: [...WG.innGreetings], inn: 6 + level * 3, rumors }));
+      } else if (role === 'templo') {
+        put(role, 'Sacerdote', npcDialog({ greeting: [...WG.templeGreetings], temple: 4 }), 'clerigo');
       } else {
-        addNpc(role, 'Sacerdote', nm, spot, npcDialog({ greeting: [...WG.templeGreetings], temple: 4 }), 'clerigo');
+        // Casa corriente: un residente con su oficio. El primero tiene un favor que pedir (misiones).
+        const res = RESIDENTS[(hashString(`${seed}:res:${zid}`) >>> 0) % RESIDENTS.length]!;
+        const giver = !neighborDone;
+        neighborDone = true;
+        put(giver ? 'vecino' : `vecino${i}`, res.title, npcDialog({ greeting: [rng.pick(res.greetings)], quests: giver, rumors: [...rumors, rng.pick(HOUSE_RUMORS)] }));
+      }
+      // Un cliente o vecino de visita en algunas casas.
+      const guest = inside.extras[0];
+      if (guest && role !== 'casa' && rng.chance(0.4)) {
+        const gn = firstName();
+        npcs.push({ id: `${id}:visita${i}`, name: gn, title: rng.pick(['Cliente', 'Vecina', 'Viajero']), zone: zid, x: guest.x, y: guest.y, look: look(rng), dialog: npcDialog({ greeting: [rng.pick(WG.villagerGreetings)], rumors }) });
       }
     });
+    sub.push(...houses);
     const villagers = place === 'ciudad' ? 4 : place === 'pueblo' ? 3 : 2;
     for (let i = 0; i < villagers; i++) {
       const spot = settle(hub.x + rng.int(-5, 5), hub.y + rng.int(-4, 4));

@@ -328,6 +328,18 @@ export class App {
   }
 
   /** Zoom del mapa (botones, pellizco, rueda, teclas): +1 acercar, −1 alejar, 0 restablecer. */
+  /** Transición suave al cambiar de zona (entrar o salir de una casa, cruzar el mapa): negro que se disipa. */
+  private zoneFade(color: string): void {
+    try {
+      const f = document.createElement('div');
+      f.className = 'zone-fade';
+      f.style.background = color;
+      this.ui.append(f);
+      requestAnimationFrame(() => { f.style.opacity = '0'; });
+      setTimeout(() => f.remove(), 700);
+    } catch { /* sin DOM: nada */ }
+  }
+
   private zoomMap(dir: -1 | 0 | 1): void {
     if (!this.game || this.screen || this.pauseClose) return;
     if (dir === 0) this.r3d?.recenter();
@@ -462,6 +474,7 @@ export class App {
     });
     game.events.on('npcTalk', ({ npc }) => this.showNpcDialog(npc));
     game.events.on('zoneChanged', ({ zone, firstVisit }) => {
+      this.zoneFade(zone.def.kind === 'interior' ? 'rgba(18,10,4,1)' : 'rgba(6,5,12,1)');
       this.audio.zone(game);
       hud.showBanner(zone.def.name, firstVisit ? zone.def.description : undefined, zoneIcons(zone.def, game.npcs, state));
       buzz(this.settings.vibration, 20);

@@ -73,7 +73,7 @@ export function ensureZone(id: string, playerLevel: number): ZoneDef | undefined
 export function assignQuests(id: string, playerLevel: number): QuestDef[] {
   if (!active || active.gen.assigned[id]) return [];
   const zone = ensureZone(id, playerLevel);
-  if (!zone?.generated) return [];
+  if (!zone?.generated || zone.kind === 'interior') return [];
   const giverId = NPCS.has(`${id}:alcalde`) ? `${id}:alcalde` : NPCS.has(`${id}:mercader`) ? `${id}:mercader` : null;
   active.gen.assigned[id] = true;
   if (!giverId) return [];

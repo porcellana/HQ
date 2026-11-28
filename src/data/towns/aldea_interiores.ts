@@ -16,7 +16,7 @@ export default [
     '#r:::::::r#',
     '#:::rrr:::#',
     '#####1#####',
-  ]),
+  ], { features: [{ kind: 'cofre', x: 9, y: 2, loot: 'cofre', level: 1 }] }),
   interior('aldea_capilla', 'Capilla de la Llama Blanca', 'aldea_brumaroja', '4', [
     '###########',
     '#E:::A:::E#',
@@ -57,5 +57,5 @@ export default [
     '#:OO:::::r::#',
     '#::::rrrrr::#',
     '######1######',
-  ]),
+  ], { features: [{ kind: 'cofre', x: 11, y: 2, locked: true, loot: 'cofre', level: 2 }] }),
 ];

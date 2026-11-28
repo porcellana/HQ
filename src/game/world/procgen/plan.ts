@@ -50,13 +50,16 @@ export interface ParsedZoneId {
   cy: number;
   /** true = subterráneo (cueva o mazmorra) de la celda. */
   sub: boolean;
+  /** Número de casa si es el interior de un edificio del asentamiento (`w_x_y.h3`). */
+  house?: number;
 }
 export function parseZoneId(id: string): ParsedZoneId | null {
-  const m = /^w_(-?\d+)_(-?\d+)(\.d)?$/.exec(id);
+  const m = /^w_(-?\d+)_(-?\d+)(\.d|\.h\d+)?$/.exec(id);
   if (!m) return null;
   const cx = Number(m[1]);
   const cy = Number(m[2]);
-  return inWorld(cx, cy) ? { cx, cy, sub: !!m[3] } : null;
+  const house = m[3]?.startsWith('.h') ? Number(m[3].slice(2)) : undefined;
+  return inWorld(cx, cy) ? { cx, cy, sub: m[3] === '.d', ...(house !== undefined ? { house } : {}) } : null;
 }
 
 // ------------------------------------------------------------------- ruido
@@ -199,7 +202,7 @@ export function plannedNeighbors(seed: number, zoneId: string): string[] {
   }
   const p = parseZoneId(zoneId);
   if (!p) return [];
-  if (p.sub) return [cellId(p.cx, p.cy)];
+  if (p.sub || p.house !== undefined) return [cellId(p.cx, p.cy)];
   const out = cellLinks(p.cx, p.cy).map((l) => l.to);
   if (hasUnderground(placeAt(seed, p.cx, p.cy))) out.push(subId(p.cx, p.cy));
   return out;
@@ -210,5 +213,5 @@ export function plannedName(seed: number, zoneId: string): string | undefined {
   const p = parseZoneId(zoneId);
   if (!p) return undefined;
   const n = cellName(seed, p.cx, p.cy);
-  return p.sub ? `${n} (interior)` : n;
+  return p.sub || p.house !== undefined ? `${n} (interior)` : n;
 }

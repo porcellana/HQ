@@ -99,6 +99,8 @@ export class Renderer3D {
   private sh: { fbo: WebGLFramebuffer; tex: WebGLTexture; res: number } | null = null;
   private shLight: Mat4 = ident();
   private blobM = new Float32Array(16);
+  /** Techo de las casas: 1 = cerrado; se desvanece al entrar (v0.14). */
+  private roofA = 0;
   private post: { w: number; h: number; msFbo: WebGLFramebuffer; msColor: WebGLRenderbuffer; msDepth: WebGLRenderbuffer; sceneFbo: WebGLFramebuffer; sceneTex: WebGLTexture; t: Array<{ tex: WebGLTexture; fbo: WebGLFramebuffer; w: number; h: number }> } | null = null;
   /** Bloom a pantalla completa (sólo en calidad alta). */
   bloom = true;
@@ -154,7 +156,7 @@ export class Renderer3D {
     this.progs = {
       world: mk(WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uDis', 'uDisY', 'uDisCol', 'uWin', 'uSh', 'uShVP', 'uShP', ...FOGU, ...lightU]),
       water: mk(WATER_VS, WATER_FS, ['uVP', 'uTime', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uSky', 'uAmbTop', ...FOGU, ...lightU]),
-      blob: mk(BLOB_VS, BLOB_FS, ['uVP', 'uModel', 'uAlpha']),
+      blob: mk(BLOB_VS, BLOB_FS, ['uVP', 'uModel', 'uAlpha', 'uTint']),
       part: mk(PART_VS, PART_FS, ['uVP', 'uCenter', 'uTime', 'uVel', 'uSize', 'uScale', 'uGround', 'uBox', 'uBoxH', 'uColor']),
       mist: mk(MIST_VS, MIST_FS, ['uVP', 'uCenter', 'uSize', 'uFogCol', 'uLayer', ...FOGU]),
       sky: mk(SKY_VS, SKY_FS, ['uInv', 'uEye', 'uTop', 'uHor', 'uFog', 'uSunDir', 'uSunCol', 'uTime', 'uStars', 'uFlat', 'uMoon', 'uWarm']),
@@ -418,6 +420,7 @@ export class Renderer3D {
       this.geoCache.set(zone, e);
     }
     if (this.cur?.skirt) this.gl.deleteBuffer(this.cur.skirt.buf);
+    this.roofA = zone.def.kind === 'interior' ? 1.25 : 0;
     this.cur = { zone, geo: e.geo, style: e.style, chunks: new Map(), skirt: e.style.enclosed ? null : this.upload(buildSkirt(e.geo)) };
   }
 
@@ -661,7 +664,11 @@ export class Renderer3D {
     this.drawWater(visible, env, fogDen, dist * 0.8, lpos, lcol, nl, fogOn);
     if (fogOn && this.quality !== 'baja') this.drawMist(env, Math.min(radius, 44));
     this.drawParticles(style, env, px, py, pz, q.particles, style.particles);
-    if (enclosed) this.drawParticles(style, env, px, py, pz, this.quality === 'baja' ? 14 : 34, 'bruma');
+    if (zone.def.kind === 'interior' && this.roofA > 0.01) {
+      this.roofA = Math.max(0, this.roofA - dt * 0.85);
+      this.drawCeiling(zone.width, zone.height, py, Math.min(1, this.roofA));
+    }
+    if (enclosed && zone.def.kind !== 'interior') this.drawParticles(style, env, px, py, pz, this.quality === 'baja' ? 14 : 34, 'bruma');
     else if (env.fireflies > 0.05) this.drawParticles(style, env, px, py, pz, Math.round(q.particles * 0.5 * env.fireflies), 'luciernagas');
     // Halos de luz (parpadean), chispas de las llamas y destellos de señalización.
     for (let i = 0; i < nl; i++) {
@@ -1137,6 +1144,31 @@ export class Renderer3D {
     });
   }
 
+  /** Techo recortable de una casa: un plano cálido sobre toda la sala que se desvanece al entrar. */
+  private drawCeiling(w: number, h: number, floorY: number, alpha: number): void {
+    const gl = this.gl;
+    const P = this.progs.blob;
+    gl.useProgram(P.p);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.disable(gl.CULL_FACE);
+    const quad = this.staticMesh('ceiling', () => {
+      const v: number[] = [];
+      for (const [x, z] of [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]] as const) v.push(x, 0, z, 0, 0, 0, 0, -1, 0, 1);
+      return new Float32Array(v);
+    });
+    gl.uniformMatrix4fv(P.u.uVP!, false, this.vp);
+    gl.uniformMatrix4fv(P.u.uModel!, false, new Float32Array([w, 0, 0, 0, 0, 1, 0, 0, 0, 0, h, 0, 0, floorY + 2.3, 0, 1]));
+    gl.uniform3f(P.u.uTint!, 0.2, 0.11, 0.06);
+    gl.uniform1f(P.u.uAlpha!, alpha * 0.96);
+    this.bindMesh(quad, false);
+    this.noInstance();
+    gl.drawArrays(gl.TRIANGLES, 0, quad.n);
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+  }
+
   /** Sombras blandas alargadas según la luz del día; con mapa de sombras sólo queda un toque de oclusión. */
   private drawShadows(ents: Ent[], env: Env, mapped: boolean): void {
     const gl = this.gl;
@@ -1146,6 +1178,7 @@ export class Renderer3D {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);
     gl.uniformMatrix4fv(P.u.uVP!, false, this.vp);
+    gl.uniform3f(P.u.uTint!, 0.02, 0.03, 0.05);
     this.bindMesh(this.blob, false);
     this.noInstance();
     const str = Math.max(0.25, env.shadowStrength);

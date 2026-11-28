@@ -6,6 +6,10 @@ import type { TileDef, ZoneDef, ZoneExitDef, ZoneFeature } from '@/data/schema';
 import { TILES, TILE_BY_CHAR } from '@/data/registry';
 import type { Point } from '@/engine/pathfinding';
 
+/** Caracteres de salida: dígitos 1-9 y letras griegas α-ο (puertas extra de los asentamientos con muchas casas). */
+export const EXIT_RE = /[1-9α-ο]/;
+export const DOOR_CHARS = 'αβγδεζηθικλμνξο';
+
 export interface ZoneExit extends ZoneExitDef {
   digit: string;
   x: number;
@@ -47,7 +51,7 @@ export class Zone {
         if (ch === '@') {
           this.spawn = { x, y };
           tile = spawnTile;
-        } else if (/[1-9]/.test(ch)) {
+        } else if (EXIT_RE.test(ch)) {
           const exitDef = def.exits?.[ch];
           if (!exitDef) console.warn(`[zona ${def.id}] salida '${ch}' sin configurar en "exits"`);
           tile = (exitDef?.tile ? TILES.get(exitDef.tile) : undefined) ?? exitTile;

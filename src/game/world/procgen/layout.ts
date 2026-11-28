@@ -2,6 +2,7 @@
 import { TILES, TILE_BY_CHAR } from '@/data/registry';
 import type { Point } from '@/engine/pathfinding';
 import type { Rng } from '@/engine/rng';
+import { EXIT_RE } from '../zone';
 import { DELTA, DIR_DIGIT, type Dir } from './plan';
 
 export const tch = (id: string): string => {
@@ -9,7 +10,7 @@ export const tch = (id: string): string => {
   if (!t) throw new Error(`[mundo] tile desconocido: ${id}`);
   return t.char;
 };
-export const isWalk = (c: string): boolean => /[1-9]/.test(c) || (TILE_BY_CHAR.get(c)?.walkable ?? false);
+export const isWalk = (c: string): boolean => EXIT_RE.test(c) || (TILE_BY_CHAR.get(c)?.walkable ?? false);
 
 export class Grid {
   private readonly c: string[];
@@ -110,7 +111,7 @@ export function carve(g: Grid, from: Point, to: Point, avoid: ReadonlySet<number
   }
   for (const p of path) {
     const c = g.get(p.x, p.y);
-    if (!/[1-9]/.test(c) && inside(p.x, p.y)) g.set(p.x, p.y, tile);
+    if (!EXIT_RE.test(c) && inside(p.x, p.y)) g.set(p.x, p.y, tile);
   }
   return path;
 }
