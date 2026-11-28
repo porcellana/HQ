@@ -250,7 +250,7 @@ export class Hud {
         if (a) this.ctxBtn.replaceChildren(h('span', { class: 'ico', text: a.icon }), h('span', { text: a.label }));
       }
     }
-    this.minimap.draw(game.zone, game.view.rx, game.view.ry, dt);
+    this.minimap.draw(game.zone, game.view.rx, game.view.ry, dt, game.fogActive ? { ver: game.fogVersion, is: (x, y) => game.isExplored(x, y) } : null);
     this.skillBar.update(game);
     this.tracker.update(game);
     this.actionBar.style.display = game.battle || game.pendingBattle ? 'none' : '';

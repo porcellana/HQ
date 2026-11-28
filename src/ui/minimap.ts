@@ -1,11 +1,14 @@
 /** Minimapa: la zona a 1 píxel por casilla, con el jugador parpadeando. */
 import type { Zone } from '@/game/world/zone';
 
+export interface Known { ver: number; is: (x: number, y: number) => boolean }
+
 export class Minimap {
   readonly el: HTMLCanvasElement;
   private base: HTMLCanvasElement | null = null;
   private zone: Zone | null = null;
   private t = 0;
+  private ver = -1;
 
   /** Al tocar el minimapa se llama con la casilla tocada (para ir allí). */
   onTapTile: ((x: number, y: number) => void) | null = null;
@@ -34,7 +37,7 @@ export class Minimap {
     });
   }
 
-  private build(zone: Zone): void {
+  private build(zone: Zone, known: Known | null): void {
     const scale = Math.max(1, Math.floor(64 / Math.max(zone.width, zone.height)));
     const c = document.createElement('canvas');
     c.width = zone.width * scale;
@@ -42,18 +45,20 @@ export class Minimap {
     const ctx = c.getContext('2d')!;
     for (let y = 0; y < zone.height; y++) {
       for (let x = 0; x < zone.width; x++) {
-        ctx.fillStyle = zone.tileAt(x, y)?.minimap ?? '#000';
+        ctx.fillStyle = known && !known.is(x, y) ? '#06050a' : (zone.tileAt(x, y)?.minimap ?? '#000');
         ctx.fillRect(x * scale, y * scale, scale, scale);
       }
     }
     ctx.fillStyle = '#f2d888';
-    for (const e of zone.exits) ctx.fillRect(e.x * scale, e.y * scale, scale, scale);
+    for (const e of zone.exits) if (!known || known.is(e.x, e.y)) ctx.fillRect(e.x * scale, e.y * scale, scale, scale);
     this.base = c;
     this.zone = zone;
+    this.ver = known ? known.ver : -1;
   }
 
-  draw(zone: Zone, px: number, py: number, dt: number): void {
-    if (this.zone !== zone) this.build(zone);
+  /** `known`: casillas exploradas (niebla); el mapa se repinta solo cuando cambian. */
+  draw(zone: Zone, px: number, py: number, dt: number, known: Known | null = null): void {
+    if (this.zone !== zone || this.ver !== (known ? known.ver : -1)) this.build(zone, known);
     const base = this.base!;
     this.t += dt;
     const ctx = this.el.getContext('2d')!;

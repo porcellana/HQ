@@ -216,7 +216,7 @@ export function zoneMapScreen(
     ctx.fillRect(0, 0, w, hh);
     ctx.drawImage(zoneImg, offX, offY, zone.width * scale, zone.height * scale);
     // Niebla en mazmorras: lo no visto se tapa.
-    if (zone.def.dungeon) {
+    if (game.fogActive) {
       ctx.fillStyle = '#07060a';
       for (let y = 0; y < zone.height; y++) {
         for (let x = 0; x < zone.width; x++) {
@@ -250,6 +250,7 @@ export function zoneMapScreen(
     }
     // PNJ
     for (const n of game.npcs) {
+      if (!game.isExplored(n.x, n.y)) continue;
       const c = at(n.x, n.y);
       ctx.fillStyle = '#6ab0ff';
       ctx.beginPath();

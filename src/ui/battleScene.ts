@@ -1028,11 +1028,12 @@ export class BattleScene {
     }
     if (b.outcome === 'victory') {
       this.say('¡Victoria!', 2);
-      this.d.sfx('victoria_acorde');
+      this.d.sfx('fanfarria');
       for (const u of this.units.values()) if (u.c.side === 'party' && !u.dead) u.st = 'cheer';
       await this.wait(0.9);
     } else {
       this.say('Has caído...', 2);
+      this.d.sfx('derrota');
       await this.wait(0.8);
     }
     this.showPanel(b.result);
@@ -1047,6 +1048,8 @@ export class BattleScene {
       const xp = g.battleXp(res);
       lines.push(h('h3', { text: 'Victoria' }));
       lines.push(...lootSummary(res, xp));
+      const best = ['legendario', 'epico', 'raro'].find((r) => res.items.some((i) => i.rarity === r));
+      this.d.sfx(best === 'legendario' ? 'loot_legendario' : best === 'epico' ? 'loot_epico' : best === 'raro' ? 'loot_raro' : res.items.length ? 'loot_comun' : 'moneda');
     } else lines.push(h('h3', { text: 'Has caído...' }), h('p', { text: 'Despertarás en un lugar seguro.' }));
     lines.push(h('button', { class: 'primary b-continue', text: 'Continuar', onClick: () => this.finish() }));
     this.panelEl.replaceChildren(...lines);

@@ -21,8 +21,9 @@ import { beastRig, chestModel, humanoidRig, lootModel, oreModel, staticModel, ty
 import { rigMatrices, rigPose, type AnimState } from './anim';
 import { crystalMotion, gemModel, npcHasShop, npcSignal, pathAhead, runeRingModel, SIGNAL_COLOR, type SignalKind } from './signals';
 import { makeProg, SpriteBatch, type Prog } from './glutil';
+import { applyTwoFinger, decayVelocity, Momentum, PITCH_MAX, PITCH_MIN, ZOOM_STEP_MAX, ZOOM_STEP_MIN, type TwoFingerDelta } from '@/engine/gestures';
 import { camDistance, FpsGuard, lowerQuality, QUALITY, remapDir, type Quality } from './quality';
-import { BLOB_FS, BLOB_VS, MAX_LIGHTS, PART_FS, PART_VS, SKY_FS, SKY_VS, WATER_FS, WATER_VS, WORLD_FS, WORLD_VS } from './shaders';
+import { BLOB_FS, BLOB_VS, MAX_LIGHTS, MIST_FS, MIST_VS, PART_FS, PART_VS, SKY_FS, SKY_VS, WATER_FS, WATER_VS, WORLD_FS, WORLD_VS } from './shaders';
 import { envFor, zoneStyle, type Env, type ZoneStyle } from './style';
 import { buildChunk, buildSkirt, chunksInRadius, CHUNK, Geo, type ChunkData, type Light } from './terrain';
 import { ident, invert, lookAt, mul, perspective, project, trs, unprojectRay, type Mat4 } from './mat';
@@ -39,11 +40,14 @@ interface Anim { x: number; z: number; yaw: number; sp: number; t: number }
 const ENV_HOLE_Y = 0.45;
 void ENV_HOLE_Y;
 
+const PITCH_DEFAULT = 0.92;
+const FOGU = ['uVis', 'uVisP', 'uVisT'];
+
 export class Renderer3D {
   heroColors: HumanoidColors = DEFAULT_HERO_COLORS;
   pixelRatio = 1;
   private gl: WebGL2RenderingContext;
-  private progs!: { world: Prog; water: Prog; blob: Prog; part: Prog; sky: Prog };
+  private progs!: { world: Prog; water: Prog; blob: Prog; part: Prog; sky: Prog; mist: Prog };
   private spr!: SpriteBatch;
   private guide: { path: Point[]; key: string; t: number; pos: { x: number; z: number } | null } = { path: [], key: '', t: 0, pos: null };
   private quality: Quality = 'media';
@@ -51,7 +55,11 @@ export class Renderer3D {
   private zoomCur = 0;
   private yaw = 0;
   private yawT = 0;
-  private pitch = 0.92;
+  private pitch = PITCH_DEFAULT;
+  private pitchT = PITCH_DEFAULT;
+  private yawVel = 0;
+  private gesturing = false;
+  private readonly momentum = new Momentum();
   private insetPx = { top: 0, bottom: 0 };
   private time = 0;
   private cam = { x: 0, y: 0, z: 0 };
@@ -77,6 +85,8 @@ export class Renderer3D {
   onAutoQuality: ((q: Quality) => void) | null = null;
   autoQuality = true;
   private lastCss = { w: 0, h: 0 };
+  /** Textura de visibilidad de la niebla (1 texel por casilla: R explorado, G visible, B visible antes). */
+  private fog: { tex: WebGLTexture; w: number; h: number; data: Uint8Array; ver: number; zone: string; mix: number } | null = null;
 
   constructor(private readonly glCanvas: HTMLCanvasElement, private readonly overlay: HTMLCanvasElement, quality: Quality = 'media') {
     const gl = glCanvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false });
@@ -111,10 +121,11 @@ export class Renderer3D {
     const mk = (vs: string, fs: string, uniforms: string[]): Prog => makeProg(gl, vs, fs, uniforms);
     const lightU = ['uL', 'uLC', 'uNL'];
     this.progs = {
-      world: mk(WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uDis', 'uDisY', 'uDisCol', ...lightU]),
-      water: mk(WATER_VS, WATER_FS, ['uVP', 'uTime', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uSky', 'uAmbTop', ...lightU]),
+      world: mk(WORLD_VS, WORLD_FS, ['uVP', 'uModel', 'uTime', 'uWind', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uAmbTop', 'uAmbBot', 'uFlash', 'uDis', 'uDisY', 'uDisCol', ...FOGU, ...lightU]),
+      water: mk(WATER_VS, WATER_FS, ['uVP', 'uTime', 'uCam', 'uFogCol', 'uFogDen', 'uFogOff', 'uSunDir', 'uSunCol', 'uSky', 'uAmbTop', ...FOGU, ...lightU]),
       blob: mk(BLOB_VS, BLOB_FS, ['uVP', 'uModel', 'uAlpha']),
       part: mk(PART_VS, PART_FS, ['uVP', 'uCenter', 'uTime', 'uVel', 'uSize', 'uScale', 'uGround', 'uBox', 'uBoxH', 'uColor']),
+      mist: mk(MIST_VS, MIST_FS, ['uVP', 'uCenter', 'uSize', 'uFogCol', 'uLayer', ...FOGU]),
       sky: mk(SKY_VS, SKY_FS, ['uInv', 'uEye', 'uTop', 'uHor', 'uFog', 'uSunDir', 'uSunCol', 'uTime', 'uStars', 'uFlat']),
     };
     this.spr = new SpriteBatch(gl, 1400);
@@ -231,19 +242,42 @@ export class Renderer3D {
   get zoomLimits(): { min: number; max: number } {
     return { min: -2, max: 2 };
   }
+  /** Zoom continuo (el pellizco deja valores intermedios); los botones saltan de nivel en nivel. */
   setZoomStep(step: number): number {
-    this.step = Math.max(-2, Math.min(2, Math.round(step)));
+    this.step = Math.max(ZOOM_STEP_MIN, Math.min(ZOOM_STEP_MAX, Number.isFinite(step) ? step : 0));
     return this.step;
   }
   zoomBy(d: number): number {
-    return this.setZoomStep(this.step + d);
+    return this.setZoomStep(Math.round(this.step) + d);
   }
   resetZoom(): number {
     return this.setZoomStep(0);
   }
-  /** Gira la cámara (arrastre horizontal en píxeles CSS). */
-  rotateBy(dxPx: number): void {
-    this.yawT += dxPx * 0.0075;
+  /** Gesto de dos dedos: pellizco = zoom continuo, torcer = girar, arrastrar = inclinar (con inercia al girar). */
+  gesture(d: TwoFingerDelta, o: { sens: number; invert: boolean }): void {
+    const before = this.yawT;
+    const c = applyTwoFinger({ yaw: this.yawT, pitch: this.pitchT, zoom: this.step }, d, o);
+    this.yawT = c.yaw;
+    this.pitchT = c.pitch;
+    this.step = c.zoom;
+    this.gesturing = true;
+    this.momentum.sample(this.yawT - before, d.dt, performance.now() / 1000);
+  }
+  gestureEnd(): void {
+    this.gesturing = false;
+    this.yawVel = this.momentum.release(performance.now() / 1000);
+  }
+  /** ¿La cámara está girada o inclinada respecto a la de por defecto? */
+  get cameraTouched(): boolean {
+    return Math.abs(Math.sin(this.yawT / 2)) > 0.01 || Math.abs(this.pitchT - PITCH_DEFAULT) > 0.02;
+  }
+  /** Vuelve al giro e inclinación por defecto (por el camino corto). */
+  recenter(): void {
+    this.yawVel = 0;
+    const k = Math.round(this.yawT / (Math.PI * 2)) * Math.PI * 2;
+    this.yawT -= k;
+    this.yaw -= k;
+    this.pitchT = PITCH_DEFAULT;
   }
   /** Giro rápido por botones: +1/−1 cuartos de vuelta. */
   rotateStep(dir: number): void {
@@ -334,6 +368,7 @@ export class Renderer3D {
     const cur = this.cur!;
     const { geo, style } = cur;
     const q = QUALITY[this.quality];
+    const fogOn = this.syncFog(game, dt);
 
     // Entorno: hora del día, noche y oscuridad de la zona.
     const outdoor = zone.def.kind === 'town' || zone.def.kind === 'wild' || zone.def.kind === 'world';
@@ -353,13 +388,18 @@ export class Renderer3D {
       this.cam.z += (pz - this.cam.z) * k;
       this.cam.y += (py - this.cam.y) * k;
     }
-    this.yaw += (this.yawT - this.yaw) * Math.min(1, dt * 10);
-    this.zoomCur += (this.step - this.zoomCur) * Math.min(1, dt * 8);
+    if (!this.gesturing && this.yawVel !== 0) {
+      this.yawT += this.yawVel * dt;
+      this.yawVel = decayVelocity(this.yawVel, dt);
+    }
+    this.yaw += (this.yawT - this.yaw) * Math.min(1, dt * (this.gesturing ? 24 : 10));
+    this.pitch += (this.pitchT - this.pitch) * Math.min(1, dt * 14);
+    this.zoomCur += (this.step - this.zoomCur) * Math.min(1, dt * (this.gesturing ? 20 : 8));
     const di = Math.max(0, Math.min(4, 2 - this.zoomCur));
     const lo = Math.floor(di), hi = Math.ceil(di);
     const dist = camDistance(2 - lo) + (camDistance(2 - hi) - camDistance(2 - lo)) * (di - lo);
     const enclosed = style.enclosed;
-    const pitch = enclosed ? 1.0 : this.pitch;
+    const pitch = enclosed ? Math.max(PITCH_MIN, Math.min(PITCH_MAX, 1.0 + (this.pitch - PITCH_DEFAULT))) : this.pitch;
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
     const tgt: [number, number, number] = [this.cam.x, this.cam.y + 0.45, this.cam.z];
     this.eye = [tgt[0] + Math.sin(this.yaw) * cp * dist, tgt[1] + sp * dist, tgt[2] + Math.cos(this.yaw) * cp * dist];
@@ -452,6 +492,7 @@ export class Renderer3D {
     gl.uniform1i(P.u.uNL!, nl);
     const I = ident();
     gl.uniformMatrix4fv(P.u.uModel!, false, I);
+    this.fogUniforms(P, fogOn);
 
     // Terreno e instancias.
     if (cur.skirt) {
@@ -493,7 +534,8 @@ export class Renderer3D {
     gl.uniformMatrix4fv(P.u.uModel!, false, I);
 
     // Agua (translúcida) y partículas.
-    this.drawWater(visible, env, fogDen, dist * 0.8, lpos, lcol, nl);
+    this.drawWater(visible, env, fogDen, dist * 0.8, lpos, lcol, nl, fogOn);
+    if (fogOn && this.quality !== 'baja') this.drawMist(env, Math.min(radius, 44));
     this.drawParticles(style, env, px, py, pz, q.particles);
     // Halos de luz (brillo suave de antorchas, faroles y fuego) y destellos de señalización.
     const hs = hexRgb('#ffffff');
@@ -506,6 +548,82 @@ export class Renderer3D {
     this.spr.flush(this.vp, this.glCanvas.height * 1.218);
 
     this.drawOverlay(game, ents);
+  }
+
+  // ------------------------------------------------------------------ niebla
+  /** Sube la visibilidad cuando cambia (no por fotograma) y anima el despeje. Devuelve si hay niebla. */
+  private syncFog(game: Game, dt: number): boolean {
+    const gl = this.gl;
+    const fm = game.fogMaps();
+    if (!fm) return false;
+    const z = game.zone;
+    let f = this.fog;
+    if (!f || f.w !== z.width || f.h !== z.height) {
+      if (f) gl.deleteTexture(f.tex);
+      const tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.fog = f = { tex, w: z.width, h: z.height, data: new Uint8Array(z.width * z.height * 3), ver: -1, zone: '', mix: 1 };
+    }
+    if (f.ver !== game.fogVersion) {
+      const fresh = f.zone !== z.id;
+      const n = f.w * f.h;
+      const old = f.data;
+      const d = new Uint8Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const vis = fm.visible[i] ? 255 : 0;
+        d[i * 3] = fm.explored[i] ? 255 : 0;
+        d[i * 3 + 1] = vis;
+        d[i * 3 + 2] = fresh ? vis : old[i * 3 + 1]!;
+      }
+      f.data = d;
+      f.ver = game.fogVersion;
+      f.zone = z.id;
+      f.mix = fresh ? 1 : 0;
+      gl.bindTexture(gl.TEXTURE_2D, f.tex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, f.w, f.h, 0, gl.RGB, gl.UNSIGNED_BYTE, d);
+    }
+    f.mix = Math.min(1, f.mix + dt / 0.55);
+    return true;
+  }
+
+  /** Uniformes de la niebla para un programa (apagada si no hay textura). */
+  private fogUniforms(P: Prog, on: boolean): void {
+    const gl = this.gl;
+    const f = this.fog;
+    gl.uniform4f(P.u.uVisP!, f ? 1 / f.w : 1, f ? 1 / f.h : 1, on && f ? 1 : 0, f ? f.mix : 1);
+    gl.uniform2f(P.u.uVisT!, this.time, 0);
+    if (on && f) {
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, f.tex);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(P.u.uVis!, 1);
+    }
+  }
+
+  /** Dos láminas de bruma que flotan sobre lo desconocido. */
+  private drawMist(env: Env, size: number): void {
+    const gl = this.gl, P = this.progs.mist;
+    gl.useProgram(P.p);
+    for (let i = 0; i < 6; i++) gl.disableVertexAttribArray(i);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.uniformMatrix4fv(P.u.uVP!, false, this.vp);
+    gl.uniform3fv(P.u.uFogCol!, env.fog);
+    gl.uniform1f(P.u.uSize!, size);
+    this.fogUniforms(P, true);
+    for (let l = 0; l < 2; l++) {
+      gl.uniform3f(P.u.uCenter!, this.cam.x, this.cam.y + 0.9 + l * 1.2, this.cam.z);
+      gl.uniform1f(P.u.uLayer!, l);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
   }
 
   // ------------------------------------------------------------------ rigs
@@ -592,6 +710,7 @@ export class Renderer3D {
     }
     // PNJ.
     for (const n of game.npcs) {
+      if (!game.isVisible(n.x, n.y)) continue;
       const l = (n as NpcDef).look;
       const r = this.rig(`n:${n.id}`, () => humanoidRig({ skin: l.skin ?? '#d9a67a', hair: l.hair ?? '#3a2418', cloth: l.cloth, clothDark: l.clothDark, pants: l.pants, hat: l.hat, overlay: l.overlay }));
       const near = Math.hypot(n.x - v.rx, n.y - v.ry) < 5;
@@ -605,7 +724,7 @@ export class Renderer3D {
     // Enemigos.
     const p = game.playerPos;
     for (const en of game.enemies) {
-      if (Math.hypot(en.x - p.x, en.y - p.y) > PLAYER_SIGHT) continue;
+      if (Math.hypot(en.x - p.x, en.y - p.y) > PLAYER_SIGHT || !game.isVisible(en.x, en.y)) continue;
       const wild = en.def.pet ? PET_SPECIES.get(en.def.pet.species) : undefined;
       const look = wild ? wild.look : en.def.look;
       const ov = wild ? undefined : en.def.look.overlay;
@@ -625,7 +744,7 @@ export class Renderer3D {
     }
     // Botín y elementos del mapa.
     for (const g of game.ground) {
-      if (g.age !== undefined && g.age < 0) continue;
+      if ((g.age !== undefined && g.age < 0) || !game.isExplored(g.x, g.y)) continue;
       const best = g.items.reduce<string>((acc, it) => (acc === '' ? rarityOf(it).color : acc), '');
       const col = g.items.length ? (g.items.map((it) => rarityOf(it)).sort((a, b) => ['comun', 'poco_comun', 'raro', 'epico', 'legendario'].indexOf(b.id) - ['comun', 'poco_comun', 'raro', 'epico', 'legendario'].indexOf(a.id))[0]?.color ?? best) : '#f2d888';
       void itemDef;
@@ -637,6 +756,7 @@ export class Renderer3D {
       out.push(e);
     }
     for (const f of game.featureSprites()) {
+      if (!game.isExplored(f.x, f.y)) continue;
       let m: Gpu;
       if (f.sprite.startsWith('chest')) m = this.staticMesh(f.sprite, () => chestModel(f.sprite === 'chestOpen'));
       else if (f.sprite.startsWith('ore')) m = this.staticMesh(f.sprite, () => oreModel(f.sprite === 'oreIron' ? '#e0a070' : f.sprite === 'oreSilver' ? '#d8e4f0' : '#ff6ad8'));
@@ -841,10 +961,11 @@ export class Renderer3D {
     gl.depthMask(true);
   }
 
-  private drawWater(visible: ChunkGpu[], env: Env, fogDen: number, fogOff: number, lpos: Float32Array, lcol: Float32Array, nl: number): void {
+  private drawWater(visible: ChunkGpu[], env: Env, fogDen: number, fogOff: number, lpos: Float32Array, lcol: Float32Array, nl: number, fogOn: boolean): void {
     const gl = this.gl;
     const P = this.progs.water;
     gl.useProgram(P.p);
+    this.fogUniforms(P, fogOn);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);

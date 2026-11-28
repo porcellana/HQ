@@ -1,6 +1,43 @@
 /** Shaders GLSL ES 3.00 del mundo 3D. */
 const MAXL = 10;
 
+
+/**
+ * Niebla de exploración: textura de visibilidad de 1 texel por casilla (R = explorado,
+ * G = visible ahora, B = visible antes; se mezcla con uVisP.w para animar el despeje).
+ * Lo desconocido se cubre de bruma oscura con aspecto de nube; lo recordado se atenúa.
+ */
+export const FOG_GLSL = `
+uniform sampler2D uVis; uniform vec4 uVisP; uniform vec2 uVisT;
+float fgH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float fgN(vec2 p){
+  vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+  return mix(mix(fgH(i), fgH(i+vec2(1,0)), f.x), mix(fgH(i+vec2(0,1)), fgH(i+vec2(1,1)), f.x), f.y);
+}
+float fgF(vec2 p){ return fgN(p)*0.55 + fgN(p*2.1+3.7)*0.3 + fgN(p*4.3+9.1)*0.15; }
+// x = cobertura de bruma (1 = desconocido), y = atenuación de memoria
+vec2 fogAt(vec2 q){
+  float t = uVisT.x;
+  float n1 = fgF(q*0.30 + vec2(t*0.045, t*0.03));
+  float n2 = fgF(q*0.65 + vec2(-t*0.03, t*0.05) + 7.0);
+  vec2 uv = (q + (vec2(n1, n2) - 0.5) * 1.6) * uVisP.xy;
+  vec3 v = texture(uVis, uv).rgb;
+  float lit = mix(v.b, v.g, uVisP.w);
+  float known = max(v.r, lit);
+  float cover = 1.0 - smoothstep(0.2, 0.8, known);
+  float mem = smoothstep(0.2, 0.8, known) * (1.0 - smoothstep(0.25, 0.85, lit));
+  return vec2(cover, mem);
+}
+vec4 fogApply(vec3 col, vec3 wp, vec3 fogCol){
+  if (uVisP.z < 0.5) return vec4(col, 0.0);
+  vec2 f = fogAt(wp.xz);
+  float n = fgF(wp.xz * 0.5 + vec2(uVisT.x * 0.06, -uVisT.x * 0.04));
+  vec3 mist = mix(vec3(0.055, 0.07, 0.105), fogCol * 0.55 + 0.05, smoothstep(0.3, 0.85, n));
+  col = mix(col, col * vec3(0.5, 0.56, 0.68) + mist * 0.18, f.y * 0.85);
+  col = mix(col, mist, clamp(f.x * 1.04, 0.0, 1.0));
+  return vec4(col, f.x);
+}`;
+
 export const WORLD_VS = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 aPos;
@@ -37,6 +74,7 @@ uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uAmbTop; uniform vec3 u
 uniform vec4 uFlash;
 uniform float uDis; uniform float uDisY; uniform vec3 uDisCol;
 uniform vec4 uL[${MAXL}]; uniform vec3 uLC[${MAXL}]; uniform int uNL;
+${FOG_GLSL}
 out vec4 o;
 void main(){
   float edge = 0.0;
@@ -70,6 +108,7 @@ void main(){
   float dc = max(distance(vWorld, uCam) - uFogOff, 0.0);
   float f = 1.0 - exp(-pow(dc * uFogDen, 2.0));
   col = mix(col, uFogCol, clamp(f, 0.0, 1.0));
+  col = fogApply(col, vWorld, uFogCol).rgb;
   // Tono suave (contraste y saturación ligeras).
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(lum), col, 1.14);
@@ -97,6 +136,7 @@ in vec3 vCol; in vec3 vWorld; in float vDeep;
 uniform vec3 uCam; uniform vec3 uFogCol; uniform float uFogDen; uniform float uFogOff; uniform float uTime;
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uSky; uniform vec3 uAmbTop;
 uniform vec4 uL[${MAXL}]; uniform vec3 uLC[${MAXL}]; uniform int uNL;
+${FOG_GLSL}
 out vec4 o;
 void main(){
   vec2 p = vWorld.xz;
@@ -130,7 +170,8 @@ void main(){
   float f = clamp(1.0 - exp(-pow(dc * uFogDen, 2.0)), 0.0, 1.0);
   col = mix(col, uFogCol, f);
   float alpha = mix(0.6, 0.93, smoothstep(0.0, 0.6, vDeep)) + foam * 0.2;
-  o = vec4(col, clamp(alpha, 0.0, 1.0));
+  vec4 fg = fogApply(col, vWorld, uFogCol);
+  o = vec4(fg.rgb, clamp(mix(alpha, 1.0, fg.a), 0.0, 1.0));
 }`;
 
 export const BLOB_VS = `#version 300 es
@@ -229,4 +270,30 @@ void main(){
   float a = pow(max(1.0 - r, 0.0), 1.7) * vA;
   float core = pow(max(1.0 - r, 0.0), 6.0);
   o = vec4(vC + core * 0.6, a);
+}`;
+
+/** Láminas de bruma que flotan sobre lo desconocido (volumen barato: dos capas con parallax). */
+export const MIST_VS = `#version 300 es
+precision highp float;
+uniform mat4 uVP; uniform vec3 uCenter; uniform float uSize;
+out vec3 vWorld;
+void main(){
+  vec2 c = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1)) * 2.0 - 1.0;
+  vec3 p = vec3(uCenter.x + c.x * uSize, uCenter.y, uCenter.z + c.y * uSize);
+  vWorld = p;
+  gl_Position = uVP * vec4(p, 1.0);
+}`;
+export const MIST_FS = `#version 300 es
+precision highp float;
+in vec3 vWorld; uniform vec3 uFogCol; uniform float uLayer;
+${FOG_GLSL}
+out vec4 o;
+void main(){
+  vec2 f = fogAt(vWorld.xz);
+  float t = uVisT.x;
+  float n = fgF(vWorld.xz * (0.42 + uLayer * 0.1) + vec2(t * (0.07 + uLayer * 0.03), -t * 0.05) + uLayer * 11.0);
+  float puff = smoothstep(0.38, 0.8, n);
+  float a = f.x * puff * (0.5 - uLayer * 0.08);
+  vec3 col = mix(vec3(0.08, 0.1, 0.15), uFogCol * 0.6 + 0.06, 0.35 + 0.5 * n);
+  o = vec4(col, a);
 }`;

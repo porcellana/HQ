@@ -4,7 +4,7 @@
  * dedos es un pellizco de zoom: cancela el toque y la ruta pendientes y no
  * mueve ni ataca al soltar. También rueda del ratón y teclas +/−/0.
  */
-import { PinchSteps } from './zoom';
+import { TwoFingerDoubleTap, TwoFingerTracker, type TwoFingerDelta } from './gestures';
 
 export type Dir = { dx: number; dy: number };
 
@@ -19,8 +19,12 @@ export interface InputHandlers {
   onZoom?(dir: -1 | 0 | 1): void;
   /** Han tocado dos dedos: hay que cancelar la ruta y el movimiento en curso. */
   onPinchStart?(): void;
-  /** Arrastre de un dedo (px CSS desde el último movimiento): gira la cámara en 3D. */
-  onDrag?(dx: number, dy: number): void;
+  /** Incremento de un gesto de dos dedos (pellizco, giro, inclinación). */
+  onGesture?(d: TwoFingerDelta): void;
+  /** Se levantan los dedos tras un gesto de cámara. */
+  onGestureEnd?(): void;
+  /** Doble toque con dos dedos: recentrar la cámara. */
+  onRecenter?(): void;
 }
 
 const KEY_DIRS: Record<string, Dir> = {
@@ -36,7 +40,9 @@ export class Input {
   private pointers = new Map<number, { x: number; y: number }>();
   /** Hay (o hubo, hasta soltar todos) un pellizco: ningún toque se interpreta como tap. */
   private pinching = false;
-  private readonly pinch = new PinchSteps();
+  private readonly tracker = new TwoFingerTracker();
+  private readonly dbl = new TwoFingerDoubleTap();
+  private gestureT0 = 0;
   private keys = new Set<string>();
   private readonly cleanups: Array<() => void> = [];
 
@@ -46,9 +52,10 @@ export class Input {
       this.cleanups.push(() => el.removeEventListener(type, fn as EventListener));
     };
 
-    const dist = () => {
+    const now = () => performance.now() / 1000;
+    const two = (): [{ x: number; y: number }, { x: number; y: number }] | null => {
       const [a, b] = [...this.pointers.values()];
-      return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+      return a && b ? [a, b] : null;
     };
     listen(canvas, 'pointerdown', (e) => {
       e.preventDefault();
@@ -58,7 +65,9 @@ export class Input {
         if (!this.pinching) this.h.onPinchStart?.();
         this.pinching = true;
         this.down = null;
-        this.pinch.start(dist());
+        const t = two();
+        if (t) this.tracker.start(t[0], t[1], now());
+        if (this.pointers.size === 2) this.gestureT0 = now();
         return;
       }
       this.down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
@@ -66,13 +75,12 @@ export class Input {
     listen(canvas, 'pointermove', (e) => {
       const p = this.pointers.get(e.pointerId);
       if (!p) return;
-      const odx = e.clientX - p.x, ody = e.clientY - p.y;
       p.x = e.clientX;
       p.y = e.clientY;
-      if (!this.pinching && this.down && this.down.id === e.pointerId && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 10) this.h.onDrag?.(odx, ody);
-      if (this.pinching && this.pointers.size >= 2) {
-        const step = this.pinch.update(dist());
-        if (step !== 0) this.h.onZoom?.(step);
+      const t = two();
+      if (this.pinching && t) {
+        const d = this.tracker.update(t[0], t[1], now());
+        if (d) this.h.onGesture?.(d);
       }
     });
     listen(canvas, 'wheel', (e) => {
@@ -80,8 +88,15 @@ export class Input {
       if (e.deltaY !== 0) this.h.onZoom?.(e.deltaY < 0 ? 1 : -1);
     });
     listen(canvas, 'pointerup', (e) => {
+      const hadTwo = this.pointers.size >= 2;
       this.pointers.delete(e.pointerId);
       const wasPinching = this.pinching;
+      if (wasPinching && hadTwo) {
+        this.h.onGestureEnd?.();
+        if (this.dbl.end(this.gestureT0, now(), this.tracker.moved)) this.h.onRecenter?.();
+        const t = two();
+        if (t) this.tracker.start(t[0], t[1], now());
+      }
       if (this.pointers.size === 0) this.pinching = false;
       if (wasPinching) {
         this.down = null;
@@ -98,6 +113,7 @@ export class Input {
       this.h.onTap((e.clientX - rect.left) * sx, (e.clientY - rect.top) * sy);
     });
     listen(canvas, 'pointercancel', (e) => {
+      if (this.pinching && this.pointers.size >= 2) this.h.onGestureEnd?.();
       this.pointers.delete(e.pointerId);
       if (this.pointers.size === 0) this.pinching = false;
       this.down = null;

@@ -33,10 +33,12 @@ export interface WorldState {
   features: Record<string, number>;
   /** Mundo procedural (v0.8): zonas, PNJ, tiendas y misiones generadas al explorar. */
   gen: GenWorld;
+  /** Niebla de exploración (v0.11.1): casillas vistas por zona, 1 bit por casilla en base64. */
+  explored?: Record<string, string>;
 }
 
 export function emptyWorld(): WorldState {
-  return { dungeons: {}, features: {}, gen: emptyGen() };
+  return { dungeons: {}, features: {}, gen: emptyGen(), explored: {} };
 }
 
 export type FloorRef = number | 'jefe';

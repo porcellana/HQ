@@ -1031,3 +1031,41 @@ export interface PetTypeDef {
   strong: PetType[];
   weak: PetType[];
 }
+
+// ------------------------------------------------------------------ Música y ambiente (v0.12)
+/** Capas de ambiente de un lugar, 0 (nada) .. 1 (muy presente). La noche cambia pájaros por grillos. */
+export interface AmbienceDef {
+  viento?: number;
+  agua?: number;
+  fuego?: number;
+  pajaros?: number;
+  grillos?: number;
+  goteo?: number;
+}
+
+/** Receta de composición de una pieza (la lógica de src/audio/compose.ts la convierte en notas). */
+export interface MusicProfile {
+  id: string;
+  name: string;
+  /** Nota MIDI de la tónica (60 = do central). */
+  root: number;
+  /** Clave de SCALES en audio/compose.ts. */
+  scale: string;
+  /** Pulsos por minuto (4 pulsos por compás). */
+  tempo: number;
+  /** Grado de la escala del acorde de cada compás. */
+  progression: number[];
+  /** Carácter de la pieza. */
+  style: 'pad' | 'arpegio' | 'melodia' | 'pulso' | 'marcha';
+  /** Timbres (formas de onda). */
+  leadWave: 'sine' | 'triangle' | 'square' | 'sawtooth';
+  padWave: 'sine' | 'triangle' | 'square' | 'sawtooth';
+  /** 0..1: cantidad de notas de melodía. */
+  density: number;
+  /** 0..1: brillo del filtro. */
+  bright: number;
+  /** 0..1: presencia de percusión base (la intensidad de batalla la sube). */
+  drums?: number;
+  /** Ambiente que acompaña a la pieza. */
+  amb?: AmbienceDef;
+}

@@ -833,7 +833,6 @@ Ideas pendientes para próximas versiones:
 - **Más habilidades** por clase a niveles 12-20 (los talentos de la v0.2 ya dan subclases).
 - Fases B y C del plan v0.2 (ver «Estado»).
 - Enemigos que se muevan en grupo, emboscadas y PNJ con rutinas.
-- Música (ahora sólo hay efectos de sonido generados por código).
 - Logros y estadísticas más detalladas.
 
 ## Publicar una versión nueva
@@ -905,7 +904,7 @@ Ideas pendientes para próximas versiones:
   ya está abierta (comodidad).
 - Equilibrio: limpiar una mazmorra a su nivel da ~1 nivel (hay un test que lo vigila).
 - Ajustes: joystick, mano dominante (lado del joystick y los botones), velocidad,
-  tamaño de interfaz, cuadrícula, vibración, sonido, volumen y día/noche.
+  tamaño de interfaz, cuadrícula, vibración, sonido, música, efectos, ambiente y día/noche.
 - **Historia (Hito 7)**: 7 capítulos. Las misiones no bloquean por nivel (la
   descripción recomienda uno); el capítulo 5 pone la bandera `cripta_abierta` y el 7, la
   bandera `victoria`, que muestra la pantalla final con estadísticas (guardado v6). Tras
@@ -917,7 +916,20 @@ Ideas pendientes para próximas versiones:
   guarida ya no tiene caballero esqueleto). Simulado con un bot: Velkar es muy difícil a
   nivel 8 y asumible a 9-10 con pociones.
 - **Sonido**: efectos generados con WebAudio (golpe, crítico, fallo, herida, moneda,
-  cofre, misión, nivel, muerte y victoria), sin archivos. Sin música todavía.
+  cofre, misión, nivel, muerte y victoria), sin archivos.
+- **Música y ambiente (v0.12)**: todo generado por código con WebAudio (`src/audio`): `compose.ts`
+  (puro: escalas, acordes, patrones; determinista por semilla, hora y intensidad), `engine.ts`
+  (un temporizador de 150 ms programa un compás por adelantado; fundido cruzado al cambiar de
+  zona; ambiente con viento/agua en bucle y sucesos sueltos: pájaros de día, grillos de noche,
+  goteo, chasquidos de fuego) y `director.ts` (decide qué suena). Los datos están en
+  `src/data/music` (`PROFILES`: una pieza por bioma/lugar —aldea, ciudad, puerto, campamento,
+  ruinas, interior, cueva, cripta, sala de jefe— y tres de batalla; `musicIdFor` elige la de una
+  zona; `stepSfxFor` los pasos según suelo). La batalla sube tempo y percusión según la vida
+  restante; victoria y derrota tienen fanfarria breve. Efectos nuevos: clic de interfaz, compra,
+  botín por rareza y pasos (hierba, piedra, arena, nieve, agua, madera). Ajustes: Sonido
+  general, Música, Efectos y Ambiente (no cambia el guardado de partida). Se silencia al ir a
+  segundo plano y arranca con el primer toque (autoplay móvil). Decisión: sin ficheros de audio.
+  Para una pieza nueva, añade una entrada a `PROFILES` (y su id en `biome.music`).
 - **Día y noche**: un día dura 600 turnos; de noche los exteriores se oscurecen con un
   tinte azul (se puede desactivar en Ajustes). Interiores y mazmorras no cambian.
 - **Guía al objetivo**: la zona del siguiente paso se calcula con una búsqueda en el

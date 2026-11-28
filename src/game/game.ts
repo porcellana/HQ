@@ -7,6 +7,7 @@
  * src/game/battle (lógica pura) y se reproduce en una escena aparte; al acabar,
  * `finishBattle` aplica el resultado (XP, mapa, muerte).
  */
+import { stepSfxFor } from '@/data/music';
 import { COMPANIONS, NPCS, SHOPS, ORES, TRAPS, getClass, getEnemy, getItem, getZoneDef, npcsInZone, setDynamicZoneResolver } from '@/data/registry';
 import type { CompanionDef, CompanionEvent, DamageType, DialogNode, NpcDef, QuestDef, SkillDef, SkillKey, ZoneFeature } from '@/data/schema';
 import { Emitter } from '@/engine/events';
@@ -36,6 +37,8 @@ import { encounterXpBonus } from './economy/curve';
 import type { EquipSlot } from '@/data/schema';
 import { buildZone, type Zone, type ZoneExit } from './world/zone';
 import { activateGenWorld, assignQuests, emptyGen, ensureZone, genZoneDef } from './world/procgen';
+import { computeVisible, decodeExplored, encodeExplored, fogApplies, visionRadius } from './fog';
+import { nightAmount } from '@/gfx/viewconst';
 import { dungeonZoneDef, emptyWorld, featureKey, parseDungeonZone, progressOf } from './world/dungeons';
 
 /** Turnos que tarda en volver a crecer una veta de mineral fuera de las mazmorras. */
@@ -156,7 +159,10 @@ export type SfxId =
   | 'golpe' | 'critico' | 'fallo' | 'herido' | 'nivel' | 'moneda' | 'cofre' | 'muerte' | 'victoria' | 'mision'
   // Combate cinematográfico (v0.5)
   | 'whoosh' | 'imp_tajo' | 'imp_contundente' | 'imp_fuego' | 'imp_hielo' | 'imp_rayo' | 'imp_veneno' | 'imp_sagrado' | 'imp_sombra'
-  | 'critico_grave' | 'turno' | 'ding' | 'victoria_acorde' | 'desintegra' | 'combate';
+  | 'critico_grave' | 'turno' | 'ding' | 'victoria_acorde' | 'desintegra' | 'combate'
+  // Interfaz, pasos y botín (v0.12)
+  | 'ui' | 'compra' | 'loot_comun' | 'loot_raro' | 'loot_epico' | 'loot_legendario'
+  | 'paso_hierba' | 'paso_piedra' | 'paso_arena' | 'paso_nieve' | 'paso_agua' | 'paso_madera' | 'fanfarria' | 'derrota';
 
 /** Efectos visuales efímeros (el renderizador los dibuja). */
 export type Fx =
@@ -208,6 +214,11 @@ export class Game {
   npcs: NpcDef[] = [];
   /** Casillas vistas por zona (para el mapa grande de las mazmorras; no se guarda). */
   private explored = new Map<string, Uint8Array>();
+  /** Casillas visibles ahora mismo (niebla) y contador que sube cada vez que cambia la visión. */
+  private visible: Uint8Array = new Uint8Array(0);
+  fogVersion = 0;
+  /** Ajuste «Niebla de exploración». */
+  fogOn = true;
   /** PNJ al que vamos caminando para hablar. */
   private pendingTalk: string | null = null;
   /** Elemento (cofre, veta, trampa) hacia el que caminamos para usarlo. */
@@ -540,21 +551,52 @@ export class Game {
     return ok(pos.x + dx, pos.y + dy) ? { x: pos.x + dx, y: pos.y + dy } : undefined;
   }
 
-  /** Marca como vistas las casillas alrededor del jugador. */
-  markExplored(radius = 6): void {
-    const z = this.zone;
-    let m = this.explored.get(z.id);
-    if (!m || m.length !== z.width * z.height) this.explored.set(z.id, (m = new Uint8Array(z.width * z.height)));
-    const p = this.playerPos;
-    for (let y = Math.max(0, p.y - radius); y <= Math.min(z.height - 1, p.y + radius); y++) {
-      for (let x = Math.max(0, p.x - radius); x <= Math.min(z.width - 1, p.x + radius); x++) m[y * z.width + x] = 1;
-    }
+  /** ¿Esta zona se explora con niebla ahora mismo? */
+  get fogActive(): boolean {
+    return this.fogOn && fogApplies(this.zone.def.kind, this.zone.def.fog);
   }
 
-  /** ¿Se ha visto esta casilla? Fuera de las mazmorras se ve todo el mapa. */
+  /** Calcula la visión desde la casilla del jugador y la suma a lo explorado. */
+  markExplored(): void {
+    const z = this.zone;
+    const n = z.width * z.height;
+    let m = this.explored.get(z.id);
+    if (!m || m.length !== n) {
+      const saved = this.state.world.explored?.[z.id];
+      this.explored.set(z.id, (m = saved ? decodeExplored(saved, n) : new Uint8Array(n)));
+    }
+    const p = this.playerPos;
+    const night = z.def.kind === 'dungeon' ? 0 : nightAmount(this.state.turn);
+    const radius = visionRadius({ classId: this.state.player.classId, kind: z.def.kind, night, darkness: z.def.darkness ?? 0 });
+    const los = z.def.kind === 'dungeon' || (z.def.darkness ?? 0) >= 0.5 ? this.blocksSight : null;
+    this.visible = computeVisible(z.width, z.height, p.x, p.y, radius, los, this.visible);
+    for (let i = 0; i < n; i++) if (this.visible[i]) m[i] = 1;
+    this.fogVersion++;
+  }
+
+  /** ¿Se ha visto alguna vez esta casilla? Sin niebla se ve todo. */
   isExplored(x: number, y: number): boolean {
-    if (!this.zone.def.dungeon && !this.zone.def.fog) return true;
+    if (!this.fogActive) return true;
     return (this.explored.get(this.zone.id)?.[y * this.zone.width + x] ?? 0) === 1;
+  }
+
+  /** ¿Se ve ahora mismo (dentro del radio de visión)? */
+  isVisible(x: number, y: number): boolean {
+    if (!this.fogActive) return true;
+    return this.visible[y * this.zone.width + x] === 1;
+  }
+
+  /** Datos para el shader de niebla: explorado y visible por casilla (null = sin niebla). */
+  fogMaps(): { explored: Uint8Array; visible: Uint8Array } | null {
+    if (!this.fogActive) return null;
+    const e = this.explored.get(this.zone.id);
+    return e && this.visible.length === e.length ? { explored: e, visible: this.visible } : null;
+  }
+
+  /** Vuelca lo explorado al estado (antes de guardar o cambiar de zona). */
+  syncExplored(): void {
+    const w = (this.state.world.explored ??= {});
+    for (const [id, m] of this.explored) w[id] = encodeExplored(m);
   }
 
   private finishStep(): void {
@@ -562,6 +604,7 @@ export class Game {
     const prevExit = this.zone.exitAt(v.from.x, v.from.y);
     this.state.player.pos.x = v.to.x;
     this.state.player.pos.y = v.to.y;
+    this.sfx(stepSfxFor(this.zone.tileAt(v.to.x, v.to.y)?.id));
     this.markExplored();
     v.rx = v.to.x;
     v.ry = v.to.y;
@@ -785,7 +828,6 @@ export class Game {
       if (xp > 0) this.gainXp(xp, 'combate');
       if (res.kills.length) this.companionSay('mata', 0.4);
       if (res.kills.some((k) => k.def.boss)) this.companionSay('victoria');
-      this.sfx('victoria');
     }
     this.events.emit('battleEnd', { result: res });
     return res;
@@ -832,6 +874,7 @@ export class Game {
   enterZone(zoneId: string, arrive: string | null): void {
     const def = getZoneDef(zoneId);
     if (!def) return;
+    this.syncExplored();
     this.zone = buildZone(def);
     const p = arrive ? this.zone.arrivalPoint(arrive) : (this.zone.spawn ?? this.zone.arrivalPoint('1'));
     this.state.player.pos = { zone: this.zone.id, x: p.x, y: p.y };
@@ -1533,6 +1576,7 @@ export class Game {
     const before = this.state.player.gold;
     const err = Shop.buy(this.state, shopId, this.state.player, this.derived.stats.CAR, uid, qty, this.shopDiscount(shopId));
     if (!err) {
+      this.sfx('compra');
       recalcPlayer(this.state.player);
       const k = `rep:${shopId}`;
       this.state.flags[k] = Number(this.state.flags[k] ?? 0) + Math.max(0, before - this.state.player.gold);

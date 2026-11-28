@@ -8,6 +8,7 @@ const SECTIONS: Array<[string, string[]]> = [
     'La brújula verde del borde te lleva a tu objetivo (se puede desactivar en Ajustes → Guía de misión). Las salidas se ven brillar en dorado y en el minimapa.',
     'Barra de abajo (una línea): ⏳ Esperar, ✨ Habilidad (se despliega con tus habilidades y la poción), 🎒 Mochila, 📜 Ficha, 📖 Misiones y ⚙ Ajustes. En Ajustes también están Guardar partida, esta ayuda y Guardar y salir.',
     'Opcional: joystick virtual en Ajustes (sigue a la cámara).',
+    'Música y ambiente cambian con el lugar, la hora y las batallas (se oyen tras tu primer toque). En Ajustes: Sonido general, Música, Efectos y Ambiente por separado. Al salir de la app, todo calla.',
     'En 3D: arrastra con un dedo para girar la cámara (o toca ↻), pellizca para acercar o alejar. Toca una criatura, un cofre o una veta para ir hasta ella.',
     'El botón dorado «Interactuar» aparece cuando tienes cerca a alguien, un cofre, una veta o botín: hablar, abrir, minar o recoger. Un espíritu luminoso vuela por delante y te guía hasta el cristal violeta de tu objetivo.',
     'Ajustes → Gráficos: 3D o 2D clásico, y Calidad Baja/Media/Alta (si el móvil va justo, el juego baja la calidad solo).',

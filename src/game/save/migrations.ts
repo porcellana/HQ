@@ -15,7 +15,7 @@
 
 import { PET_NATURES } from '@/data/config/pet_natures';
 
-export const CURRENT_SAVE_VERSION = 10;
+export const CURRENT_SAVE_VERSION = 11;
 
 /** Datos de partida sin tipar (pueden venir de cualquier versión antigua). */
 export type RawSave = Record<string, unknown>;
@@ -92,6 +92,12 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
       for (const p of pets.stable ?? []) fix(p);
     }
     return s;
+  },
+  /** v10 → v11 (v0.11.1): niebla de exploración (casillas vistas por zona). */
+  10: (s) => {
+    const world = { ...((s['world'] as Record<string, unknown>) ?? {}) };
+    world['explored'] ??= {};
+    return { ...s, world };
   },
 };
 

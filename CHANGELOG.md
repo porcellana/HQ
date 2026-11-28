@@ -2,6 +2,15 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.12.0 · 2026-11-28 — Música y ambiente procedurales
+
+- **Música generada por código** (WebAudio, sin ficheros: el APK no engorda): una pieza distinta por bioma y lugar (campiña, bosque, montaña, nieve, costa, desierto, ciénaga, aldea, ciudad, puerto, campamento, ruinas, interior, cueva, cripta y sala de jefe), con fundido cruzado al cambiar de zona, variaciones por semilla de partida y más lenta/grave de noche.
+- **Batalla**: música normal, oscura (cuevas, mazmorras, ciénaga) y de jefe; el tempo y la percusión suben según avanza el combate. Fanfarrias breves de victoria y derrota.
+- **Ambiente**: viento, agua, pájaros de día, grillos de noche, goteo en cuevas y fuego en aldeas/campamentos.
+- **Efectos nuevos**: pasos según el suelo, clic suave de interfaz, compra y sonido de botín por rareza.
+- **Ajustes**: Sonido general, Música, Efectos y Ambiente por separado. Silencio al pasar a segundo plano; el audio arranca con el primer toque.
+- Lógica de composición pura y con tests (`tests/music.test.ts`); datos en `src/data/music`.
+
 ## v0.11.0 · 2026-11-28 — Todo en 3D suave, señalización diegética e interfaz nueva
 
 - **Adiós al 2D**: eliminados el renderizador 2D, el respaldo 2D del mapa, los sprites de personajes/criaturas/mascotas, los tiles pixel art y el sistema de partículas 2D. Sin WebGL 2 se muestra un mensaje claro. Menos código y APK más ligero.

@@ -28,9 +28,9 @@ export class ZoomControls {
     this.rot.style.display = on ? '' : 'none';
   }
 
-  update(step: number, limits: { min: number; max: number }): void {
+  update(step: number, limits: { min: number; max: number }, camTouched = false): void {
     this.plus.disabled = step >= limits.max;
     this.minus.disabled = step <= limits.min;
-    this.reset.style.display = step === 0 ? 'none' : '';
+    this.reset.style.display = step === 0 && !camTouched ? 'none' : '';
   }
 }

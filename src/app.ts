@@ -36,10 +36,11 @@ import type { NpcDef } from '@/data/schema';
 import { confirmDialog, showDialog } from '@/ui/dialogs';
 import { buzz, h } from '@/ui/dom';
 import { Hud } from '@/ui/hud';
+import { SENS_FACTOR } from '@/engine/gestures';
 import { mainMenu, settingsScreen } from '@/ui/menus';
 import { helpScreen } from '@/ui/help';
 import { victoryScreen } from '@/ui/victory';
-import { Sfx } from '@/audio/sfx';
+import { AudioDirector } from '@/audio/director';
 
 /** Pantallas que se muestran como hoja inferior deslizable. */
 const SHEET_SCREENS = ['inventory', 'journal', 'pet-screen', 'stable', 'sheet', 'shop', 'talents', 'help', 'settings'];
@@ -60,7 +61,8 @@ export class App {
   private pauseClose: (() => void) | null = null;
   private saving: Promise<void> = Promise.resolve();
   private lastSavedTurn = 0;
-  private readonly sfx = new Sfx();
+  private readonly audio = new AudioDirector();
+  private readonly sfx = this.audio.sfx;
   /** La pantalla final espera a que se cierre el diálogo de la misión. */
   private pendingVictory = false;
   /** Escena de batalla abierta (el mapa queda en pausa debajo). */
@@ -79,7 +81,19 @@ export class App {
       onTap: (x, y) => this.onTap(x, y),
       onHeldDir: (d) => this.setHeldDir(d),
       onZoom: (dir) => this.zoomMap(dir),
-      onDrag: (dx) => this.r3d?.rotateBy(dx),
+      onGesture: (d) => {
+        if (!this.game || this.screen || this.pauseClose) return;
+        this.r3d?.gesture(d, { sens: SENS_FACTOR[this.settings.cameraSens], invert: this.settings.cameraInvert });
+      },
+      onGestureEnd: () => {
+        this.r3d?.gestureEnd();
+        const step = this.renderer.zoomStep;
+        if (Math.abs(step - this.settings.zoomStep) > 0.01) {
+          this.settings = { ...this.settings, zoomStep: Math.round(step * 100) / 100 };
+          saveSettings(this.settings);
+        }
+      },
+      onRecenter: () => this.r3d?.recenter(),
       // Dos dedos: se cancelan la ruta y el movimiento pendientes (no se mueve ni ataca al soltar).
       onPinchStart: () => {
         this.game?.cancelPath();
@@ -98,7 +112,13 @@ export class App {
     });
     window.addEventListener('resize', () => this.layout());
     // El audio sólo puede arrancar tras un gesto del usuario.
-    window.addEventListener('pointerdown', () => this.sfx.unlock(), { once: true });
+    const unlock = (): void => this.sfx.unlock();
+    for (const ev of ['pointerdown', 'touchend', 'keydown']) window.addEventListener(ev, unlock, { once: true, passive: true });
+    // Clic suave en todos los botones de la interfaz.
+    document.addEventListener('click', (e) => {
+      const b = (e.target as Element | null)?.closest?.('button');
+      if (b && !(b as HTMLButtonElement).disabled) this.sfx.play('ui');
+    }, true);
     this.applySettings();
     this.setupLifecycle();
   }
@@ -174,6 +194,7 @@ export class App {
 
   private async showMainMenu(): Promise<void> {
     const summary = await this.saves.summary();
+    this.audio.title();
     this.setScreen(
       mainMenu(summary, {
         onContinue: () => void this.continueGame(),
@@ -207,6 +228,7 @@ export class App {
         // Dentro de una partida, aquí van también Guardar, Cómo se juega y Salir (antes en el menú ☰).
         this.game
           ? {
+              onRecenter: () => this.r3d?.recenter(),
               onSave: () => {
                 void this.autosave('manual').then(() => this.hud?.pushMessage('Partida guardada.', 'good'));
                 this.setScreen(null);
@@ -296,10 +318,10 @@ export class App {
     if (this.game) {
       this.game.stepDuration = this.settings.moveSpeed === 'rapida' ? 0.08 : 0.14;
     }
-    this.sfx.enabled = this.settings.sound;
-    this.sfx.volume = this.settings.volume;
+    this.audio.applySettings(this.settings);
     this.renderer.setQuality(this.settings.quality);
     this.renderer.setZoomStep(this.settings.zoomStep);
+    if (this.game) this.game.fogOn = this.settings.fog;
     // El tamaño de interfaz cambia el layout: recalculamos el canvas.
     requestAnimationFrame(() => this.layout());
   }
@@ -307,6 +329,7 @@ export class App {
   /** Zoom del mapa (botones, pellizco, rueda, teclas): +1 acercar, −1 alejar, 0 restablecer. */
   private zoomMap(dir: -1 | 0 | 1): void {
     if (!this.game || this.screen || this.pauseClose) return;
+    if (dir === 0) this.r3d?.recenter();
     const step = dir === 0 ? this.renderer.resetZoom() : this.renderer.zoomBy(dir);
     if (step !== this.settings.zoomStep) {
       this.settings = { ...this.settings, zoomStep: step };
@@ -365,6 +388,7 @@ export class App {
     this.hud?.root.remove();
     const game = new Game(state);
     this.game = game;
+    game.fogOn = this.settings.fog;
     this.lastSavedTurn = state.turn;
 
     const hud = new Hud({
@@ -414,7 +438,10 @@ export class App {
       this.sfx.play('combate');
       buzz(this.settings.vibration, 25);
     });
-    game.events.on('battleStart', ({ battle }) => this.openBattle(game, battle));
+    game.events.on('battleStart', ({ battle }) => {
+      this.audio.startBattle(game, battle);
+      this.openBattle(game, battle);
+    });
     game.events.on('playerHurt', ({ amount }) => buzz(this.settings.vibration, Math.min(80, 15 + amount * 4)));
     // La subida de nivel espera a que acabe la batalla.
     game.events.on('levelUp', (ev) => this.pendingLevelUps.push(ev));
@@ -434,6 +461,7 @@ export class App {
     });
     game.events.on('npcTalk', ({ npc }) => this.showNpcDialog(npc));
     game.events.on('zoneChanged', ({ zone, firstVisit }) => {
+      this.audio.zone(game);
       hud.showBanner(zone.def.name, firstVisit ? zone.def.description : undefined, zoneIcons(zone.def, game.npcs, state));
       buzz(this.settings.vibration, 20);
       void this.autosave('cambio de zona');
@@ -442,6 +470,7 @@ export class App {
       if (turn - this.lastSavedTurn >= AUTOSAVE_EVERY_TURNS) void this.autosave('periódico');
     });
 
+    this.audio.zone(game);
     const def = getZoneDef(state.player.pos.zone);
     hud.showBanner(def?.name ?? '', undefined, def ? zoneIcons(def, game.npcs, state) : []);
     this.layout();
@@ -634,11 +663,12 @@ export class App {
       this.pendingVictory = false;
       this.setScreen(victoryScreen(game.state, () => this.setScreen(null), () => void this.quitToMenu()));
     }
+    this.audio.update(dt);
     // Con la escena de batalla abierta, el mapa no se dibuja (ahorra batería).
     if (this.scene) return;
     this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, questGuide: this.settings.questGuide });
     this.hud?.update(game, dt);
-    this.hud?.zoom.update(this.renderer.zoomStep, this.renderer.zoomLimits);
+    this.hud?.zoom.update(this.renderer.zoomStep, this.renderer.zoomLimits, this.renderer.cameraTouched);
   }
 
   // ------------------------------------------------------------------- batalla
@@ -655,12 +685,17 @@ export class App {
       speed: this.settings.battleSpeed,
       fx: this.settings.combatFx,
       quality: this.settings.quality,
-      sfx: (id) => this.sfx.play(id),
+      sfx: (id) => {
+        if (id === 'fanfarria') this.audio.endBattle('victoria');
+        else if (id === 'derrota') this.audio.endBattle('derrota');
+        else this.sfx.play(id);
+      },
       vibrate: (ms) => buzz(this.settings.vibration, ms),
       onFinish: () => {
         this.scene?.destroy();
         this.scene = null;
         game.finishBattle();
+        this.audio.zone(game);
         if (!game.isDead) void this.autosave('batalla');
       },
     });
@@ -705,7 +740,7 @@ export class App {
     if (!game || game.isDead) return this.saving;
     this.lastSavedTurn = game.state.turn;
     this.saving = this.saving
-      .then(() => this.saves.save(game.state))
+      .then(() => { game.syncExplored(); return this.saves.save(game.state); })
       .catch((e: unknown) => {
         console.error(`[guardado] falló (${reason})`, e);
         this.hud?.pushMessage('¡No se pudo guardar la partida!', 'warn');
@@ -771,12 +806,18 @@ export class App {
   private setupLifecycle(): void {
     // Navegador/PWA: guardar al ocultar o cerrar la pestaña.
     document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.audio.engine.suspend();
+      else this.audio.engine.resume();
       if (document.visibilityState === 'hidden') void this.autosave('app oculta');
     });
     window.addEventListener('pagehide', () => void this.autosave('cierre'));
 
     if (!Capacitor.isNativePlatform()) return;
-    void CapApp.addListener('pause', () => void this.autosave('app en pausa'));
+    void CapApp.addListener('pause', () => {
+      this.audio.engine.suspend();
+      void this.autosave('app en pausa');
+    });
+    void CapApp.addListener('resume', () => this.audio.engine.resume());
     void CapApp.addListener('backButton', () => {
       const modal = this.ui.querySelector('.modal-back, .dialog-back');
       if (this.pauseClose) {

@@ -4,6 +4,7 @@
  * nuevo, añade una entrada en RECIPES y emítelo desde el juego con su id.
  */
 import type { SfxId } from '@/game/game';
+import type { AudioEngine } from './engine';
 
 type Ctx = AudioContext;
 type Recipe = (ctx: Ctx, out: AudioNode, t: number) => void;
@@ -105,43 +106,47 @@ const RECIPES: Record<SfxId, Recipe> = {
   desintegra: (c, o, t) => { sweep(c, o, t, 0.5, 2500, 150, 0.2, 'bandpass', 2); tone(c, o, t, 400, 0.4, 'triangle', 0.08, 80); },
   /** Empieza el combate. */
   combate: (c, o, t) => { tone(c, o, t, 196, 0.25, 'sawtooth', 0.14, 147); tone(c, o, t + 0.12, 147, 0.4, 'sawtooth', 0.14, 110); noise(c, o, t, 0.2, 800, 0.15); },
+  // ---- Interfaz, pasos y botín (v0.12) ----
+  ui: (c, o, t) => tone(c, o, t, 1100, 0.04, 'sine', 0.05, 800),
+  compra: (c, o, t) => { tone(c, o, t, 880, 0.05, 'triangle', 0.1); tone(c, o, t + 0.05, 1175, 0.07, 'triangle', 0.1); tone(c, o, t + 0.1, 1568, 0.14, 'sine', 0.08); },
+  loot_comun: (c, o, t) => tone(c, o, t, 1047, 0.18, 'sine', 0.1),
+  loot_raro: (c, o, t) => [1047, 1319].forEach((f, i) => tone(c, o, t + i * 0.07, f, 0.25, 'sine', 0.11)),
+  loot_epico: (c, o, t) => [784, 988, 1175, 1568].forEach((f, i) => tone(c, o, t + i * 0.07, f, 0.3, 'triangle', 0.11)),
+  loot_legendario: (c, o, t) => { [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(c, o, t + i * 0.08, f, 0.5, 'triangle', 0.1)); sweep(c, o, t, 0.8, 2000, 7000, 0.07, 'highpass'); },
+  paso_hierba: (c, o, t) => sweep(c, o, t, 0.07, 1400 + Math.random() * 500, 700, 0.07, 'bandpass', 0.8),
+  paso_piedra: (c, o, t) => { noise(c, o, t, 0.04, 1800 + Math.random() * 700, 0.1); tone(c, o, t, 160 + Math.random() * 30, 0.05, 'sine', 0.06, 90); },
+  paso_arena: (c, o, t) => sweep(c, o, t, 0.12, 3000, 1500, 0.06, 'highpass', 0.5),
+  paso_nieve: (c, o, t) => { sweep(c, o, t, 0.1, 2600 + Math.random() * 600, 1200, 0.07, 'bandpass', 2); noise(c, o, t, 0.03, 4000, 0.04); },
+  paso_agua: (c, o, t) => { sweep(c, o, t, 0.16, 500, 1400, 0.1, 'bandpass', 3); tone(c, o, t + 0.05, 700 + Math.random() * 200, 0.07, 'sine', 0.04, 1100); },
+  paso_madera: (c, o, t) => { tone(c, o, t, 190 + Math.random() * 30, 0.07, 'triangle', 0.12, 110); noise(c, o, t, 0.03, 1000, 0.08); },
+  /** Las fanfarrias las compone el motor de audio (compose.ts); aquí sólo el aviso. */
+  fanfarria: () => undefined,
+  derrota: () => undefined,
 };
 
-const VOLUME = { bajo: 0.25, medio: 0.5, alto: 0.9 } as const;
+/** Volumen de los efectos según el ajuste. */
+export const SFX_VOLUME = { bajo: 0.25, medio: 0.5, alto: 0.9 } as const;
 
+/** Reproduce las recetas sobre el bus de efectos del motor de audio. */
 export class Sfx {
-  private ctx: AudioContext | null = null;
-  private master: GainNode | null = null;
-  enabled = true;
-  volume: keyof typeof VOLUME = 'medio';
+  constructor(private readonly engine: AudioEngine) {}
 
-  /** El navegador sólo permite audio tras un toque: se llama en el primer toque. */
   unlock(): void {
-    if (this.ctx || typeof window === 'undefined') return;
-    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return;
-    try {
-      this.ctx = new AC();
-      this.master = this.ctx.createGain();
-      this.master.connect(this.ctx.destination);
-    } catch {
-      this.ctx = null;
-    }
+    this.engine.unlock();
   }
 
   /** Reproduce un efecto, opcionalmente tras `delaySec` y con un factor de tono. */
   play(id: SfxId, delaySec = 0, rate = 1): void {
-    if (!this.enabled) return;
-    this.unlock();
-    const ctx = this.ctx;
-    const master = this.master;
-    if (!ctx || !master) return;
+    if (!this.engine.enabled) return;
+    this.engine.unlock();
+    const ctx = this.engine.ctx;
+    const out = this.engine.sfxBus;
+    if (!ctx || !out) return;
     if (ctx.state === 'suspended') void ctx.resume();
-    master.gain.value = VOLUME[this.volume];
     try {
       // `rate` transpone los tonos (ding de botín según la rareza).
       pitchRate = rate;
-      RECIPES[id](ctx, master, ctx.currentTime + 0.01 + Math.max(0, delaySec));
+      RECIPES[id](ctx, out, ctx.currentTime + 0.01 + Math.max(0, delaySec));
     } catch {
       /* sin audio disponible */
     } finally {

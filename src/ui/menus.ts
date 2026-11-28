@@ -49,13 +49,25 @@ export function mainMenu(save: SaveSummary | null, actions: MainMenuActions): HT
 type Option<T> = { value: T; label: string };
 
 /** Pantalla de ajustes. `onChange` recibe los ajustes nuevos al instante. */
+const LEVELS: Option<Settings['music']>[] = [
+  { value: 'off', label: 'Apagada' },
+  { value: 'bajo', label: 'Baja' },
+  { value: 'medio', label: 'Media' },
+  { value: 'alto', label: 'Alta' },
+];
+const SFX_LEVELS: Option<Settings['volume']>[] = [
+  { value: 'bajo', label: 'Bajos' },
+  { value: 'medio', label: 'Medios' },
+  { value: 'alto', label: 'Altos' },
+];
+
 export function settingsScreen(
   current: Settings,
   onChange: (s: Settings) => void,
   onBack: () => void,
   onDeleteSave: (() => void) | null,
   transfer?: { onExport: () => void; onImport: () => void },
-  inGame?: { onSave: () => void; onHelp: () => void; onQuit: () => void },
+  inGame?: { onRecenter?: () => void; onSave: () => void; onHelp: () => void; onQuit: () => void },
 ): HTMLElement {
   const s = { ...current };
   const row = <K extends keyof Settings>(label: string, key: K, options: Option<Settings[K]>[]) => {
@@ -106,12 +118,18 @@ export function settingsScreen(
       ]),
       row('Cuadrícula del mapa', 'grid', onOff),
       row('Vibración', 'vibration', onOff),
-      row('Sonido', 'sound', onOff),
-      row('Volumen', 'volume', [
-        { value: 'bajo', label: 'Bajo' },
-        { value: 'medio', label: 'Medio' },
-        { value: 'alto', label: 'Alto' },
+      row('Sonido (general)', 'sound', onOff),
+      row('Música', 'music', LEVELS),
+      row('Efectos', 'volume', SFX_LEVELS),
+      row('Ambiente', 'ambient', LEVELS),
+      row('Niebla de exploración', 'fog', onOff),
+      row('Cámara: invertir giro', 'cameraInvert', onOff),
+      row('Cámara: sensibilidad', 'cameraSens', [
+        { value: 'baja', label: 'Baja' },
+        { value: 'media', label: 'Media' },
+        { value: 'alta', label: 'Alta' },
       ]),
+      inGame?.onRecenter ? h('button', { text: '🧭 Recentrar cámara', onClick: inGame.onRecenter }) : null,
       row('Día y noche', 'dayNight', onOff),
       row('Espíritu guía de misión', 'questGuide', onOff),
       inGame ? h('button', { text: '💾 Guardar partida', onClick: inGame.onSave }) : null,

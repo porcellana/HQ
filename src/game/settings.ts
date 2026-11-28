@@ -3,6 +3,9 @@
  * localStorage con su propia versión; los campos nuevos toman el valor
  * por defecto automáticamente.
  */
+/** Nivel de un canal de audio. */
+export type AudioLevel = 'off' | 'bajo' | 'medio' | 'alto';
+
 export interface Settings {
   /** Mostrar joystick virtual además del toque para mover. */
   joystick: boolean;
@@ -20,6 +23,10 @@ export interface Settings {
   sound: boolean;
   /** Volumen de los efectos. */
   volume: 'bajo' | 'medio' | 'alto';
+  /** Música procedural (v0.12). */
+  music: AudioLevel;
+  /** Ambiente: viento, agua, pájaros, grillos, goteo, fuego (v0.12). */
+  ambient: AudioLevel;
   /** Ciclo de día y noche en exteriores. */
   dayNight: boolean;
   /** Guía de misión: espíritu luminoso y runas hacia el objetivo de la misión seguida. */
@@ -32,6 +39,12 @@ export interface Settings {
   zoomStep: number;
   /** Calidad del 3D (resolución, distancia, decorado, luces). */
   quality: 'baja' | 'media' | 'alta';
+  /** Cámara de dos dedos: invertir el sentido del giro. */
+  cameraInvert: boolean;
+  /** Sensibilidad del giro e inclinación de la cámara. */
+  cameraSens: 'baja' | 'media' | 'alta';
+  /** Niebla de exploración en el mapa (v0.11.1). */
+  fog: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -43,12 +56,17 @@ export const DEFAULT_SETTINGS: Settings = {
   uiScale: 'normal',
   sound: true,
   volume: 'medio',
+  music: 'medio',
+  ambient: 'medio',
   dayNight: true,
   questGuide: true,
   battleSpeed: 'normal',
   combatFx: 'completos',
   zoomStep: 0,
   quality: 'media',
+  cameraInvert: false,
+  cameraSens: 'media',
+  fog: true,
 };
 
 const KEY = 'ecos.settings';
