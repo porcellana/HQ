@@ -30,7 +30,7 @@ export const HUMANOID: readonly string[] = [
 ];
 
 /** Capas por clase, dibujadas encima del cuerpo base. */
-export const OVERLAYS: Readonly<Record<string, readonly string[]>> = {
+const BASE_OVERLAYS: Readonly<Record<string, readonly string[]>> = {
   // Casco de acero con protecciones de mejillas y espada larga.
   guerrero: [
     '................',
@@ -107,6 +107,15 @@ export const OVERLAYS: Readonly<Record<string, readonly string[]>> = {
     '................',
     '................',
   ],
+};
+
+/** Capas por clase; las clases nuevas (v0.10) reutilizan la plantilla más parecida. */
+export const OVERLAYS: Readonly<Record<string, readonly string[]>> = {
+  ...BASE_OVERLAYS,
+  barbaro: BASE_OVERLAYS.guerrero!,
+  explorador: BASE_OVERLAYS.picaro!,
+  druida: BASE_OVERLAYS.clerigo!,
+  bardo: BASE_OVERLAYS.mago!,
 };
 
 /** Colores de un personaje humanoide. */

@@ -9,6 +9,8 @@ export interface MainMenuActions {
   onContinue(): void;
   onNewGame(): void;
   onSettings(): void;
+  onExport?(): void;
+  onImport?(): void;
 }
 
 function heroImage(): HTMLCanvasElement {
@@ -40,6 +42,9 @@ export function mainMenu(save: SaveSummary | null, actions: MainMenuActions): HT
       cont,
       h('button', { text: 'Nueva partida', onClick: actions.onNewGame }),
       h('button', { text: 'Ajustes', onClick: actions.onSettings }),
+      actions.onExport && actions.onImport
+        ? h('div', { class: 'menu-row' }, [h('button', { text: '📤 Exportar', onClick: actions.onExport }), h('button', { text: '📥 Importar', onClick: actions.onImport })])
+        : null,
     ]),
     h('div', { class: 'version', text: `v${__APP_VERSION__} · ${__BUILD_DATE__}` }),
   ]);
@@ -76,6 +81,15 @@ export function settingsScreen(
   return h('div', { class: 'screen' }, [
     h('h2', { text: 'Ajustes' }),
     h('div', { class: 'settings-list' }, [
+      row('Gráficos', 'graphics', [
+        { value: '3d', label: '3D' },
+        { value: '2d', label: '2D clásico' },
+      ]),
+      row('Calidad gráfica', 'quality', [
+        { value: 'baja', label: 'Baja' },
+        { value: 'media', label: 'Media' },
+        { value: 'alta', label: 'Alta' },
+      ]),
       row('Velocidad de batalla', 'battleSpeed', [
         { value: 'normal', label: 'Normal' },
         { value: 'rapida', label: 'Rápida' },

@@ -406,6 +406,34 @@ export class Game {
     this.view.target = { x, y };
   }
 
+  /**
+   * Acción contextual («Interactuar»): lo más útil que tienes a mano (hasta 2 casillas):
+   * hablar, abrir, minar o recoger. `tapTile` la ejecuta (camina y actúa si hace falta).
+   */
+  contextAction(): { kind: 'hablar' | 'abrir' | 'minar' | 'recoger' | 'entrar'; icon: string; label: string; x: number; y: number } | null {
+    if (this.phase === 'dead' || this.inCombat || this.battle || this.pendingBattle) return null;
+    const p = this.playerPos;
+    const cands: Array<{ pri: number; d: number; kind: 'hablar' | 'abrir' | 'minar' | 'recoger' | 'entrar'; icon: string; label: string; x: number; y: number }> = [];
+    for (const n of this.npcs) {
+      const d = dist(p.x, p.y, n.x, n.y);
+      if (d <= 2) cands.push({ pri: 0, d, kind: 'hablar', icon: '💬', label: `Hablar con ${n.name}`, x: n.x, y: n.y });
+    }
+    for (const f of this.zone.def.features ?? []) {
+      const d = dist(p.x, p.y, f.x, f.y);
+      if (d > 2 || !this.interactiveFeatureAt(f.x, f.y)) continue;
+      if (f.kind === 'cofre') cands.push({ pri: 1, d, kind: 'abrir', icon: '📦', label: f.locked ? 'Abrir cofre (cerrado)' : 'Abrir cofre', x: f.x, y: f.y });
+      else if (f.kind === 'mineral') cands.push({ pri: 1, d, kind: 'minar', icon: '⛏', label: `Minar ${ORES.get(f.ore)?.name.replace(/^(Veta|Geoda) de /, '') ?? 'mineral'}`, x: f.x, y: f.y });
+    }
+    for (const g of this.ground) {
+      const d = dist(p.x, p.y, g.x, g.y);
+      if (d <= 2 && d > 0) cands.push({ pri: 2, d, kind: 'recoger', icon: '✋', label: 'Recoger botín', x: g.x, y: g.y });
+    }
+    if (!cands.length) return null;
+    cands.sort((a, b) => a.pri - b.pri || a.d - b.d);
+    const c = cands[0]!;
+    return { kind: c.kind, icon: c.icon, label: c.label, x: c.x, y: c.y };
+  }
+
   cancelPath(): void {
     this.view.path = [];
     this.view.target = null;
@@ -838,11 +866,54 @@ export class Game {
       if (fresh.length) this.msg(`${fresh.length === 1 ? 'Hay una misión' : `Hay ${fresh.length} misiones`} disponible${fresh.length === 1 ? '' : 's'} aquí.`, 'info');
     }
     this.events.emit('zoneChanged', { zone: this.zone, firstVisit });
+    this.travelEvent();
     void Quests.onVisit(this.state, this.zone.id);
     this.events.emit('questsChanged', {});
     if (firstVisit && (this.zone.def.kind === 'wild' || this.zone.def.kind === 'dungeon')) {
       this.gainXp(this.zone.def.discoverXp ?? 20 * this.zone.def.level, `descubres ${this.zone.def.name}`);
     }
+  }
+
+  /**
+   * EVENTOS AL VIAJAR (v0.10): al llegar a una zona salvaje generada hay un 22 % de que pase algo:
+   * una bolsa olvidada, un manantial, hierbas junto al camino o una emboscada.
+   */
+  travelEvent(force?: 'bolsa' | 'manantial' | 'hierbas' | 'emboscada'): string | null {
+    const z = this.zone.def;
+    if (!force && (z.kind !== 'wild' || !z.generated || z.dungeon || z.generated.place === 'campamento')) return null;
+    const rng = new Rng(hashString(`${this.state.seed}:ev:${z.id}:${this.state.turn}`));
+    if (!force && !rng.chance(0.22)) return null;
+    const kind = force ?? (['bolsa', 'manantial', 'hierbas', 'emboscada'] as const)[rng.int(0, 3)]!;
+    const spot = this.freeSpotNear(this.playerPos, 3);
+    const p = this.state.player;
+    switch (kind) {
+      case 'bolsa':
+        if (!spot) return null;
+        this.dropLoot(spot.x, spot.y, [], rng.int(5, 12) * Math.max(1, z.level));
+        this.msg('💰 Junto al camino hay una bolsa olvidada.', 'good');
+        break;
+      case 'hierbas': {
+        if (!spot) return null;
+        this.dropLoot(spot.x, spot.y, [createItem('pocion_curacion', 'comun', rng, { qty: 1, level: p.level })], 0);
+        this.msg('🌿 Entre la maleza encuentras un frasco abandonado.', 'good');
+        break;
+      }
+      case 'manantial': {
+        const heal = Math.max(1, Math.round(p.maxHp * 0.3));
+        p.hp = Math.min(p.maxHp, p.hp + heal);
+        this.floatText(this.playerPos.x, this.playerPos.y, `+${heal}`, '#60e070');
+        this.msg('⛲ Un manantial de aguas claras te reconforta.', 'good');
+        break;
+      }
+      case 'emboscada': {
+        const g = this.spawnGroup();
+        if (!g.length) return null;
+        for (const e of g) e.alerted = true;
+        this.msg('⚠ ¡Emboscada! Algo se mueve entre la maleza.', 'warn');
+        break;
+      }
+    }
+    return kind;
   }
 
   // =============================================================== encuentros

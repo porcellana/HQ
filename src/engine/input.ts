@@ -19,6 +19,8 @@ export interface InputHandlers {
   onZoom?(dir: -1 | 0 | 1): void;
   /** Han tocado dos dedos: hay que cancelar la ruta y el movimiento en curso. */
   onPinchStart?(): void;
+  /** Arrastre de un dedo (px CSS desde el último movimiento): gira la cámara en 3D. */
+  onDrag?(dx: number, dy: number): void;
 }
 
 const KEY_DIRS: Record<string, Dir> = {
@@ -64,8 +66,10 @@ export class Input {
     listen(canvas, 'pointermove', (e) => {
       const p = this.pointers.get(e.pointerId);
       if (!p) return;
+      const odx = e.clientX - p.x, ody = e.clientY - p.y;
       p.x = e.clientX;
       p.y = e.clientY;
+      if (!this.pinching && this.down && this.down.id === e.pointerId && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 10) this.h.onDrag?.(odx, ody);
       if (this.pinching && this.pointers.size >= 2) {
         const step = this.pinch.update(dist());
         if (step !== 0) this.h.onZoom?.(step);

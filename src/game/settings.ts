@@ -32,10 +32,14 @@ export interface Settings {
   zoomStep: number;
   /** Volumen pseudo-3D (alturas, sombras y oclusión ambiental). */
   volume3d: boolean;
+  /** Gráficos (v0.10): 3D (WebGL) o 2D clásico. */
+  graphics: '3d' | '2d';
+  /** Calidad del 3D (resolución, distancia, decorado, luces). */
+  quality: 'baja' | 'media' | 'alta';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  joystick: false,
+  joystick: true,
   hand: 'derecha',
   moveSpeed: 'normal',
   vibration: true,
@@ -49,6 +53,8 @@ export const DEFAULT_SETTINGS: Settings = {
   combatFx: 'completos',
   zoomStep: 0,
   volume3d: true,
+  graphics: '3d',
+  quality: 'media',
 };
 
 const KEY = 'ecos.settings';

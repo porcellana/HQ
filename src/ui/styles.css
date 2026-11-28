@@ -31,6 +31,7 @@ html, body {
 }
 #app { position: fixed; inset: 0; overflow: hidden; }
 #game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; touch-action: none; }
+#game3d { position: absolute; inset: 0; width: 100%; height: 100%; display: none; touch-action: none; pointer-events: none; }
 #ui { position: absolute; inset: 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
 #ui .passthrough { pointer-events: none; }
@@ -802,3 +803,18 @@ select.chip { background: var(--panel, #1c1a24); color: inherit; border: 1px sol
 @media (prefers-reduced-motion: reduce) { .loot-chip.glow { animation: none; box-shadow: 0 0 6px var(--rc, #fff); } }
 .screen.shop .tabs { flex-wrap: wrap; }
 .screen.shop .tabs button { min-width: 0; padding-left: 6px; padding-right: 6px; font-size: 0.9em; }
+
+/* v0.10 — botón contextual «Interactuar» */
+.ctx-btn {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--tap) + 30px + env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 22px;
+  font-size: 0.95em; font-weight: 700; pointer-events: auto; z-index: 3;
+  background: linear-gradient(#3b3326, #241d14); border: 2px solid var(--gold); box-shadow: 0 0 14px rgba(242,216,136,0.45);
+  animation: ctxpulse 1.6s ease-in-out infinite;
+}
+.ctx-btn .ico { font-size: 1.3em; }
+@keyframes ctxpulse { 50% { box-shadow: 0 0 20px rgba(242,216,136,0.8); } }
+.b-gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.b-stage .b-canvas { position: relative; z-index: 1; }
+.menu-row { display: flex; gap: 8px; }
+.menu-row button { flex: 1; }

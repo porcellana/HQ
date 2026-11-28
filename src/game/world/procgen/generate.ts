@@ -394,6 +394,51 @@ export function generateCell(seed: number, cx: number, cy: number, level: number
         done++;
       }
     }
+    // Ríos y costas (v0.10): agua que cruza la zona o la bordea por un lado. Los caminos que la
+    // cruzan se convierten en puentes (o muelles junto al mar), así nada queda aislado.
+    if (biome.water && (biome.water.tile === 'agua' || biome.water.tile === 'agua_cieno') && place !== 'campamento') {
+      const wr = new Rng(hashString(`${seed}:river:${id}`));
+      const wt = tch(biome.water.tile);
+      const bridge = tch('puente');
+      const free = (x: number, y: number): boolean => x > 0 && y > 0 && x < W - 1 && y < H - 1 && !used.has(g.k(x, y));
+      const flood = (x: number, y: number, sea = false): void => {
+        if (x < 0 || y < 0 || x >= W || y >= H || used.has(g.k(x, y))) return;
+        if (reserved.has(g.k(x, y))) {
+          if (g.get(x, y) === roadTile || g.get(x, y) === path) g.set(x, y, sea ? tch('muelle') : bridge);
+          return;
+        }
+        const c = g.get(x, y);
+        if (c === tch('cueva') || c === wt || /[0-9@]/.test(c)) return;
+        g.set(x, y, wt);
+      };
+      const roll = wr.next();
+      if (roll < 0.28 && (W > 28)) {
+        const vertical = wr.chance(0.5);
+        const len = vertical ? H : W, span = vertical ? W : H;
+        let c = wr.int(6, span - 7);
+        for (let i = 0; i < len; i++) {
+          c = Math.max(4, Math.min(span - 5, c + wr.int(-1, 1) * (wr.chance(0.55) ? 1 : 0)));
+          const wide = 1 + (wr.chance(0.35) ? 1 : 0);
+          for (let k = -1; k <= wide - 1; k++) {
+            const x = vertical ? c + k : i, y = vertical ? i : c + k;
+            if (free(x, y) || reserved.has(g.k(x, y))) flood(x, y);
+          }
+        }
+      } else if (roll < 0.4) {
+        const side = wr.int(0, 3);
+        const depth = wr.int(3, 5);
+        const len = side < 2 ? W : H;
+        for (let i = 0; i < len; i++) {
+          const d = depth + Math.round(Math.sin(i * 0.5 + wr.int(0, 1)) * 1.4) + wr.int(0, 1);
+          for (let k = 0; k < d + 2; k++) {
+            const x = side === 0 ? i : side === 1 ? i : side === 2 ? k : W - 1 - k;
+            const y = side === 0 ? k : side === 1 ? H - 1 - k : i;
+            if (k < d) flood(x, y, true);
+            else if (!reserved.has(g.k(x, y)) && !used.has(g.k(x, y)) && g.get(x, y) === tch(biome.ground)) g.set(x, y, tch('arena'));
+          }
+        }
+      }
+    }
     // Conectividad: todo destino debe poder alcanzarse desde el centro.
     const fix = () => {
       for (let pass = 0; pass < 3; pass++) {

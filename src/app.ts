@@ -19,6 +19,8 @@ import { defaultStores } from '@/game/save/storage';
 import { loadSettings, saveSettings, type Settings } from '@/game/settings';
 import { createNewGame, type GameState } from '@/game/state';
 import { Renderer } from '@/gfx/renderer';
+import type { MapView } from '@/gfx/mapView';
+import { Renderer3D } from '@/gfx/world3d/renderer3d';
 import type { DiceEvent } from '@/game/game';
 import { BattleScene } from '@/ui/battleScene';
 import { heroColors } from '@/gfx/sprites';
@@ -46,7 +48,10 @@ const AUTOSAVE_EVERY_TURNS = 40;
 export class App {
   private settings: Settings = loadSettings();
   private readonly saves = new SaveManager(defaultStores(), __APP_VERSION__);
-  private readonly renderer: Renderer;
+  private readonly r2d: Renderer;
+  private r3d: Renderer3D | null = null;
+  private gl3dFailed = false;
+  private readonly glCanvas: HTMLCanvasElement | null;
   private readonly loop: GameLoop;
   private game: Game | null = null;
   private hud: Hud | null = null;
@@ -63,15 +68,18 @@ export class App {
   private pendingLevelUps: LevelUpEvent[] = [];
 
   constructor(
-    canvas: HTMLCanvasElement,
+    private readonly canvas: HTMLCanvasElement,
     private readonly ui: HTMLElement,
+    glCanvas: HTMLCanvasElement | null = null,
   ) {
-    this.renderer = new Renderer(canvas);
+    this.glCanvas = glCanvas;
+    this.r2d = new Renderer(canvas);
     this.loop = new GameLoop((dt) => this.tick(dt));
     new Input(canvas, {
       onTap: (x, y) => this.onTap(x, y),
       onHeldDir: (d) => this.setHeldDir(d),
       onZoom: (dir) => this.zoomMap(dir),
+      onDrag: (dx) => this.r3d && this.use3d && this.r3d.rotateBy(dx),
       // Dos dedos: se cancelan la ruta y el movimiento pendientes (no se mueve ni ataca al soltar).
       onPinchStart: () => {
         this.game?.cancelPath();
@@ -96,6 +104,16 @@ export class App {
   }
 
   async start(): Promise<void> {
+    if (import.meta.env.DEV) {
+      // Ayuda de desarrollo para pruebas visuales (no existe en producción).
+      (window as unknown as Record<string, unknown>).__dev = {
+        newGame: (classId = 'guerrero', zone?: string) => {
+          const st = createNewGame({ name: 'Test', classId, portrait: 3, seed: 1234, stats: { FUE: 15, DES: 13, CON: 14, INT: 10, SAB: 12, CAR: 8 }, background: 'aventurero' });
+          if (zone) st.player.pos = { zone, x: st.player.pos.x, y: st.player.pos.y };
+          this.startGame(st);
+        },
+      };
+    }
     await this.showMainMenu();
   }
 
@@ -113,6 +131,8 @@ export class App {
         onContinue: () => void this.continueGame(),
         onNewGame: () => void this.newGame(summary !== null),
         onSettings: () => this.showSettings(() => void this.showMainMenu()),
+        onExport: () => void this.exportSave(),
+        onImport: () => this.importSave(() => void this.showMainMenu()),
       }),
     );
   }
@@ -187,7 +207,51 @@ export class App {
     });
   }
 
+  /** ¿Se está dibujando en 3D ahora mismo? */
+  private get use3d(): boolean {
+    return !!this.r3d && this.settings.graphics === '3d' && !this.gl3dFailed;
+  }
+
+  /** Renderizador activo del mapa (3D con respaldo automático al 2D clásico). */
+  private get renderer(): MapView {
+    return this.use3d ? this.r3d! : this.r2d;
+  }
+
+  /** Crea o descarta el 3D según los ajustes; si WebGL falla se queda el 2D. */
+  private applyGraphics(): void {
+    if (this.settings.graphics === '3d' && !this.gl3dFailed && !this.r3d && this.glCanvas && Renderer3D.supported()) {
+      try {
+        const r = new Renderer3D(this.glCanvas, this.canvas, this.settings.quality);
+        r.heroColors = this.r2d.heroColors;
+        r.onContextLost = () => {
+          this.gl3dFailed = true;
+          this.applyGraphics();
+          this.toast('Se perdió el 3D: usando gráficos 2D clásicos.');
+        };
+        r.onAutoQuality = (q) => {
+          this.settings = { ...this.settings, quality: q };
+          saveSettings(this.settings);
+          this.toast(`Rendimiento bajo: calidad gráfica «${q}».`);
+        };
+        this.r3d = r;
+      } catch (e) {
+        console.warn('[3D] no disponible, uso 2D', e);
+        this.gl3dFailed = true;
+      }
+    }
+    const on = this.use3d;
+    if (this.glCanvas) this.glCanvas.style.display = on ? 'block' : 'none';
+    if (on) this.r3d!.setQuality(this.settings.quality);
+    else {
+      const c = this.canvas.getContext('2d');
+      c?.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+    this.r2d.resize();
+    this.r3d?.resize();
+  }
+
   private applySettings(): void {
+    this.applyGraphics();
     document.documentElement.classList.toggle('ui-grande', this.settings.uiScale === 'grande');
     this.hud?.applySettings(this.settings);
     if (this.game) {
@@ -274,6 +338,8 @@ export class App {
       },
       onInventory: () => this.showInventory(),
       onJoystick: (d) => this.setHeldDir(d),
+      onRotate: (dir) => this.r3d?.rotateStep(dir),
+      onTapTile: (x, y) => game.tapTile(x, y),
       onSkill: (sk) => {
         const err = game.useMapSkill(sk.id);
         if (err) hud.pushMessage(err, 'warn');
@@ -350,7 +416,8 @@ export class App {
     if (!p || !this.hud) return;
     const cls = getClass(p.classId);
     const colors = heroColors(cls.look, p.portrait);
-    this.renderer.heroColors = colors;
+    this.r2d.heroColors = colors;
+    if (this.r3d) this.r3d.heroColors = colors;
     this.hud.setPortrait(colors);
     this.hud.setResource(cls.resource.short, cls.resource.color);
   }
@@ -426,7 +493,7 @@ export class App {
     if (!game || this.pauseClose || this.screen) return;
     game.heldDir = null;
     this.setScreen(
-      zoneMapScreen(game, this.renderer.zoneImage(game.zone), this.renderer.heroColors, () => this.setScreen(null), (x, y) => {
+      zoneMapScreen(game, this.r2d.zoneImage(game.zone), this.r2d.heroColors, () => this.setScreen(null), (x, y) => {
         this.setScreen(null);
         game.tapTile(x, y);
       }),
@@ -532,6 +599,7 @@ export class App {
     this.renderer.render(game, dt, { grid: this.settings.grid, dayNight: this.settings.dayNight, volume: this.settings.volume3d, questGuide: this.settings.questGuide });
     this.hud?.update(game, dt);
     this.hud?.zoom.update(this.renderer.zoomStep, this.renderer.zoomLimits);
+    this.hud?.zoom.set3d(this.use3d);
   }
 
   // ------------------------------------------------------------------- batalla
@@ -543,9 +611,10 @@ export class App {
       root: this.ui,
       game,
       battle,
-      heroColors: this.renderer.heroColors,
+      heroColors: this.r2d.heroColors,
       speed: this.settings.battleSpeed,
       fx: this.settings.combatFx,
+      ...(this.use3d ? { backdrop3d: this.settings.quality } : {}),
       sfx: (id) => this.sfx.play(id),
       vibrate: (ms) => buzz(this.settings.vibration, ms),
       onFinish: () => {
@@ -582,7 +651,7 @@ export class App {
   private setHeldDir(d: { dx: number; dy: number } | null): void {
     if (!this.game) return;
     if (d) this.game.cancelPath();
-    this.game.heldDir = d;
+    this.game.heldDir = d && this.use3d ? this.r3d!.remap(d) : d;
   }
 
   /** Guarda en segundo plano; las llamadas se encadenan para no solaparse. */

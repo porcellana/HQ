@@ -2,6 +2,15 @@
 
 Formato: versión · fecha · cambios. La versión también aparece en el menú principal.
 
+## v0.10.0 · 2026-11-28 — Mundo en 3D («Brumavela» + Ecos del Abismo)
+
+- **Gráficos 3D (WebGL2, sin librerías)** en `src/gfx/world3d/`: las casillas de cada zona (a mano o generadas) se extruyen a terreno con relieve suave, **agua animada con orillas y espuma**, árboles, pinos, palmeras, rocas, montañas por altura, casas con tejado a dos aguas y ventanas, muros, antorchas, faroles, hogueras y cristales (con luz puntual), vegetación que se mece con el viento, AO horneado y sombras suaves bajo las criaturas, niebla y luz por **bioma y hora del día**, partículas ambientales (polen, luciérnagas, nieve, polvo, esporas) y «ver a través» de lo que tapa al jugador.
+- **Criaturas low-poly animadas** (humanoides por clase con sombrero/casco/capa, cuadrúpedos, arañas, serpientes, voladores, medusas, escarabajos y brotes), compañero, mascota, PNJ con ❗/❓ y nombre, cofres, vetas brillantes y botín con el color de su rareza. Etiquetas y números flotantes proyectados.
+- **Cámara inclinada** con giro (arrastra con un dedo o botón ↻), zoom (pellizco/botones/rueda) y seguimiento suave; el joystick y las teclas siguen a la cámara. **Toca una criatura u objeto** para ir hasta él.
+- **Ajustes → Gráficos** (3D / 2D clásico, con respaldo automático si falla WebGL) y **Calidad** Baja/Media/Alta (Media por defecto; **baja sola** si los fps caen). Batalla: el escenario del bioma es un diorama 3D con los sprites de siempre encima.
+- **Jugabilidad**: botón contextual **Interactuar** (hablar, abrir, minar, recoger), haz de luz y flecha 3D hacia la misión, **4 clases nuevas** (Bárbaro, Explorador, Druida y Bardo, con habilidades, talentos y equipo), **ríos, puentes y costas** en el mundo procedural, **eventos al viajar** (bolsa, frasco, manantial, emboscada), exportar/importar también desde el menú principal, joystick activado por defecto en instalaciones nuevas.
+- Sin cambios de guardado.
+
 ## v0.9.5 · 2026-11-27 — Fichas de botín
 
 - Al ganar una batalla, el botín sale como fichas con icono, color de rareza y destello.

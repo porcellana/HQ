@@ -7,7 +7,8 @@ const canvas = document.getElementById('game') as HTMLCanvasElement | null;
 const ui = document.getElementById('ui');
 if (!canvas || !ui) throw new Error('Falta #game o #ui en index.html');
 
-const app = new App(canvas, ui);
+const gl3d = document.getElementById('game3d') as HTMLCanvasElement | null;
+const app = new App(canvas, ui, gl3d);
 void app.start();
 
 // PWA: service worker sólo en producción y fuera de la app nativa.

@@ -27,6 +27,10 @@ export interface HudActions {
   onSettings(): void;
   onInventory(): void;
   onJoystick(dir: { dx: number; dy: number } | null): void;
+  /** Gira la cámara un paso (solo en 3D). */
+  onRotate(dir: 1 | -1): void;
+  /** Toca una casilla (acción contextual). */
+  onTapTile(x: number, y: number): void;
   onSkill(skill: SkillDef): void;
   onMinimapTap(x: number, y: number): void;
   onPotion(): void;
@@ -59,6 +63,11 @@ export class Hud {
   readonly skillBar: SkillBar;
   readonly dice = new DiceRoller();
   readonly zoom: ZoomControls;
+  /** Botón contextual «Interactuar» (hablar, abrir, minar, recoger). */
+  private readonly ctxBtn: HTMLButtonElement;
+  private ctxSig = '';
+  private ctxAct: { x: number; y: number } | null = null;
+  private ctxT = 0;
   /** Desplegable de habilidades abierto. */
   skillsOpen = false;
   private bannerTimer = 0;
@@ -124,7 +133,13 @@ export class Hud {
       fn(...a);
     };
     this.skillBar = new SkillBar(closing(actions.onSkill), closing(actions.onPotion));
-    this.zoom = new ZoomControls(actions.onZoom);
+    this.zoom = new ZoomControls(actions.onZoom, actions.onRotate);
+    this.ctxBtn = h('button', { class: 'ctx-btn', attrs: { 'aria-label': 'Interactuar' } });
+    this.ctxBtn.style.display = 'none';
+    this.ctxBtn.addEventListener('click', () => {
+      const a = this.ctxAct;
+      if (a) actions.onTapTile(a.x, a.y);
+    });
     this.minimap.onTapTile = actions.onMinimapTap;
     this.tracker = new QuestTracker(actions.onOpenQuest, () => void 0);
     this.leftCol = h('div', { class: 'hud-left' }, []);
@@ -135,6 +150,7 @@ export class Hud {
       this.log,
       this.dice.el,
       this.zoom.el,
+      this.ctxBtn,
       this.joystick.el,
       this.tracker.el,
       this.skillBar.el,
@@ -221,6 +237,18 @@ export class Hud {
       this.mp.label.textContent = `${this.resourceShort} ${p.mp}/${p.maxMp}`;
       this.xp.fill.style.width = `${prog.ratio * 100}%`;
       this.xp.el.title = prog.needed ? `XP ${prog.current}/${prog.needed}` : 'Nivel máximo';
+    }
+    this.ctxT -= dt;
+    if (this.ctxT <= 0) {
+      this.ctxT = 0.2;
+      const a = game.contextAction();
+      this.ctxAct = a ? { x: a.x, y: a.y } : null;
+      const sig = a ? `${a.kind}|${a.label}` : '';
+      if (sig !== this.ctxSig) {
+        this.ctxSig = sig;
+        this.ctxBtn.style.display = a ? '' : 'none';
+        if (a) this.ctxBtn.replaceChildren(h('span', { class: 'ico', text: a.icon }), h('span', { text: a.label }));
+      }
     }
     this.minimap.draw(game.zone, game.view.rx, game.view.ry, dt);
     this.skillBar.update(game);

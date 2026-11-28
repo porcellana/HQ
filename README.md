@@ -39,6 +39,17 @@ v0.2 se centra en el estilo Baldur's Gate / D&D en tres fases:
 | — | **v0.4.0**: combate turno a turno (paso a paso, barra de turnos, cartel de acción, menú de acciones, Defender), seguimiento de misiones estilo WoW, mascotas fáciles de encontrar y como recompensa | ✅ |
 | C | **Expediciones roguelike**: elegir camino entre salas (combate, tesoro, evento, tienda), recompensas a elegir y mejoras que se conservan aunque mueras | ⏳ |
 
+### Gráficos 3D (v0.10)
+
+Mezcla del prototipo «Brumavela» (WebGL puro) con la jugabilidad de Ecos del Abismo. La lógica sigue siendo por casillas; el 3D es sólo presentación (`src/gfx/world3d/`, detrás de la interfaz `gfx/mapView.ts` que comparten el renderizador 2D y el 3D).
+
+- `terrain.ts` (puro): `Geo` (alturas por vértice, montañas por profundidad, tejados con cumbrera) y `buildChunk` (mallas por chunks de 16×16 + instancias por modelo + luces). `models.ts`: catálogo low-poly y rigs animados. `style.ts`: niebla/cielo/partículas por bioma y noche. `quality.ts`: calidades y `FpsGuard`. `renderer3d.ts`: WebGL2 (instancing, agua, partículas en GPU, sombras blob, «ver a través» con dither). `battle3d.ts`: diorama 3D del bioma tras los sprites de batalla.
+- Decisiones (sin preguntar): sombras = AO horneado en los vértices + sombras blob bajo las criaturas (sin shadow map, para ir fluido en móviles medios); batalla = sprites 2D sobre fondo 3D (se mantiene todo el sistema de efectos); WebGL2 obligatorio (si no hay, 2D clásico automático); calidad Media por defecto y bajada automática si los fps caen; el 2D sigue completo como respaldo y para el mapa del mundo/zona.
+- Cámara: arrastre = girar, pellizco = zoom, joystick/teclas relativos a la cámara (`remapDir`). Un lienzo 2D encima (el de entrada) pinta etiquetas, números y la guía de misión.
+- Nuevo contenido de datos: clases `barbaro`, `explorador`, `druida`, `bardo` (con talentos y equipo propios en `data/items/clases_brumavela.ts`; reutilizan la plantilla de sprite 2D de la clase más parecida).
+- Mundo: ríos (con puentes) y costas (con muelles) en zonas salvajes generadas con bioma de agua; `Game.travelEvent` (eventos al viajar) y `Game.contextAction` (botón Interactuar).
+- Dev: `window.__dev.newGame(clase, zona?)` para pruebas visuales con Playwright (`--use-gl=swiftshader --enable-unsafe-swiftshader`).
+
 ### Botín y comercio v0.9.4
 Objetos en `src/data/items/*.ts` (campos `classes`, `reqLevel`, `set`, `unique`, `quest`, `use.damage`), conjuntos en `src/data/sets`, tablas en `src/data/loot_tables` (`drop_<bioma>` = materiales extra; `jefe_<id>` = único del jefe; pools `equipo|armas|armaduras|accesorios|consumibles|magia|sets`), curva en `src/game/economy/curve.ts`, nombres de afijos en `src/data/config/affixnames.ts`. Tiendas: `kind`, `upgrades`, `gamble`, `minRarity`. Iconos nuevos: añade la forma en `src/gfx/items.ts`.
 

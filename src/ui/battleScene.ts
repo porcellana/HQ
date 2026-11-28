@@ -20,6 +20,9 @@ import { STATUS_INFO } from '@/game/combat/status';
 import { itemDef } from '@/game/items/items';
 import * as Pets from '@/game/pets/pets';
 import { makeBattleBackground } from '@/gfx/battleBg';
+import { Backdrop3D } from '@/gfx/world3d/battle3d';
+import { QUALITY, type Quality } from '@/gfx/world3d/quality';
+import { nightAmount } from '@/gfx/renderer';
 import { monsterSprite } from '@/gfx/monsters';
 import { LEVEL_DENSITY, ParticlePool, emitDissolve, emitHeal, emitImpact, emitStatusPuff, emitTrail, type FxLevel } from '@/gfx/particles';
 import { PAL } from '@/gfx/palette';
@@ -43,6 +46,8 @@ export interface BattleSceneDeps {
   vibrate(ms: number): void;
   /** Se pulsó «Continuar» tras la victoria/derrota (la partida aplica el resultado). */
   onFinish(): void;
+  /** Fondo 3D del bioma (undefined = fondo pixel art clásico). */
+  backdrop3d?: Quality;
 }
 
 const IMPACT_SFX: Record<DamageType, SfxId> = {
@@ -134,6 +139,8 @@ export class BattleScene {
   private amb: AmbientSpec;
   private tweens: Tween[] = [];
   private bg: HTMLCanvasElement | null = null;
+  private glCanvas: HTMLCanvasElement | null = null;
+  private backdrop: Backdrop3D | null = null;
   private biome: Biome;
   private W = 0;
   private H = 0;
@@ -170,7 +177,20 @@ export class BattleScene {
     this.ctx = this.canvas.getContext('2d')!;
     this.msgEl = h('div', { class: 'b-msg' });
     this.orderEl = h('div', { class: 'b-order' });
-    this.stage = h('div', { class: 'b-stage' }, [this.canvas, this.orderEl, this.msgEl]);
+    // Fondo 3D opcional (si WebGL falla, se usa el fondo pixel art de siempre).
+    if (d.backdrop3d) {
+      try {
+        const gc = h('canvas', { class: 'b-gl' });
+        const z = d.game.zone;
+        const outdoor = z.def.kind === 'town' || z.def.kind === 'wild' || z.def.kind === 'world';
+        this.backdrop = new Backdrop3D(gc, this.biome, (z.id.length * 7 + d.game.state.turn) & 255, outdoor ? nightAmount(d.game.state.turn) : 0, QUALITY[d.backdrop3d]);
+        this.glCanvas = gc;
+      } catch (e) {
+        console.warn('[batalla 3D] sin fondo 3D', e);
+        this.backdrop = null;
+      }
+    }
+    this.stage = h('div', { class: 'b-stage' }, [...(this.glCanvas ? [this.glCanvas] : []), this.canvas, this.orderEl, this.msgEl]);
     this.partyEl = h('div', { class: 'b-party' });
     const mk = (key: keyof BattleScene['btns'], ico: string, label: string, fn: () => void) => {
       const b = h('button', { class: `b-btn b-${key}`, onClick: fn, attrs: { 'aria-label': label } }, [h('span', { class: 'ico', text: ico }), h('span', { text: label })]);
@@ -216,7 +236,8 @@ export class BattleScene {
     this.canvas.style.height = `${this.H}px`;
     // Escala de los sprites (16 px de píxel art): enteros para que se vean nítidos.
     this.S = Math.max(3, Math.min(7, Math.floor(Math.min(this.W / 5.0, this.H / 4.2) / 16)));
-    this.bg = makeBattleBackground(this.W, this.H, this.biome, 7);
+    if (this.backdrop) this.backdrop.resize(this.W, this.H, Math.min(this.dpr, 2) * (this.d.backdrop3d ? QUALITY[this.d.backdrop3d].scale : 1));
+    else this.bg = makeBattleBackground(this.W, this.H, this.biome, 7);
     this.vignette = makeVignette(this.W, this.H, this.amb.tint);
   }
 
@@ -302,6 +323,7 @@ export class BattleScene {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.update(dt);
+    this.backdrop?.draw(dt, this.activeUnitX() - this.W / 2);
     this.render();
     this.raf = requestAnimationFrame((t) => this.frame(t));
   }
@@ -1277,6 +1299,7 @@ export class BattleScene {
     this.destroyed = true;
     cancelAnimationFrame(this.raf);
     this.ro?.disconnect();
+    this.backdrop?.destroy();
     window.clearTimeout(this.msgTimer);
     this.el.remove();
   }
