@@ -608,7 +608,7 @@ button.mini.big { min-height: var(--tap); min-width: var(--tap); }
 .zone-fade { position: absolute; inset: 0; z-index: 40; pointer-events: none !important; opacity: 1; transition: opacity 0.55s ease-out; }
 
 /* v0.14 · información de combatientes (mantener pulsado o ⓘ) */
-.b-info-btn { position: absolute; top: 8px; right: 8px; z-index: 6; width: 30px; height: 30px; border-radius: 50%; padding: 0; font-size: 1.05em; line-height: 1; background: rgba(14, 11, 24, 0.7); border: 1px solid var(--line-hi); color: var(--text); }
+.b-info-btn { position: absolute; top: 8px; right: 8px; z-index: 6; width: 32px; height: 32px; min-width: 0; min-height: 0; max-width: 32px; max-height: 32px; flex: none; aspect-ratio: 1; border-radius: 50%; padding: 0; display: grid; place-items: center; font-size: 1.05em; line-height: 1; background: rgba(14, 11, 24, 0.7); border: 1px solid var(--line-hi); color: var(--text); }
 .b-info-btn.on { background: var(--gold, #d8b050); color: #1a1208; }
 .b-info { position: absolute; left: 50%; top: 44px; transform: translate(-50%, -6px); z-index: 7; min-width: 190px; max-width: 78%; padding: 8px 10px; border-radius: 12px; background: rgba(14, 11, 24, 0.9); border: 1px solid var(--line-hi); font-size: 0.74em; opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .b-info.show { opacity: 1; transform: translate(-50%, 0); }

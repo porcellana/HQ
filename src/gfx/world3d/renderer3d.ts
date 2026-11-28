@@ -475,12 +475,16 @@ export class Renderer3D {
     const px = v.rx + 0.5, pz = v.ry + 0.5;
     const py = geo.heightAt(px, pz);
     const k = Math.min(1, dt * 7);
+    // Casas pequeñas: la cámara se inclina hacia el centro de la sala para que se vea entera.
+    const small = zone.def.kind === 'interior';
+    const camX = small ? px + (zone.width / 2 - px) * 0.6 : px;
+    const camZ = small ? pz + (zone.height / 2 - pz) * 0.6 : pz;
     if (this.camZone !== zone.id) {
-      this.cam = { x: px, y: py, z: pz };
+      this.cam = { x: camX, y: py, z: camZ };
       this.camZone = zone.id;
     } else {
-      this.cam.x += (px - this.cam.x) * k;
-      this.cam.z += (pz - this.cam.z) * k;
+      this.cam.x += (camX - this.cam.x) * k;
+      this.cam.z += (camZ - this.cam.z) * k;
       this.cam.y += (py - this.cam.y) * k;
     }
     if (!this.gesturing && this.yawVel !== 0) {

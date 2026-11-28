@@ -14,7 +14,9 @@ const SECTIONS: Array<[string, string[]]> = [
     'El botón dorado «Interactuar» aparece cuando tienes cerca a alguien, un cofre, una veta o botín: hablar, abrir, minar o recoger. Un espíritu luminoso vuela por delante y te guía hasta el cristal violeta de tu objetivo.',
     'Ajustes → Gráficos: Calidad Baja/Media/Alta (si el móvil va justo, el juego baja la calidad solo y la recupera cuando va bien). En Alta hay sombras reales y resplandor (bloom, desactivable). «Contador de fps» muestra el rendimiento.',
     'El día y la noche se ven: amanecer y atardecer dorados, luna y estrellas, ventanas encendidas, luciérnagas en el bosque y sombras que giran con el sol. La batalla hereda la hora del mapa.',
-    'Al viajar por zonas salvajes pueden pasar cosas: una bolsa olvidada, un manantial, un frasco… o una emboscada.',
+    'Al viajar por zonas salvajes pueden pasar cosas: una bolsa olvidada, un manantial, un frasco… o un suceso con elecciones y tiradas (viajero herido, mercader ambulante, emboscada, tesoro oculto, tormenta, santuario). Las recompensas y las dificultades dependen del nivel de la zona.',
+    'Las casas de aldeas, pueblos y ciudades se pueden entrar por la puerta: dentro están las tiendas, la posada, la herrería, el templo y los vecinos, con cofres y muebles. El techo se desvanece al entrar y la luz es cálida.',
+    'Misiones de escolta: tu protegido te sigue (con su barra de vida), sale en las batallas y los enemigos pueden atacarle. Si cae, la misión falla; si llega a su destino, cobras con su alcalde.',
     'El mundo es enorme: al cruzar los bordes de la aldea, el bosque, el paso o el puerto se generan zonas nuevas (praderas, bosques, montañas, nieve, desierto, pantano, costa) con aldeas, pueblos, ciudades, campamentos, ruinas, cuevas y mazmorras. Cada zona nace a tu nivel ±1 y se queda así. En el mapa grande, 🌍 muestra el mundo descubierto.',
     'Al entrar en una zona, el rótulo muestra qué hay: 🛒 tienda, 💬 gente, ❗ misión, ⚔ peligro, ⛏ minerales (es un aviso discreto de la interfaz).',
     'Zoom del mapa: pellizca con dos dedos, o usa los botones + y − bajo el minimapa (⟲ vuelve al normal). En PC: rueda del ratón o teclas + − 0.',
@@ -27,6 +29,7 @@ const SECTIONS: Array<[string, string[]]> = [
   ]],
   ['⚔️ Batalla por turnos', [
     'Fuera de batalla caminas libre. Cuando un enemigo te ve (o lo embistes) aparece un «!» y se abre la batalla en una escena aparte: tu grupo (tú, compañero y mascota) a la DERECHA y los enemigos a la IZQUIERDA. El fondo cambia según la zona.',
+    'Mantén pulsado un combatiente (o toca ⓘ y luego a uno) para ver su nombre, nivel, PV, estados y debilidades. Cada familia de enemigo ataca y muere a su manera, y los jefes irrumpen en escena y rugen al cambiar de fase.',
     'Los turnos van por iniciativa (DES + bonos): los rápidos, como el lobo, actúan antes. Arriba, una barra compacta con los retratos muestra quién actúa y quién va después.',
     'En TU TURNO, el menú de una sola línea: ⚔ Atacar (toca al enemigo), ✨ Habilidad (se despliega con tus habilidades y su coste; al final, 🐾 Órdenes a la mascota), 🎒 Objeto (pociones, Runa de vínculo…), 🛡 Defender (+2 CA hasta tu próximo turno) y 🏃 Huir.',
     'Los hechizos de área golpean a todos los enemigos. Curas y mejoras te dejan elegir aliado tocándolo (en el escenario o en su fila de abajo). Si sólo hay un objetivo posible, se elige solo.',
